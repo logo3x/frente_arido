@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frente Árido · Editor de mapas</title>
+<link rel="stylesheet" href="editor.css">
+</head>
+<body>
+<main>
+  <div>
+    <h1>Editor de mapas</h1>
+    <p class="sub">Mapa de 64 × 64 celdas. Las zonas sombreadas son las bases y no admiten terreno ni recursos.</p>
+    <div class="board"><canvas id="cv" width="768" height="768" aria-label="Mapa"></canvas></div>
+  </div>
+  <aside>
+    <section>
+      <h2>Herramienta</h2>
+      <div class="tools" id="tools">
+        <button data-tool="r" class="on">Roca</button>
+        <button data-tool="w">Agua</button>
+        <button data-tool=".">Borrar terreno</button>
+        <button data-tool="depot">Depósito</button>
+        <button data-tool="well">Pozo petrolero</button>
+        <button data-tool="erase">Quitar recurso</button>
+      </div>
+      <div class="row" style="margin-top:8px"><span class="sub" style="margin:0">Pincel</span>
+        <button data-brush="1" class="on">1</button><button data-brush="2">2</button><button data-brush="3">3</button></div>
+      <label>Créditos por depósito<input type="number" id="amount" value="3000" min="500" max="20000" step="500"></label>
+      <label class="check"><input type="checkbox" id="mirror" checked> Simetría central (mapa justo para ambos jugadores)</label>
+    </section>
+    <section>
+      <h2>Mapa</h2>
+      <label>Nombre<input type="text" id="name" maxlength="40" value="Mapa nuevo"></label>
+      <div class="row">
+        <button id="btnNew">Vacío</button><button id="btnStd">Recursos estándar</button><button id="btnRandom">Aleatorio</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="btnImport">Importar</button><button id="btnExport">Exportar</button><button id="btnTest">Probar en el juego</button>
+      </div>
+      <input type="file" id="file" accept=".json,application/json" hidden>
+    </section>
+    <section>
+      <h2>Validación</h2>
+      <div class="status" id="status"></div>
+    </section>
+    <section>
+      <div class="legend">
+        <i style="background:#cdb68a"></i><span>Arena (transitable)</span>
+        <i style="background:#7d6f5d"></i><span>Roca (bloquea)</span>
+        <i style="background:#3d6e8c"></i><span>Agua (bloquea; los aviones la sobrevuelan)</span>
+        <i style="background:#d9a23a"></i><span>Depósito de créditos (2 × 2)</span>
+        <i style="background:#8a8070"></i><span>Pozo petrolero (2 × 2)</span>
+      </div>
+    </section>
+  </aside>
+</main>
+<script src="editor.js"></script>
+</body>
+</html>

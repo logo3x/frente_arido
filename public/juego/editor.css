@@ -1,0 +1,26 @@
+:root{--bg:#1d2220;--panel:#232c2e;--line:#3f4c4c;--ink:#ece5d1;--muted:#a9a48f;--amber:#e8a33d;--bad:#e0553d;--ok:#79c25a;
+      --font:"Bahnschrift","DIN Alternate","Roboto Condensed","Arial Narrow",system-ui,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);min-height:100vh}
+main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;max-width:1180px;margin:0 auto;padding:16px}
+h1{margin:0 0 4px;font-size:26px;font-weight:600}
+.sub{color:var(--muted);font-size:14px;margin:0 0 12px}
+.board{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:10px;display:flex;justify-content:center}
+canvas{width:100%;max-width:768px;aspect-ratio:1;image-rendering:pixelated;touch-action:none;cursor:crosshair;display:block}
+aside{display:flex;flex-direction:column;gap:12px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:10px 12px}
+h2{margin:0 0 8px;font-size:15px;font-weight:600;color:var(--amber)}
+.tools{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+button{font:inherit;font-size:14px;color:var(--ink);background:#2c3739;border:1px solid #4b5a5a;border-radius:3px;padding:6px 10px;cursor:pointer}
+button:hover{background:#37464a}
+button.on{background:#5a3f16;border-color:var(--amber)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+label{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--muted);margin:6px 0}
+input[type=text],input[type=number]{font:inherit;font-size:14px;color:var(--ink);background:#1a2122;border:1px solid #4b5a5a;border-radius:3px;padding:6px 8px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.check{flex-direction:row;align-items:center;gap:8px;color:var(--ink)}
+.status{font-size:14px;line-height:1.45}
+.status .ok{color:var(--ok)} .status .err{color:var(--bad)}
+.legend{display:grid;grid-template-columns:14px 1fr;gap:4px 8px;font-size:13px;color:var(--muted);align-items:center}
+.legend i{width:14px;height:14px;border-radius:2px;display:block}
+@media (max-width:860px){main{grid-template-columns:1fr}}

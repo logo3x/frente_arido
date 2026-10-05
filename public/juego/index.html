@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Frente Árido · v0.9.1</title>
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="overlay"></canvas>
+<div id="selbox"></div>
+
+<header id="topbar">
+  <div class="chip emblem" id="facChip"><span id="facEmblem"></span><b id="facName"></b></div>
+  <div class="chip" id="credits">Créditos <b id="credVal">0</b></div>
+  <div class="chip" id="energy" title="Generación menos consumo">Energía <b id="energyVal">0</b></div>
+  <div class="chip" id="unitsChip">Unidades <b id="popVal">0</b></div>
+  <div class="chip" id="clockChip">Tiempo <b id="clockVal">0:00</b></div>
+  <div class="chip" id="pingChip" hidden>Ping <b id="pingVal">–</b></div>
+  <div class="spacer"></div>
+  <div class="chip" id="fpsChip" hidden>FPS <b id="fpsVal">–</b></div>
+  <button id="btnOptions">Opciones</button>
+  <button id="btnSound" aria-label="Activar o silenciar el sonido" title="Tecla M">Sonido</button>
+  <button id="btnGameMenu" aria-label="Menú de la partida" title="Esc o F10">Menú</button>
+  <button id="btnPause" aria-label="Pausar">Pausa</button>
+  <button id="btnHelp" aria-label="Ver controles">Controles</button>
+</header>
+
+<aside id="powers" hidden aria-label="Poderes de comandante"></aside>
+
+<div id="bottom">
+  <canvas id="minimap" width="336" height="336" aria-label="Minimapa"></canvas>
+  <div id="panel"></div>
+  <div id="tools">
+    <button id="btnArea" title="Modo selección por área (táctil)">Área</button>
+    <button id="btnAMove" title="Atacar-mover (tecla A)">Atacar-mover</button>
+    <button id="btnStop" title="Detener (tecla S)">Detener</button>
+    <button id="btnClear" title="Quitar selección (Esc)">Soltar</button>
+  </div>
+</div>
+
+<div id="help" hidden>
+  <div class="card" role="dialog" aria-label="Controles">
+    <h2>Frente Árido · v0.8</h2>
+    <p>Objetivo: destruir todos los edificios enemigos. Los pozos petroleros no cuentan para la victoria.</p>
+    <h3>Novedades de la versión 0.9.1</h3>
+    <table>
+      <tr><td>Cámara</td><td>Desplazamiento con el mouse en los bordes de la pantalla (se desactiva en Opciones)</td></tr>
+      <tr><td>Menú de partida</td><td>Esc o F10: reanudar, opciones, controles, reiniciar y abandonar</td></tr>
+      <tr><td>Curación</td><td>Las unidades se curan junto al edificio que las produce: infantería en el cuartel, vehículos en la fábrica, barcos en el astillero</td></tr>
+      <tr><td>Escaramuza</td><td>Mapas Cruce, Lagos y Meseta; elección de posición inicial</td></tr>
+    </table>
+    <h3>Versión 0.9</h3>
+    <table>
+      <tr><td>Entrenamiento</td><td>Recorrido guiado de cinco pasos desde el menú</td></tr>
+      <tr><td>Misiones navales</td><td>Una misión naval nueva en cada campaña</td></tr>
+      <tr><td>Opciones</td><td>Calidad gráfica, sombras, tamaño de la interfaz, colores accesibles, volumen y velocidad de la cámara</td></tr>
+      <tr><td>Historial</td><td>Acciones por minuto y cuadros por segundo; exportación a CSV</td></tr>
+    </table>
+    <h3>Versión 0.8</h3>
+    <table>
+      <tr><td>Flota</td><td>Astillero (requiere costa), lancha patrullera y fragata. Los barcos solo navegan por el agua; la fragata necesita que otra unidad vea el objetivo</td></tr>
+      <tr><td>Mapas</td><td>Selector de plantillas en el menú, incluido el nuevo mapa «Canal»</td></tr>
+      <tr><td>Campaña verificada</td><td>Con cuenta, el servidor vuelve a simular la misión antes de registrar las estrellas</td></tr>
+    </table>
+    <h3>Versión 0.7</h3>
+    <table>
+      <tr><td>Campaña</td><td>Tres campañas de tres misiones, una por facción, con objetivos, eventos y estrellas</td></tr>
+      <tr><td>Árbol del comandante</td><td>Tres ramas por facción con poderes y mejoras pasivas. Se abre desde el panel derecho</td></tr>
+      <tr><td>Perfil e historial</td><td>Avance de campaña e historial de partidas guardados en el navegador y, con cuenta, en el servidor</td></tr>
+      <tr><td>Diseño por facción</td><td>Interfaz, emblemas, materiales y sonidos propios de cada facción</td></tr>
+    </table>
+    <h3>Versión 0.6</h3>
+    <table>
+      <tr><td>Héroe</td><td>Uno por jugador desde rango 4, en el cuartel. Comando Atlas (francotirador), Mariscal de Hierro (aura de daño) y Jefe rebelde (camuflado)</td></tr>
+      <tr><td>Mapas</td><td>Editor de mapas con rocas, agua, depósitos y pozos. El agua bloquea a las unidades terrestres; los aviones la sobrevuelan</td></tr>
+      <tr><td>Sonido</td><td>Efectos generados en el navegador. Botón «Sonido» o tecla M para silenciar</td></tr>
+      <tr><td>IA</td><td>Reúne fuerzas en un punto de concentración, ataca la producción enemiga y se retira si pierde la mayor parte de su fuerza</td></tr>
+    </table>
+    <h3>Versión 0.5</h3>
+    <table>
+      <tr><td>Red Guerrillera</td><td>Tercera facción. Sin energía. Rebeldes camuflados, red de túneles, chatarra, técnico, artillería ligera y sabotaje</td></tr>
+      <tr><td>Superarmas</td><td>Requieren rango 3. Una por jugador. Cargan 5 minutos. El temporizador es visible para ambos jugadores</td></tr>
+      <tr><td>Helicóptero (Hierro)</td><td>Ataca sin volver a rearmarse. Lo dañan el antiaéreo, la torre y la infantería</td></tr>
+      <tr><td>Ingeniero</td><td>Captura edificios enemigos (excepto el centro de mando) en 6 s y pozos en 2 s</td></tr>
+      <tr><td>Camuflaje</td><td>Un rebelde oculto solo se ve a 4 de distancia de una unidad enemiga o a 8 de una defensa</td></tr>
+      <tr><td>Repeticiones</td><td>Al terminar, «Descargar repetición». En el menú, «Ver repetición» con velocidad y vista seleccionables</td></tr>
+    </table>
+    <h3>Versión 0.4</h3>
+    <table>
+      <tr><td>Facciones</td><td>Coalición Atlas (aviación, tecnología) y Frente Hierro (tanque pesado, horda, artillería)</td></tr>
+      <tr><td>Pozos petroleros</td><td>La infantería los captura en 4 s. Dan 20 créditos cada 3 s. Si se destruyen, vuelven a ser neutrales</td></tr>
+      <tr><td>Aviación (Atlas)</td><td>El avión dispara 2 misiles y vuelve al aeródromo a rearmarse. Solo el antiaéreo, la torre y la infantería lo dañan</td></tr>
+      <tr><td>Antiaéreo</td><td>Vehículo de la fábrica, eficaz contra aviones</td></tr>
+      <tr><td>Poderes de comandante</td><td>Las bajas enemigas dan experiencia. Cada ascenso da un punto para desbloquear un poder. Se usan desde el panel derecho</td></tr>
+    </table>
+    <h3>Controles</h3>
+    <table>
+      <tr><td>Arrastrar clic izquierdo</td><td>Seleccionar unidades</td></tr>
+      <tr><td>Clic / Shift + clic</td><td>Seleccionar / sumar a la selección</td></tr>
+      <tr><td>Doble clic en unidad</td><td>Seleccionar todas las de ese tipo en pantalla</td></tr>
+      <tr><td>Clic derecho</td><td>Mover, atacar, recolectar, capturar, reparar. Con un edificio: punto de reunión</td></tr>
+      <tr><td>A + clic</td><td>Atacar-mover</td></tr>
+      <tr><td>S / Esc</td><td>Detener / cancelar o quitar selección</td></tr>
+      <tr><td>Flechas, rueda, botón central</td><td>Cámara</td></tr>
+      <tr><td>Táctil</td><td>Tocar para seleccionar y ordenar. Arrastrar para desplazar. Pellizcar para acercar. «Área» activa la selección por arrastre</td></tr>
+    </table>
+    <div style="margin-top:14px;text-align:right"><button id="btnHelpClose">Cerrar</button></div>
+  </div>
+</div>
+
+<div id="end" hidden>
+  <div class="card">
+    <h2 id="endTitle">Victoria</h2>
+    <div id="endStars"></div>
+    <p id="endText"></p>
+    <button id="btnNextMission" class="primary" hidden>Siguiente misión</button>
+    <button id="btnRetry" hidden>Reintentar</button>
+    <button id="btnCampMenu" hidden>Volver a la campaña</button>
+    <button id="btnRestart">Jugar de nuevo</button>
+    <button id="btnReplaySave">Descargar repetición</button>
+  </div>
+</div>
+<div id="superbar" aria-live="polite"></div>
+<div id="objectives" hidden aria-live="polite"></div>
+<div id="transmission" hidden role="status"><span class="emblem" id="txEmblem"></span><span id="txText"></span></div>
+
+<div id="campaign" class="modal" hidden>
+  <div class="card wide" role="dialog" aria-label="Campaña">
+    <h2>Campaña</h2>
+    <p id="campLema"></p>
+    <div class="tabs" id="campTabs"></div>
+    <div class="camp-grid">
+      <div class="mlist" id="campList"></div>
+      <div class="mdetail" id="campDetail"></div>
+    </div>
+    <p class="msg" id="syncMsg"></p>
+    <button id="btnCampBack">Volver al menú</button>
+  </div>
+</div>
+
+<div id="history" class="modal" hidden>
+  <div class="card wide" role="dialog" aria-label="Perfil e historial">
+    <h2>Perfil e historial</h2>
+    <label>Nombre del comandante<input id="inProfile" maxlength="24" autocomplete="off"></label>
+    <p id="histStats"></p>
+    <h3>Avance de campaña</h3>
+    <div id="histCamp"></div>
+    <h3>Últimas partidas</h3>
+    <table class="hist"><thead><tr><th>Fecha</th><th>Modo</th><th>Facción</th><th>Rival</th><th>Resultado</th><th>Duración</th><th>APM</th><th>FPS</th></tr></thead><tbody id="histTable"></tbody></table>
+    <p class="msg" id="histMsg"></p>
+    <div class="maprow"><button id="btnHistCsv">Exportar historial (CSV)</button><button id="btnProfExport">Exportar progreso</button><button id="btnProfImport">Importar progreso</button><button id="btnHistClose" class="primary">Cerrar</button></div>
+    <input type="file" id="profFile" accept=".json,application/json" hidden>
+  </div>
+</div>
+
+<div id="gamemenu" class="modal" hidden>
+  <div class="card" role="dialog" aria-label="Menú de la partida" style="max-width:360px;text-align:center">
+    <h2>Menú</h2>
+    <p id="gmNote"></p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button id="gmResume" class="primary">Reanudar</button>
+      <button id="gmOptions">Opciones</button>
+      <button id="gmHelp">Controles</button>
+      <button id="gmRestart">Reiniciar</button>
+      <button id="gmQuit">Abandonar partida</button>
+    </div>
+  </div>
+</div>
+<div id="options" class="modal" hidden>
+  <div class="card" role="dialog" aria-label="Opciones">
+    <h2>Opciones</h2>
+    <div id="optBody"></div>
+    <div style="margin-top:12px;text-align:right"><button id="btnOptClose" class="primary">Cerrar</button></div>
+  </div>
+</div>
+<div id="tree" class="modal" hidden>
+  <div class="card wide" role="dialog" aria-label="Árbol del comandante">
+    <h2 id="treeTitle">Árbol del comandante</h2>
+    <p id="treeInfo"></p>
+    <div class="tree" id="treeBody"></div>
+    <div style="margin-top:12px;text-align:right"><button id="btnTreeClose" class="primary">Cerrar</button></div>
+  </div>
+</div>
+<div id="replaybar" hidden>
+  <button id="rpPlay">Pausa</button>
+  <button data-speed="1" class="on">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button><button data-speed="8">8×</button>
+  <span class="lbl">Vista</span>
+  <button data-view="all" class="on">Todo</button><button data-view="0">Jugador 1</button><button data-view="1">Jugador 2</button>
+  <span class="lbl" id="rpTime">0:00 / 0:00</span>
+  <button id="rpExit">Salir</button>
+</div>
+<div id="toast"></div>
+<div id="netwait" hidden>Esperando al servidor…</div>
+
+<div id="menu" class="modal">
+  <div class="card" role="dialog" aria-label="Menú principal">
+    <div style="display:flex;gap:10px;align-items:center"><span class="emblem" id="menuEmblem"></span><div><h2 style="margin:0">Frente Árido</h2><p style="margin:2px 0 0">Prototipo v0.9.1 · estrategia en tiempo real</p></div></div>
+    <div class="maprow"><span>Perfil: <b id="profName">Comandante</b> · <span id="profStats"></span></span><button id="btnHistory">Perfil e historial</button></div>
+    <div class="maprow"><button id="btnCampaign" class="primary">Campaña</button><button id="btnTutorial">Entrenamiento</button><button id="btnMenuOptions">Opciones</button></div>
+    <h3>Escaramuza</h3>
+    <div class="factions" id="menuFactions"></div>
+    <div class="maprow"><span>Dificultad de la IA</span><span class="tabs" id="soloDiff"><button data-diff="facil">Fácil</button><button data-diff="normal" class="on">Normal</button><button data-diff="dificil">Difícil</button></span></div>
+    <div class="maprow"><span>Posición inicial</span><span class="tabs" id="startPos"><button data-pos="0">Suroeste</button><button data-pos="1">Noreste</button><button data-pos="aleatoria" class="on">Aleatoria</button></span></div>
+    <button id="btnSolo">Jugar contra la IA</button>
+    <button id="btnReplayLoad">Ver repetición</button>
+    <div class="maprow"><span>Mapa: <b id="mapName">Estándar</b></span>
+      <span class="tabs" id="mapTpl"><button data-tpl="estandar" class="on">Estándar</button><button data-tpl="rio">Río</button><button data-tpl="oasis">Oasis</button><button data-tpl="desfiladero">Desfiladero</button><button data-tpl="canal">Canal</button><button data-tpl="cruce">Cruce</button><button data-tpl="lagos">Lagos</button><button data-tpl="meseta">Meseta</button></span>
+      <button id="btnMapLoad">Cargar mapa</button><button id="btnMapStd" hidden>Usar estándar</button>
+      <a class="btnlink" href="editor.html" target="_blank" rel="noopener">Editor de mapas</a></div>
+    <input type="file" id="mapFile" accept=".json,application/json" hidden>
+    <input type="file" id="replayFile" accept=".json,application/json" hidden>
+    <h3>Partida en línea</h3>
+    <label>Servidor<input id="inServer" value="ws://localhost:8080" autocomplete="off"></label>
+    <div class="grid2">
+      <label>Código de sala<input id="inRoom" maxlength="8" placeholder="ABC123" autocomplete="off"></label>
+      <label>Nombre<input id="inName" maxlength="20" placeholder="Jugador" autocomplete="off"></label>
+    </div>
+    <button id="btnOnline">Conectar</button>
+    <p class="msg" id="menuMsg"></p>
+  </div>
+</div>
+
+<div id="room" class="modal" hidden>
+  <div class="card" role="dialog" aria-label="Sala de espera">
+    <h2>Sala <span id="roomCode"></span></h2>
+    <p>Elija facción. La partida inicia cuando ambos jugadores marcan «Listo».</p>
+    <div class="factions" id="roomFactions"></div>
+    <table id="roomPlayers"></table>
+    <div class="maprow"><span>Mapa: <b id="roomMap">Estándar</b></span><button id="btnRoomMap" hidden>Elegir mapa</button><button id="btnRoomMapStd" hidden>Usar estándar</button></div>
+    <p class="msg" id="roomMsg"></p>
+    <button id="btnReady" class="primary">Listo</button>
+    <button id="btnLeave">Salir</button>
+  </div>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="juego.js"></script>
+</body>
+</html>
