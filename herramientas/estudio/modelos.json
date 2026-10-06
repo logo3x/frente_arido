@@ -1,0 +1,62 @@
+{
+  "imagen": [
+    {
+      "id": "flux-schnell",
+      "nombre": "FLUX.1-schnell",
+      "ruta": "/v1/genai/black-forest-labs/flux.1-schnell",
+      "formato": "flux",
+      "pasos": 4,
+      "licencia": "Apache 2.0: permite uso comercial",
+      "uso": "Recomendado para el juego: rápido y con licencia libre",
+      "segundosEstimados": 6
+    },
+    {
+      "id": "flux-dev",
+      "nombre": "FLUX.1-dev",
+      "ruta": "/v1/genai/black-forest-labs/flux.1-dev",
+      "formato": "flux-dev",
+      "pasos": 30,
+      "licencia": "Uso no comercial sin acuerdo con Black Forest Labs",
+      "uso": "Más detalle; adecuado para prototipos y pruebas de estilo",
+      "segundosEstimados": 20
+    },
+    {
+      "id": "sd35-large",
+      "nombre": "Stable Diffusion 3.5 Large",
+      "ruta": "/v1/genai/stabilityai/stable-diffusion-3-5-large",
+      "formato": "sd35",
+      "pasos": 40,
+      "licencia": "Stability AI Community License (gratuita bajo 1 millón de dólares de ingresos anuales)",
+      "uso": "Buena composición de escenas y uso de indicaciones negativas",
+      "segundosEstimados": 25
+    }
+  ],
+  "audio": [
+    {
+      "id": "elevenlabs",
+      "nombre": "ElevenLabs Sound Effects (requiere ELEVENLABS_API_KEY)",
+      "uso": "Efectos y ambiente del catálogo de audio, con la duración y el bucle indicados. Guarda MP3"
+    },
+    {
+      "id": "musica",
+      "nombre": "Música por facción (procedural)",
+      "uso": "Pistas en bucle para menú, campaña y combate. Se generan en el navegador"
+    },
+    {
+      "id": "efecto",
+      "nombre": "Efectos de sonido (procedural)",
+      "uso": "Explosiones, disparos, alertas e interfaz. Se generan en el navegador"
+    }
+  ],
+  "notas": [
+    "Las voces de NVIDIA (Magpie TTS) usan gRPC, no API REST; no están integradas en este estudio.",
+    "NVIDIA no ofrece por ahora música por API REST. La música y las voces del catálogo se marcan como externas (Suno, Udio o ElevenLabs TTS); el estudio copia el prompt.",
+    "Para agregar un modelo nuevo de imagen, añada una entrada con su ruta de ai.api.nvidia.com y reinicie el servidor.",
+    "OpenRouter: los modelos de imagen se listan en vivo desde su catálogo. Los gratuitos (sufijo :free) quedan activos por defecto; los de pago se activan a mano y respetan el presupuesto."
+  ],
+  "traductor": {
+    "modelo": "meta/llama-3.3-70b-instruct",
+    "nota": "Modelo de lenguaje de NVIDIA para traducir las indicaciones al inglés",
+    "openrouter": "meta-llama/llama-3.3-70b-instruct:free"
+  }
+}

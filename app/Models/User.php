@@ -17,6 +17,11 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
+    public function esAmigoDe(int $otroId): bool
+    {
+        return Amistad::entre($this->id, $otroId)->where('estado', Amistad::ACEPTADA)->exists();
+    }
+
     /**
      * Get the attributes that should be cast.
      *

@@ -12,7 +12,7 @@
 <div id="selbox"></div>
 
 <header id="topbar">
-  <div class="chip emblem" id="facChip"><span id="facEmblem"></span><b id="facName"></b></div>
+  <div class="chip emblem" id="facChip"><img id="facPortrait" class="retrato-mini" src="img/comandante-atlas.png" alt=""><span id="facEmblem"></span><b id="facName"></b></div>
   <div class="chip" id="credits">Créditos <b id="credVal">0</b></div>
   <div class="chip" id="energy" title="Generación menos consumo">Energía <b id="energyVal">0</b></div>
   <div class="chip" id="unitsChip">Unidades <b id="popVal">0</b></div>
@@ -34,8 +34,8 @@
   <div id="panel"></div>
   <div id="tools">
     <button id="btnArea" title="Modo selección por área (táctil)">Área</button>
-    <button id="btnAMove" title="Atacar-mover (tecla A)">Atacar-mover</button>
-    <button id="btnStop" title="Detener (tecla S)">Detener</button>
+    <button id="btnAMove" title="Atacar-mover (tecla Q)">Atacar-mover</button>
+    <button id="btnStop" title="Detener (tecla X)">Detener</button>
     <button id="btnClear" title="Quitar selección (Esc)">Soltar</button>
   </div>
 </div>
@@ -101,9 +101,11 @@
       <tr><td>Clic / Shift + clic</td><td>Seleccionar / sumar a la selección</td></tr>
       <tr><td>Doble clic en unidad</td><td>Seleccionar todas las de ese tipo en pantalla</td></tr>
       <tr><td>Clic derecho</td><td>Mover, atacar, recolectar, capturar, reparar. Con un edificio: punto de reunión</td></tr>
-      <tr><td>A + clic</td><td>Atacar-mover</td></tr>
-      <tr><td>S / Esc</td><td>Detener / cancelar o quitar selección</td></tr>
-      <tr><td>Flechas, rueda, botón central</td><td>Cámara</td></tr>
+      <tr><td>Q + clic</td><td>Atacar-mover</td></tr>
+      <tr><td>X / Esc</td><td>Detener / cancelar o quitar selección</td></tr>
+      <tr><td>Ctrl o Alt + 1…0</td><td>Formar grupo con la selección (Shift + número: sumar al grupo)</td></tr>
+      <tr><td>1…0 (dos veces)</td><td>Seleccionar el grupo (centrar la cámara en él)</td></tr>
+      <tr><td>W A S D, flechas, rueda, botón central</td><td>Cámara</td></tr>
       <tr><td>Táctil</td><td>Tocar para seleccionar y ordenar. Arrastrar para desplazar. Pellizcar para acercar. «Área» activa la selección por arrastre</td></tr>
     </table>
     <div style="margin-top:14px;text-align:right"><button id="btnHelpClose">Cerrar</button></div>
@@ -136,7 +138,7 @@
       <div class="mdetail" id="campDetail"></div>
     </div>
     <p class="msg" id="syncMsg"></p>
-    <button id="btnCampBack">Volver al menú</button>
+    <button id="btnCampBack">Elegir otra campaña</button>
   </div>
 </div>
 
@@ -185,7 +187,7 @@
 </div>
 <div id="replaybar" hidden>
   <button id="rpPlay">Pausa</button>
-  <button data-speed="1" class="on">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button><button data-speed="8">8×</button>
+  <button data-speed="0.25">¼×</button><button data-speed="0.5">½×</button><button data-speed="1" class="on">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button><button data-speed="8">8×</button>
   <span class="lbl">Vista</span>
   <button data-view="all" class="on">Todo</button><button data-view="0">Jugador 1</button><button data-view="1">Jugador 2</button>
   <span class="lbl" id="rpTime">0:00 / 0:00</span>
@@ -198,18 +200,12 @@
   <div class="card" role="dialog" aria-label="Menú principal">
     <div style="display:flex;gap:10px;align-items:center"><span class="emblem" id="menuEmblem"></span><div><h2 style="margin:0">Frente Árido</h2><p style="margin:2px 0 0">Prototipo v0.9.1 · estrategia en tiempo real</p></div></div>
     <div class="maprow"><span>Perfil: <b id="profName">Comandante</b> · <span id="profStats"></span></span><button id="btnHistory">Perfil e historial</button></div>
-    <div class="maprow"><button id="btnCampaign" class="primary">Campaña</button><button id="btnTutorial">Entrenamiento</button><button id="btnMenuOptions">Opciones</button></div>
-    <h3>Escaramuza</h3>
-    <div class="factions" id="menuFactions"></div>
-    <div class="maprow"><span>Dificultad de la IA</span><span class="tabs" id="soloDiff"><button data-diff="facil">Fácil</button><button data-diff="normal" class="on">Normal</button><button data-diff="dificil">Difícil</button></span></div>
-    <div class="maprow"><span>Posición inicial</span><span class="tabs" id="startPos"><button data-pos="0">Suroeste</button><button data-pos="1">Noreste</button><button data-pos="aleatoria" class="on">Aleatoria</button></span></div>
-    <button id="btnSolo">Jugar contra la IA</button>
-    <button id="btnReplayLoad">Ver repetición</button>
-    <div class="maprow"><span>Mapa: <b id="mapName">Estándar</b></span>
-      <span class="tabs" id="mapTpl"><button data-tpl="estandar" class="on">Estándar</button><button data-tpl="rio">Río</button><button data-tpl="oasis">Oasis</button><button data-tpl="desfiladero">Desfiladero</button><button data-tpl="canal">Canal</button><button data-tpl="cruce">Cruce</button><button data-tpl="lagos">Lagos</button><button data-tpl="meseta">Meseta</button></span>
-      <button id="btnMapLoad">Cargar mapa</button><button id="btnMapStd" hidden>Usar estándar</button>
-      <a class="btnlink" href="editor.html" target="_blank" rel="noopener">Editor de mapas</a></div>
-    <input type="file" id="mapFile" accept=".json,application/json" hidden>
+    <div class="menu-modos">
+      <button id="btnCampaign" class="primary"><b>Campaña</b><span>Doce misiones en tres frentes</span></button>
+      <button id="btnSkirmish"><b>Escaramuza</b><span>Partida libre contra la IA</span></button>
+      <button id="btnTutorial"><b>Entrenamiento</b><span>Recorrido guiado de cinco pasos</span></button>
+    </div>
+    <div class="maprow"><button id="btnMenuOptions">Opciones</button><button id="btnReplayLoad">Ver repetición</button></div>
     <input type="file" id="replayFile" accept=".json,application/json" hidden>
     <h3>Partida en línea</h3>
     <label>Servidor<input id="inServer" value="ws://localhost:8080" autocomplete="off"></label>
@@ -217,8 +213,50 @@
       <label>Código de sala<input id="inRoom" maxlength="8" placeholder="ABC123" autocomplete="off"></label>
       <label>Nombre<input id="inName" maxlength="20" placeholder="Jugador" autocomplete="off"></label>
     </div>
+    <div class="maprow"><span class="lbl">Jugadores</span><span class="tabs" id="onPlazas"><button data-np="2" class="on">2</button><button data-np="4">4</button><button data-np="6">6</button><button data-np="8">8</button></span></div>
+    <div class="maprow" id="onModoRow" hidden><span class="lbl">Modo</span><span class="tabs" id="onModo"><button data-om="todos" class="on">Todos contra todos</button><button data-om="equipos">Dos equipos</button></span></div>
+    <p class="sub">Desde el lobby del sitio, la cantidad de jugadores la fija la sala creada.</p>
     <button id="btnOnline">Conectar</button>
     <p class="msg" id="menuMsg"></p>
+  </div>
+</div>
+
+<div id="skirmish" class="modal" hidden>
+  <div class="card wide" role="dialog" aria-labelledby="skirTitle">
+    <h2 id="skirTitle">Escaramuza</h2>
+    <p>Configure la partida contra la IA y seleccione «Iniciar partida».</p>
+    <h3>Su facción</h3>
+    <div class="factions" id="menuFactions"></div>
+    <h3>Enemigo</h3>
+    <div class="maprow"><span class="lbl">Facción</span><span class="tabs" id="enemyFac"><button data-ef="aleatoria" class="on">Aleatoria</button><button data-ef="atlas">Coalición Atlas</button><button data-ef="hierro">Frente Hierro</button><button data-ef="guerrilla">Red Guerrillera</button></span></div>
+    <div class="maprow"><span class="lbl">Dificultad</span><span class="tabs" id="soloDiff"><button data-diff="facil">Fácil</button><button data-diff="normal" class="on">Normal</button><button data-diff="dificil">Difícil</button></span></div>
+    <div class="maprow"><span class="lbl">Jugadores</span><span class="tabs" id="numPlayers"><button data-np="2" class="on">2</button><button data-np="4">4</button><button data-np="6">6</button><button data-np="8">8 (mapa continental)</button></span></div>
+    <div class="maprow" id="teamRow" hidden><span class="lbl">Modo</span><span class="tabs" id="teamMode"><button data-tm="todos" class="on">Todos contra todos</button><button data-tm="equipos">Dos equipos (aliados vecinos)</button></span></div>
+    <h3>Campo de batalla</h3>
+    <div class="maprow"><span class="lbl">Mapa</span><span class="tabs" id="mapTpl"><button data-tpl="estandar" class="on">Estándar</button><button data-tpl="rio">Río</button><button data-tpl="dosmares">Dos mares</button><button data-tpl="estrecho">Estrecho</button><button data-tpl="oasis">Oasis</button><button data-tpl="desfiladero">Desfiladero</button><button data-tpl="canal">Canal</button><button data-tpl="cruce">Cruce</button><button data-tpl="lagos">Lagos</button><button data-tpl="meseta">Meseta</button></span></div>
+    <div class="maprow"><span class="lbl"></span><span>Seleccionado: <b id="mapName">Estándar</b></span>
+      <button id="btnMapLoad">Cargar mapa</button><button id="btnMapStd" hidden>Usar estándar</button>
+      <a class="btnlink" href="editor.html" target="_blank" rel="noopener">Editor de mapas</a></div>
+    <input type="file" id="mapFile" accept=".json,application/json" hidden>
+    <div class="maprow"><span class="lbl">Posición inicial</span><span class="tabs" id="startPos"><button data-pos="0">Suroeste</button><button data-pos="1">Noreste</button><button data-pos="aleatoria" class="on">Aleatoria</button></span></div>
+    <div class="maprow"><span class="lbl">Recursos iniciales</span><span class="tabs" id="startCredits"><button data-cr="1000">1.000</button><button data-cr="3000" class="on">3.000</button><button data-cr="5000">5.000</button><button data-cr="10000">10.000</button></span></div>
+    <div class="maprow"><span class="lbl">Hora del día</span><span class="tabs" id="lightTabs"><button data-lt="dia" class="on">Día</button><button data-lt="atardecer">Atardecer</button><button data-lt="noche">Noche</button><button data-lt="aleatoria">Aleatoria</button></span></div>
+    <p class="msg" id="skirMsg"></p>
+    <div class="maprow acciones"><button id="btnSolo" class="primary">Iniciar partida</button><button id="btnSkirBack">Volver al menú</button></div>
+  </div>
+</div>
+
+<div id="campStart" class="modal" hidden>
+  <div class="card wide" role="dialog" aria-labelledby="campStartTitle">
+    <h2 id="campStartTitle">Campaña</h2>
+    <div id="campContinue"></div>
+    <div id="campNewBlock">
+      <h3>Nueva campaña</h3>
+      <p>Elija la facción con la que desea combatir. Cada campaña tiene cuatro misiones.</p>
+      <div class="factions" id="campNew"></div>
+    </div>
+    <p class="msg" id="campStartMsg"></p>
+    <div class="maprow acciones"><button id="btnCampStartBack">Volver al menú</button></div>
   </div>
 </div>
 
@@ -228,7 +266,8 @@
     <p>Elija facción. La partida inicia cuando ambos jugadores marcan «Listo».</p>
     <div class="factions" id="roomFactions"></div>
     <table id="roomPlayers"></table>
-    <div class="maprow"><span>Mapa: <b id="roomMap">Estándar</b></span><button id="btnRoomMap" hidden>Elegir mapa</button><button id="btnRoomMapStd" hidden>Usar estándar</button></div>
+    <p class="sub" id="roomPlazas"></p>
+    <div class="maprow" id="roomMapRow"><span>Mapa: <b id="roomMap">Estándar</b></span><button id="btnRoomMap" hidden>Elegir mapa</button><button id="btnRoomMapStd" hidden>Usar estándar</button></div>
     <p class="msg" id="roomMsg"></p>
     <button id="btnReady" class="primary">Listo</button>
     <button id="btnLeave">Salir</button>
@@ -236,6 +275,7 @@
 </div>
 
 <script src="vendor/three.min.js"></script>
+<script src="sonido.js"></script>
 <script src="juego.js"></script>
 </body>
 </html>

@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frente Árido · Verificación de determinismo</title>
+<style>body{margin:0;background:#1d2220;color:#ece5d1;font-family:"Bahnschrift","Roboto Condensed","Arial Narrow",system-ui,sans-serif}
+main{max-width:760px;margin:0 auto;padding:24px 16px}h1{font-size:26px;font-weight:600;margin:0 0 6px}p{color:#a9a48f;line-height:1.45}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:15px}td,th{text-align:left;padding:8px 6px;border-top:1px solid #344041}th{color:#a9a48f;font-weight:500}
+.ok{color:#79c25a}.bad{color:#e0553d}button{font:inherit;color:#ece5d1;background:#5a3f16;border:1px solid #e8a33d;border-radius:3px;padding:8px 14px;cursor:pointer}
+code{background:#263133;padding:2px 6px;border-radius:2px}</style></head>
+<body><main>
+<h1>Verificación de determinismo</h1>
+<p>Simulación versión <code>0.9.4</code>. La página ejecuta 4 partidas de IA contra IA de hasta 4500 ticks y compara la huella final con la calculada en Node (motor V8).
+Si las huellas coinciden en Chrome, Firefox y Safari, el multijugador entre navegadores distintos es seguro.</p>
+<p>Navegador: <code id="ua"></code></p>
+<button id="go">Ejecutar verificación</button>
+<table><thead><tr><th>Escenario</th><th>Esperada (V8)</th><th>Este navegador</th><th>Resultado</th></tr></thead><tbody id="res"></tbody></table>
+<p id="sum"></p>
+</main>
+<script>
+
+// Simulación determinista a tick fijo. No usa Math.random, el reloj ni trigonometría.
+// Todo cambio de estado entra como comando con número de tick (lockstep).
+const TICK_HZ = 15, DT = 1 / TICK_HZ;
+// LC: celda de diseño (2 unidades), en la que están los mapas, plantillas, misiones y bases. La simulación usa una
+// grilla fina de SUBC × SUBC celdas por celda de diseño (CELL = 0,5 unidades). LG es el lado del mapa en celdas de diseño.
+const LC = 2, SUBC = 4, CELL = LC / SUBC;
+let LG = 64, GRID = LG * SUBC, WORLD = LG * LC, NCELLS = GRID * GRID;
+const L2F = v => v * SUBC;   // celda de diseño → celda fina
+const AIR_Y = 6;
+const SIM_VERSION = '0.9.4';
+let LOCAL = 0;   // jugador de este cliente (0 o 1)
+const hyp = (x,y) => Math.sqrt(x*x + y*y);   // sqrt es exacta en IEEE 754; Math.hypot puede variar entre navegadores
+let hooks = { income(){}, upgraded(){}, spawn(){}, death(){}, remove(){}, shot(){}, built(){}, power(){}, impact(){}, captured(){}, rankUp(){}, crate(){}, tunnel(){}, superFire(){}, heroDown(){}, mission(){} };
+
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+const UNIT_TYPES = {
+  recolector: { nombre:'Recolector', hp:240, speed:3.6, armor:'veh', weapon:null, sight:8, cost:300, time:6, size:0.95, carry:100 },
+  constructor:{ nombre:'Constructor', hp:260, speed:3.4, armor:'veh', weapon:null, sight:9, cost:500, time:8, size:1.0 },
+  infanteria: { nombre:'Infantería', hp:110, speed:3.0, armor:'inf', weapon:'rifle', range:7, dmg:11, cd:1.0, sight:11, cost:150, time:4, size:0.55, capture:true },
+  tanque:     { nombre:'Tanque', hp:420, speed:3.8, armor:'veh', weapon:'canon', range:9, dmg:46, cd:2.2, sight:12, cost:700, time:9, size:1.15 },
+  antiaereo:  { nombre:'Antiaéreo', hp:300, speed:4.0, armor:'veh', weapon:'aa', range:12, dmg:34, cd:0.7, sight:13, cost:600, time:7, size:1.0 },
+  pesado:     { nombre:'Tanque pesado', hp:820, speed:2.8, armor:'veh', weapon:'canon', range:9, dmg:72, cd:2.6, sight:11, cost:1100, time:13, size:1.4 },
+  avion:      { nombre:'Avión de ataque', hp:260, speed:10, armor:'air', weapon:'misil', range:6, dmg:120, cd:0.6, sight:12, cost:900, time:12, size:1.2, air:true, ammo:2 },
+  helicoptero:{ nombre:'Helicóptero', hp:380, speed:6.5, armor:'air', weapon:'cohete', range:8, dmg:24, cd:1.1, sight:12, cost:950, time:12, size:1.2, air:true, hover:true },
+  ingeniero:  { nombre:'Ingeniero', hp:90, speed:3.2, armor:'inf', weapon:null, sight:9, cost:400, time:7, size:0.55, engineer:true },
+  tecnico:    { nombre:'Técnico', hp:260, speed:5.4, armor:'veh', weapon:'rifle', range:8, dmg:16, cd:0.6, sight:12, cost:450, time:6, size:1.0 },
+  lancha:     { nombre:'Lancha patrullera', hp:300, speed:6.0, armor:'nav', weapon:'ametralla', range:8, dmg:16, cd:0.6, sight:12, cost:500, time:7, size:1.2, naval:true },
+  fragata:    { nombre:'Fragata', hp:750, speed:3.4, armor:'nav', weapon:'canonaval', range:15, minRange:4, dmg:70, cd:3.0, sight:11, cost:1400, time:16, size:1.6, naval:true, splash:2.5 },
+  antitanque: { nombre:'Infantería antitanque', hp:100, speed:2.8, armor:'inf', weapon:'antitanque', range:8, dmg:90, cd:2.4, sight:10, cost:300, time:6, size:0.55 },
+  heroe:      { nombre:'Héroe', hp:900, speed:3.6, armor:'inf', weapon:'heroe', range:10, dmg:40, cd:1.0, sight:14, cost:1500, time:20, size:0.7, hero:true, minRank:4, regen:0.01 },
+  artilleria: { nombre:'Artillería ligera', hp:220, speed:2.8, armor:'veh', weapon:'obus', range:17, minRange:5, dmg:55, cd:4, sight:10, cost:800, time:11, size:1.15, splash:3 }
+};
+const BUILD_TYPES = {
+  centro:   { nombre:'Centro de mando', hp:2600, size:3, produce:['constructor'], power:5, cost:0, time:0, buildable:false, sight:10 },
+  // Centro de recolección: produce los recolectores y recibe la carga. Al terminarse entrega un recolector gratis.
+  // Edificio de ingresos: genera créditos cada 3 s; se habilita con el rango 2 de general. Con poca energía rinde la mitad.
+  suministros:{ nombre:'Centro de suministros', hp:1000, size:2, produce:[], power:-2, cost:1400, time:20, buildable:true, sight:8, income:30, minRank:2 },
+  // Centro de investigación: vende tecnologías globales (ver MEJORAS)
+  investigacion:{ nombre:'Centro de investigación', hp:1200, size:2, produce:[], power:-3, cost:1000, time:16, buildable:true, sight:8 },
+  // Defensas por facción. Búnker y trinchera disparan con la infantería que tienen dentro (garrison = plazas).
+  bunker:   { nombre:'Minibúnker', hp:1100, size:1, produce:[], power:0, cost:450, time:9, buildable:true, sight:10, garrison:4, range:8, cd:0.8 },
+  minigun:  { nombre:'Torreta minigun', hp:800, size:1, produce:[], power:-2, cost:550, time:10, buildable:true, sight:11, weapon:'minigun', range:9, dmg:8, cd:0.22 },
+  bateria:  { nombre:'Batería de misiles enlazada', hp:850, size:1, produce:[], power:-3, cost:700, time:12, buildable:true, sight:12, weapon:'misilsam', range:12, dmg:38, cd:1.8, linkR:9 },
+  trinchera:{ nombre:'Trinchera', hp:700, size:1, fw:3, fh:2, produce:[], power:0, cost:300, time:7, buildable:true, sight:9, garrison:3, range:8, cd:0.8, resist:0.55, stealthBld:true },
+  recoleccion:{ nombre:'Centro de recolección', hp:1300, size:3, produce:['recolector'], power:-2, cost:800, time:14, buildable:true, sight:8, refinery:true },
+  planta:   { nombre:'Planta de energía', hp:800, size:2, produce:[], power:10, cost:400, time:10, buildable:true, sight:7 },
+  cuartel:  { nombre:'Cuartel', hp:1100, size:2, produce:['infanteria','antitanque','ingeniero','heroe'], power:-2, cost:500, time:12, buildable:true, sight:8 },
+  fabrica:  { nombre:'Fábrica', hp:1500, size:3, produce:['tanque','antiaereo'], power:-4, cost:1200, time:20, buildable:true, sight:8 },
+  torre:    { nombre:'Torre de defensa', hp:900, size:1, produce:[], power:-3, cost:600, time:12, buildable:true, sight:12, weapon:'torre', range:11, dmg:30, cd:1.4 },
+  aerodromo:{ nombre:'Aeródromo', hp:1400, size:3, fw:12, fh:6, produce:['avion'], power:-4, cost:1000, time:18, buildable:true, sight:9 },
+  pozo:     { nombre:'Pozo petrolero', hp:600, size:2, produce:[], power:0, cost:0, time:0, buildable:false, sight:5, income:20 },
+  astillero:{ nombre:'Astillero', hp:1400, size:3, produce:['lancha','fragata'], power:-3, cost:900, time:18, buildable:true, sight:9, naval:true },
+  tunel:    { nombre:'Red de túneles', hp:900, size:1, produce:[], power:0, cost:600, time:10, buildable:true, sight:9, weapon:'rifle', range:8, dmg:10, cd:0.8, tunnel:true },
+  superarma:{ nombre:'Superarma', hp:2600, size:3, produce:[], power:-8, cost:4000, time:45, buildable:true, sight:10, superCd:300, minRank:3, superR:11, superDmg:1800, superKind:'particulas' }
+};
+const FACTIONS = {
+  atlas: { nombre:'Coalición Atlas', lema:'Tecnología y aviación',
+    rasgos:['Aeródromo y aviones de ataque','Recolector: helicóptero de carga (vuela sobre el terreno)','Plantas de energía de +12','Tanques más resistentes (480) y caros (800)','Poder exclusivo: ataque de precisión','Superarma: cañón de partículas'],
+    builds:['planta','recoleccion','cuartel','fabrica','suministros','investigacion','torre','bateria','aerodromo','astillero','superarma'], powers:['radar','reparacion','tropas','precision'], horde:false,
+    unitMods:{ recolector:{ nombre:'Helicóptero de carga', hp:200, speed:6.0, armor:'air', air:true, hover:true, carry:70, cost:400, time:7, size:1.1 },
+      antitanque:{ nombre:'Granadero antitanque' }, tanque:{ cost:800, hp:480 }, heroe:{ nombre:'Comando Atlas', range:13, sight:16, rasgo:'Francotirador: alcance 13' }, fragata:{ nombre:'Fragata lanzamisiles', range:17 } },
+    buildMods:{ recoleccion:{ nombre:'Plataforma de carga' }, investigacion:{ nombre:'Laboratorio de investigación' }, suministros:{ nombre:'Estación de lanzamiento aéreo' }, planta:{ power:12 }, superarma:{ nombre:'Cañón de partículas', superKind:'particulas' } } },
+  hierro:{ nombre:'Frente Hierro', lema:'Masa y blindaje',
+    rasgos:['Tanque pesado (820 de vida) y helicóptero de ataque','Recolector: camión minero (lento, mucha carga)','Horda: +25 % de daño con 4 aliados cerca','Infantería más barata (120)','Poder exclusivo: bombardeo de artillería','Superarma: silo nuclear'],
+    builds:['planta','recoleccion','cuartel','fabrica','suministros','investigacion','torre','bunker','minigun','astillero','superarma'], powers:['radar','reparacion','tropas','artilleria'], horde:true,
+    unitMods:{ recolector:{ nombre:'Camión minero', hp:380, speed:3.0, carry:140, cost:350, time:7, size:1.15 },
+      antitanque:{ nombre:'Cazacarros' }, infanteria:{ cost:120 }, heroe:{ nombre:'Mariscal de Hierro', hp:1200, aura:true, rasgo:'Aura: +20 % de daño a aliados a 8 o menos' }, fragata:{ nombre:'Monitor fluvial', hp:950 } },
+    buildMods:{ recoleccion:{ nombre:'Depósito minero' }, investigacion:{ nombre:'Instituto técnico' }, suministros:{ nombre:'Centro de ciberoperaciones' }, fabrica:{ produce:['tanque','pesado','antiaereo','helicoptero'] }, superarma:{ nombre:'Silo nuclear', superKind:'nuclear', superR:13, superDmg:2000 } } },
+  guerrilla:{ nombre:'Red Guerrillera', lema:'Emboscada y movilidad', noPower:true, salvage:true,
+    rasgos:['No necesita energía','Recolectores: trabajadores (baratos, poca carga)','Rebeldes camuflados mientras no disparan','Red de túneles: guarda y cura hasta 8 unidades','Recoge chatarra de vehículos destruidos','Técnico y artillería ligera','Poder exclusivo: sabotaje','Superarma: tormenta de cohetes'],
+    builds:['recoleccion','cuartel','fabrica','suministros','investigacion','torre','trinchera','tunel','astillero','superarma'], powers:['radar','reparacion','tropas','sabotaje'], horde:false,
+    unitMods:{ recolector:{ nombre:'Trabajador', hp:70, speed:3.2, armor:'inf', carry:40, cost:100, time:3, size:0.55 },
+      antitanque:{ nombre:'Rebelde antitanque', stealth:true }, infanteria:{ nombre:'Rebelde', cost:110, hp:100, stealth:true }, heroe:{ nombre:'Jefe rebelde', stealth:true, capture:true, rasgo:'Camuflado y captura pozos' }, lancha:{ nombre:'Lancha rápida', cost:400, speed:7 } },
+    buildMods:{ recoleccion:{ nombre:'Acopio de recursos', power:0 }, investigacion:{ nombre:'Taller clandestino', power:0 }, suministros:{ nombre:'Mercado negro', power:0 }, fabrica:{ produce:['tecnico','artilleria','antiaereo'] }, superarma:{ nombre:'Tormenta de cohetes', superKind:'cohetes', power:0 } } }
+};
+const DMG = {
+  rifle:{ inf:1, veh:0.3, bld:0.25, air:0.15, nav:0.3 }, canon:{ inf:0.45, veh:1, bld:1, air:0, nav:0.9 },
+  torre:{ inf:0.9, veh:0.8, bld:0.5, air:0.8, nav:0.8 }, aa:{ inf:0.3, veh:0.25, bld:0.1, air:1.8, nav:0.3 },   // antiaéreo: más efectivo contra aviones y helicópteros
+  misil:{ inf:0.6, veh:1, bld:0.8, air:0, nav:1.1 }, obus:{ inf:1, veh:0.7, bld:1.2, air:0, nav:0.9 },
+  cohete:{ inf:0.8, veh:1.1, bld:0.7, air:0, nav:1.0 }, heroe:{ inf:1.4, veh:0.8, bld:0.9, air:0.5, nav:0.5 },
+  ametralla:{ inf:1, veh:0.5, bld:0.3, air:0.5, nav:0.8 }, canonaval:{ inf:0.7, veh:1, bld:1.2, air:0, nav:1 },
+  antitanque:{ inf:0.2, veh:1.45, bld:0.8, air:0.5, nav:1.1 },   // lanzacohetes: fuerte contra blindados, débil contra infantería
+  minigun:{ inf:1.35, veh:0.2, bld:0.15, air:0.35, nav:0.25 },    // torreta rotativa de Hierro
+  misilsam:{ inf:0.25, veh:0.9, bld:0.4, air:2.0, nav:0.8 }       // batería enlazada de Atlas
+};
+// Mejoras de edificios y tecnologías (centro de investigación). Se compran una vez por jugador; el efecto es global.
+// Tabla sin prototipo: una clave como 'constructor' no puede colarse como mejora válida.
+const MEJORAS = Object.assign(Object.create(null), {
+  reactor:      { nombre:'Reactor mejorado', edificio:'planta', cost:600, time:20, rango:1, fx:{ bpower:{ planta:0.5 } }, desc:'+50 % de energía por planta' },
+  carga:        { nombre:'Carga reforzada', edificio:'recoleccion', cost:500, time:18, rango:1, fx:{ carry:0.25 }, desc:'+25 % de carga por viaje' },
+  instruccion:  { nombre:'Instrucción avanzada', edificio:'cuartel', cost:700, time:22, rango:2, fx:{ hpArmor:{ inf:0.2 } }, desc:'+20 % de vida para la infantería' },
+  montaje:      { nombre:'Línea de montaje', edificio:'fabrica', cost:900, time:25, rango:2, inv:true, fx:{ prod:0.2 }, desc:'+20 % de velocidad de producción' },
+  fortificacion:{ nombre:'Fortificación', edificio:'centro', cost:800, time:25, rango:2, inv:true, fx:{ bhp:0.25 }, desc:'+25 % de vida para los edificios' },
+  blindaje:     { nombre:'Blindaje compuesto', edificio:'investigacion', cost:1200, time:30, rango:2, fx:{ hpArmor:{ veh:0.15 } }, desc:'+15 % de vida para los vehículos' },
+  optica:       { nombre:'Óptica avanzada', edificio:'investigacion', cost:1000, time:25, rango:2, fx:{ sight:2, range:1 }, desc:'+1 de alcance y +2 de visión' },
+  municion:     { nombre:'Munición perforante', edificio:'investigacion', cost:1200, time:30, rango:3, fx:{ dmg:{ inf:0.1, veh:0.1, air:0.1, nav:0.1, bld:0.1 } }, desc:'+10 % de daño' },
+  enlace:       { nombre:'Enlace de datos ampliado', edificio:'investigacion', faccion:'atlas', cost:1100, time:28, rango:3, fx:{ link:4 }, desc:'Baterías enlazadas a mayor distancia' },
+  doblecanon:   { nombre:'Minigun de doble cañón', edificio:'investigacion', faccion:'hierro', cost:1100, time:28, rango:3, fx:{ bdmg:{ minigun:0.4 } }, desc:'+40 % de daño de las miniguns' },
+  camuflaje:    { nombre:'Camuflaje de trincheras', edificio:'investigacion', faccion:'guerrilla', cost:900, time:25, rango:3, fx:{ resist:{ trinchera:-0.2 } }, desc:'Trincheras más resistentes' }
+});
+const hasBuilt = (p, type) => S.ents.some(e => !e.dead && e.kind==='bld' && e.owner===p && e.type===type && e.built);
+// ¿Puede el jugador p comprar la mejora 'key' en el edificio b? (sin efectos: también lo consulta la interfaz)
+function upgradeOk(p, b, key){
+  const U = typeof key==='string' ? MEJORAS[key] : null, pl = S.players[p];
+  return !!(U && b && !b.dead && b.kind==='bld' && b.owner===p && b.built && b.type===U.edificio && !b.upq && !pl.ups[key]
+    && (!U.faccion || U.faccion===pl.faction) && pl.rank >= U.rango && (!U.inv || hasBuilt(p, 'investigacion')) && pl.credits >= U.cost);
+}
+function applyUpFx(p, fx){
+  const tab = S.tab[p], m = S.players[p].mods;
+  if(fx.prod) m.prod += fx.prod;
+  if(fx.dmg) for(const k in fx.dmg) m.dmg[k] = (m.dmg[k]||0) + fx.dmg[k];
+  if(fx.bpower) for(const k in fx.bpower) if(tab.b[k] && tab.b[k].power > 0) tab.b[k].power = Math.round(tab.b[k].power*(1+fx.bpower[k]));
+  if(fx.carry) tab.u.recolector.carry = Math.round(tab.u.recolector.carry*(1+fx.carry));
+  if(fx.hpArmor) for(const k in tab.u){ const u = tab.u[k], inc = fx.hpArmor[u.armor]; if(!inc) continue; u.hp = Math.round(u.hp*(1+inc));
+    for(const e of S.ents) if(e.kind==='unit' && e.owner===p && e.type===k && !e.dead){ const nm = Math.round(e.maxhp*(1+inc)); e.hp = e.hp*nm/e.maxhp; e.maxhp = nm; } }
+  if(fx.bhp){ for(const k in tab.b) tab.b[k].hp = Math.round(tab.b[k].hp*(1+fx.bhp));
+    for(const e of S.ents) if(e.kind==='bld' && e.owner===p && !e.dead){ const nm = Math.round(e.maxhp*(1+fx.bhp)); e.hp = e.hp*nm/e.maxhp; e.maxhp = nm; } }
+  if(fx.sight || fx.range) for(const k in tab.u){ const u = tab.u[k]; if(!u.weapon) continue; if(fx.sight) u.sight += fx.sight; if(fx.range) u.range += fx.range; }
+  if(fx.link && tab.b.bateria) tab.b.bateria.linkR += fx.link;
+  if(fx.bdmg) for(const k in fx.bdmg) if(tab.b[k]) tab.b[k].dmg = tab.b[k].dmg*(1+fx.bdmg[k]);
+  if(fx.resist) for(const k in fx.resist) if(tab.b[k]) tab.b[k].resist += fx.resist[k];
+}
+const POWERS = {
+  radar:     { nombre:'Barrido de radar', cd:60, r:14, desc:'Revela una zona durante 12 s' },
+  reparacion:{ nombre:'Reparación de campo', cd:90, r:10, desc:'Recupera 35 % de vida en el área' },
+  tropas:    { nombre:'Lanzamiento de tropas', cd:150, r:3, desc:'5 infantes en un punto explorado, tras 3 s' },
+  artilleria:{ nombre:'Bombardeo de artillería', cd:120, r:9, desc:'3 oleadas de proyectiles tras 4 s' },
+  precision: { nombre:'Ataque de precisión', cd:110, r:4.5, desc:'Impacto de 450 de daño tras 2 s' },
+  sabotaje:  { nombre:'Sabotaje', cd:100, r:7, desc:'Detiene los edificios enemigos del área durante 25 s' }
+};
+// Cada nodo es un poder (se usa desde el panel) o una mejora pasiva. Un nodo requiere el anterior de su rama.
+// Efectos pasivos: dmg (daño por categoría del atacante), hp (vida por categoría), cost (costo), prod (producción),
+// build (construcción), income (ingresos), sight (visión), speed (velocidad), ammo (munición aérea).
+const TREES = {
+  atlas: [
+    { rama:'Inteligencia', nodos:[ { id:'radar', poder:true }, { id:'sensores', nombre:'Sensores avanzados', desc:'+3 de visión para unidades y edificios', fx:{ sight:3 } }, { id:'precision', poder:true } ] },
+    { rama:'Aviación', nodos:[ { id:'pilotos', nombre:'Pilotos veteranos', desc:'+1 misil por avión', fx:{ ammo:1 } }, { id:'fuselaje', nombre:'Fuselaje reforzado', desc:'+30 % de vida aérea', fx:{ hp:{ air:0.3 } } }, { id:'tropas', poder:true } ] },
+    { rama:'Logística', nodos:[ { id:'reparacion', poder:true }, { id:'contratos', nombre:'Contratos de defensa', desc:'Unidades 10 % más baratas', fx:{ cost:-0.1 } }, { id:'fabricacion', nombre:'Fabricación ágil', desc:'+20 % de velocidad de producción', fx:{ prod:0.2 } } ] }
+  ],
+  hierro: [
+    { rama:'Artillería', nodos:[ { id:'artilleria', poder:true }, { id:'proyectiles', nombre:'Proyectiles perforantes', desc:'+15 % de daño de vehículos', fx:{ dmg:{ veh:0.15 } } }, { id:'radar', poder:true } ] },
+    { rama:'Blindaje', nodos:[ { id:'acero', nombre:'Acero templado', desc:'+20 % de vida de vehículos', fx:{ hp:{ veh:0.2 } } }, { id:'reparacion', poder:true }, { id:'ingenieria', nombre:'Ingeniería de campaña', desc:'+30 % de velocidad de construcción', fx:{ build:0.3 } } ] },
+    { rama:'Masa', nodos:[ { id:'reclutas', nombre:'Leva masiva', desc:'Infantería 15 % más barata', fx:{ cost:-0.15, solo:'inf' } }, { id:'tropas', poder:true }, { id:'moral', nombre:'Moral de hierro', desc:'+15 % de daño de infantería', fx:{ dmg:{ inf:0.15 } } } ] }
+  ],
+  guerrilla: [
+    { rama:'Sombra', nodos:[ { id:'radar', poder:true }, { id:'emboscada', nombre:'Emboscada', desc:'+20 % de daño de infantería', fx:{ dmg:{ inf:0.2 } } }, { id:'sabotaje', poder:true } ] },
+    { rama:'Saqueo', nodos:[ { id:'chatarreros', nombre:'Chatarreros', desc:'+25 % de ingresos', fx:{ income:0.25 } }, { id:'tropas', poder:true }, { id:'mercado', nombre:'Mercado negro', desc:'Unidades 10 % más baratas', fx:{ cost:-0.1 } } ] },
+    { rama:'Resistencia', nodos:[ { id:'reparacion', poder:true }, { id:'trincheras', nombre:'Trincheras', desc:'+25 % de vida de edificios', fx:{ hp:{ bld:0.25 } } }, { id:'motores', nombre:'Motores trucados', desc:'+15 % de velocidad', fx:{ speed:0.15 } } ] }
+  ]
+};
+function treeNode(f, id){
+  for(const br of TREES[f]) for(let i=0; i<br.nodos.length; i++) if(br.nodos[i].id===id) return { node:br.nodos[i], prev: i ? br.nodos[i-1].id : null, rama:br.rama, nivel:i+1 };
+  return null;
+}
+const unitCat = (p, type) => UT(p,type).armor;   // 'inf' | 'veh' | 'air'
+// Aplica una mejora pasiva. Las tablas de unidades y edificios son copias por jugador: se pueden modificar.
+function applyNodeFx(p, fx){
+  const pl = S.players[p], tab = S.tab[p], m = pl.mods;
+  if(fx.dmg) for(const k in fx.dmg) m.dmg[k] = (m.dmg[k]||0) + fx.dmg[k];
+  if(fx.prod) m.prod += fx.prod;
+  if(fx.build) m.build += fx.build;
+  if(fx.income) m.income += fx.income;
+  for(const k in tab.u){
+    const u = tab.u[k];
+    if(fx.cost && (!fx.solo || u.armor===fx.solo) && u.weapon) u.cost = Math.round(u.cost*(1+fx.cost)/10)*10;
+    if(fx.sight) u.sight += fx.sight;
+    if(fx.speed) u.speed = u.speed*(1+fx.speed);
+    if(fx.ammo && u.ammo) u.ammo += fx.ammo;
+    if(fx.hp && fx.hp[u.armor]) u.hp = Math.round(u.hp*(1+fx.hp[u.armor]));
+  }
+  for(const k in tab.b){ const b = tab.b[k]; if(fx.sight) b.sight += fx.sight; if(fx.hp && fx.hp.bld) b.hp = Math.round(b.hp*(1+fx.hp.bld)); }
+  // las unidades y edificios existentes también reciben la mejora de vida
+  if(fx.hp) for(const e of S.ents){
+    if(e.dead || e.owner!==p) continue;
+    const cat = e.kind==='bld' ? 'bld' : e.kind==='unit' ? unitCat(p,e.type) : null;
+    const k = cat && fx.hp[cat]; if(!k) continue;
+    e.maxhp = Math.round(e.maxhp*(1+k)); e.hp = Math.min(e.maxhp, e.hp*(1+k));
+  }
+}
+const incomeMult = p => (1 + S.players[p].mods.income) * S.bonus[p];
+const RANK_XP = [0, 2500, 6000, 11000, 18000];   // umbral para pasar del rango i al i+1; cada ascenso da 1 punto
+const VET_KILLS = [2, 5, 9];
+// Zonas reservadas para las bases (no se pinta terreno en ellas). Celdas [x0, z0, x1, z1] inclusivas.
+const BASE_ZONES = [[0,44,15,63], [48,0,63,19]];
+const inBaseZone = (x,z) => BASE_ZONES.some(([a,b,c,d]) => x>=a && x<=c && z>=b && z<=d);
+const MAP_FORMAT = 'frente-arido-mapa';
+// Valida un mapa del editor. Devuelve un mensaje de error o null.
+function mapError(m){
+  if(!m || m.formato!==MAP_FORMAT) return 'No es un mapa de Frente Árido';
+  if(m.grid!==64 || typeof m.terrain!=='string' || m.terrain.length!==64*64 || /[^.rw]/.test(m.terrain)) return 'Terreno inválido';
+  if(!Array.isArray(m.depots) || !Array.isArray(m.wells) || m.depots.length>24 || m.wells.length>16) return 'Recursos inválidos';
+  const okCell = (x,z,n) => Number.isInteger(x) && Number.isInteger(z) && x>=0 && z>=0 && x+n<=64 && z+n<=64;
+  for(const d of m.depots) if(!Array.isArray(d) || !okCell(d[0],d[1],2) || !(d[2]>=500 && d[2]<=20000)) return 'Depósito inválido';
+  for(const w of m.wells) if(!Array.isArray(w) || !okCell(w[0],w[1],2)) return 'Pozo inválido';
+  return null;
+}
+
+const S = {};
+const idx = (cx,cz) => cz*GRID + cx;
+const inB = (cx,cz) => cx>=0 && cz>=0 && cx<GRID && cz<GRID;
+const toCell = v => Math.max(0, Math.min(GRID-1, Math.floor(v/CELL)));
+const cellCenter = c => c*CELL + CELL/2;
+let NAV = false;   // modo naval: las celdas transitables son las de agua
+const isFree = (cx,cz) => inB(cx,cz) && (NAV ? S.water[idx(cx,cz)]===1 : !S.blocked[idx(cx,cz)]);
+function naval(fn){ const prev = NAV; NAV = true; try { return fn(); } finally { NAV = prev; } }
+const cellOf = e => idx(toCell(e.x), toCell(e.z));
+function buildTables(f){
+  const F = FACTIONS[f], u = {}, b = {};
+  for(const k in UNIT_TYPES) u[k] = Object.assign({}, UNIT_TYPES[k], F.unitMods[k]);
+  for(const k in BUILD_TYPES) b[k] = Object.assign({}, BUILD_TYPES[k], F.buildMods[k]);
+  return { u, b };
+}
+const UT = (p,t) => p>=0 ? S.tab[p].u[t] : UNIT_TYPES[t];
+// Jugadores y equipos. Hoy hay 2 jugadores en equipos distintos; la simulación ya admite N (plan de 4 jugadores).
+const isEnemy = (a, b) => a>=0 && b>=0 && a!==b && S.players[a].team!==S.players[b].team;
+function enemyOf(p){
+  if(S.players.length <= 2){ for(let q=0; q<S.players.length; q++) if(isEnemy(p,q)) return q; return -1; }
+  const h = S.ents.find(e => !e.dead && e.owner===p && e.kind==='bld' && e.type==='centro') || S.ents.find(e => !e.dead && e.owner===p && e.kind==='bld');
+  let best = -1, bd = Infinity;
+  for(let q=0; q<S.players.length; q++){ if(!isEnemy(p,q)) continue; const c = S.ents.find(e => !e.dead && e.owner===q && e.kind==='bld' && e.type!=='pozo'); if(!c) continue;
+    const d = h ? (c.x-h.x)*(c.x-h.x) + (c.z-h.z)*(c.z-h.z) : q; if(d < bd){ bd = d; best = q; } }
+  if(best < 0) for(let q=0; q<S.players.length; q++) if(isEnemy(p,q)) return q;
+  return best;
+}
+const allyOf = (a, b) => a>=0 && b>=0 && S.players[a].team===S.players[b].team;
+const BT = (p,t) => p>=0 ? S.tab[p].b[t] : BUILD_TYPES[t];
+
+function register(e){ S.ents.push(e); S.byId.set(e.id, e); hooks.spawn(e); }
+function markArea(cx,cz,w,h,v){ for(let z=cz; z<cz+h; z++) for(let x=cx; x<cx+w; x++) if(inB(x,z)) S.blocked[idx(x,z)] = v; }
+// Huella de un edificio en celdas finas: fw × fh (en unidades del mundo) si la define; si no, su tamaño de diseño × SUBC (cuadrada)
+const footW = t => t.fw ? Math.round(t.fw/CELL) : t.size*SUBC, footH = t => t.fh ? Math.round(t.fh/CELL) : t.size*SUBC;
+
+function addBuilding(type, owner, cx, cz, built=true){
+  const t = BT(owner,type), w = footW(t), h = footH(t), n = Math.max(w, h);
+  const e = { id:S.nextId++, kind:'bld', type, owner, cx, cz, n, w, h, x:(cx+w/2)*CELL, z:(cz+h/2)*CELL,
+              hp:built ? t.hp : Math.max(1, Math.round(t.hp*0.1)), maxhp:t.hp, built, bprog:built?1:0,
+              queue:[], prog:0, rally:null, radius:n*CELL/2, cd:0, target:null, seen:0 };
+  e.px = e.x; e.pz = e.z; markArea(cx,cz,w,h,1); register(e); return e;
+}
+function addDepot(cx, cz, amount){
+  const n = 2*SUBC;
+  const e = { id:S.nextId++, kind:'depot', type:'deposito', owner:-1, cx, cz, n, w:n, h:n, x:(cx+n/2)*CELL, z:(cz+n/2)*CELL,
+              amount, max:amount, radius:LC, hp:1, maxhp:1 };
+  e.px = e.x; e.pz = e.z; markArea(cx,cz,n,n,1); register(e); return e;
+}
+function addUnit(type, owner, x, z){
+  const t = UT(owner,type);
+  const e = { id:S.nextId++, kind:'unit', type, owner, x, z, px:x, pz:z, hp:t.hp, maxhp:t.hp, radius:t.size, air:!!t.air,
+              path:null, pi:0, order:null, target:null, mode:null, cd:0, repath:0, working:null,
+              carry:0, hstate:null, htimer:0, depot:null, kills:0, vet:0, ammo:t.ammo||0, astate:null, reload:0, capT:0 };
+  register(e); return e;
+}
+function kill(e){
+  if(e.dead) return;
+  if(e.kind==='bld'){ if(e.gar && e.gar.length) ejectGarrison(e); if(e.upq && e.owner>=0){ S.players[e.owner].ups[e.upq.key] = 0; e.upq = null; } }   // la mejora en curso se pierde
+  e.dead = true; hooks.death(e);
+}
+function cleanup(){
+  let any = false;
+  for(const e of S.ents) if(e.dead || e.tunneled){
+    any = true; S.byId.delete(e.id);
+    if(e.dead && (e.kind==='bld' || e.kind==='depot')) markArea(e.cx,e.cz,e.w,e.h,0);
+    hooks.remove(e);
+  }
+  if(any) S.ents = S.ents.filter(e => !e.dead && !e.tunneled);
+}
+function addCrate(x, z){
+  const e = { id:S.nextId++, kind:'crate', type:'chatarra', owner:-1, x, z, px:x, pz:z, hp:1, maxhp:1, until:S.tick + 60*TICK_HZ };
+  register(e); return e;
+}
+
+// ---------- Búsqueda de caminos (A* sobre grilla, 8 direcciones) ----------
+class Heap{
+  constructor(){ this.n=[]; this.f=[]; }
+  get size(){ return this.n.length; }
+  clear(){ this.n.length=0; this.f.length=0; }
+  push(node,f){ const n=this.n, fa=this.f; let i=n.length; n.push(node); fa.push(f);
+    while(i>0){ const p=(i-1)>>1; if(fa[p]<=f) break; n[i]=n[p]; fa[i]=fa[p]; i=p; } n[i]=node; fa[i]=f; }
+  pop(){ const n=this.n, fa=this.f; const top=n[0]; const ln=n.pop(), lf=fa.pop();
+    if(n.length){ let i=0; const len=n.length;
+      while(true){ const l=2*i+1, r=l+1; let m=i, mf=lf;
+        if(l<len && fa[l]<mf){ m=l; mf=fa[l]; } if(r<len && fa[r]<mf){ m=r; mf=fa[r]; }
+        if(m===i) break; n[i]=n[m]; fa[i]=fa[m]; i=m; }
+      n[i]=ln; fa[i]=lf; }
+    return top; }
+}
+let gScore = new Float32Array(NCELLS), came = new Int32Array(NCELLS), openStamp = new Uint32Array(NCELLS), closedStamp = new Uint32Array(NCELLS);
+function setGrid(lg){
+  if(lg === LG && gScore.length === NCELLS) return;
+  LG = lg; GRID = LG * SUBC; WORLD = LG * LC; NCELLS = GRID * GRID;
+  gScore = new Float32Array(NCELLS); came = new Int32Array(NCELLS); openStamp = new Uint32Array(NCELLS); closedStamp = new Uint32Array(NCELLS); gen = 0;
+}
+let gen = 0; const heap = new Heap();
+const DIRS = [[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,Math.SQRT2],[1,-1,Math.SQRT2],[-1,1,Math.SQRT2],[-1,-1,Math.SQRT2]];
+function octile(ax,az,bx,bz){ const dx=Math.abs(ax-bx), dz=Math.abs(az-bz); return Math.max(dx,dz)+(Math.SQRT2-1)*Math.min(dx,dz); }
+function losLine(ax,az,bx,bz){
+  const d = hyp(bx-ax, bz-az), steps = Math.ceil(d/0.35);   // paso en unidades del mundo: ningún obstáculo mide menos de 1 unidad
+  for(let k=0; k<=steps; k++){ const t = steps ? k/steps : 0; if(!isFree(toCell(ax+(bx-ax)*t), toCell(az+(bz-az)*t))) return false; }
+  return true;
+}
+function los(ax,az,bx,bz){
+  const d = hyp(bx-ax, bz-az); if(d < 1e-6) return isFree(toCell(ax),toCell(az));
+  const ox = -(bz-az)/d*0.6, oz = (bx-ax)/d*0.6;
+  return losLine(ax,az,bx,bz) && losLine(ax+ox,az+oz,bx+ox,bz+oz) && losLine(ax-ox,az-oz,bx-ox,bz-oz);
+}
+function nearestFree(cx,cz,maxR=12*SUBC){
+  for(let r=0; r<=maxR; r++){ let best=null, bd=1e9;
+    // Solo el borde del anillo, en el mismo orden que el recorrido completo (filas de arriba abajo, columnas de izquierda a derecha)
+    for(let dz=-r; dz<=r; dz++){ const borde = dz===-r || dz===r, paso = borde || r===0 ? 1 : 2*r;
+      for(let dx=-r; dx<=r; dx+=paso){
+        if(isFree(cx+dx,cz+dz)){ const d=dx*dx+dz*dz; if(d<bd){ bd=d; best=[cx+dx,cz+dz]; } } } }
+    if(best) return best; }
+  return null;
+}
+function goalCells(gx,gz,count){
+  const cx=toCell(gx), cz=toCell(gz), res=[];
+  for(let r=0; r<=16 && res.length<count; r++){ const ring=[];
+    for(let dz=-r; dz<=r; dz++) for(let dx=-r; dx<=r; dx++){
+      if(Math.max(Math.abs(dx),Math.abs(dz)) !== r) continue;
+      const x = cx+dx*SUBC, z = cz+dz*SUBC;
+      if(isFree(x,z)) ring.push({ x, z, d:dx*dx+dz*dz }); }
+    ring.sort((a,b)=>a.d-b.d || a.x-b.x || a.z-b.z); res.push(...ring); }
+  return res.slice(0,count).map(c => ({ x:cellCenter(c.x), z:cellCenter(c.z) }));
+}
+function adjacentTarget(e, from){
+  let best=null, bd=1e9;
+  for(let z=e.cz-1; z<=e.cz+e.h; z++) for(let x=e.cx-1; x<=e.cx+e.w; x++){
+    if(x>=e.cx && x<e.cx+e.w && z>=e.cz && z<e.cz+e.h) continue;
+    if(!isFree(x,z)) continue;
+    const px=cellCenter(x), pz=cellCenter(z), ddx=px-from.x, ddz=pz-from.z, d=ddx*ddx+ddz*ddz;
+    if(d<bd){ bd=d; best={ x:px, z:pz }; } }
+  if(!best){ const f=nearestFree(e.cx,e.cz,8*SUBC); best = f ? { x:cellCenter(f[0]), z:cellCenter(f[1]) } : { x:e.x, z:e.z }; }
+  return best;
+}
+function findPath(sx,sz,gx,gz){
+  let scx=toCell(sx), scz=toCell(sz), gcx=toCell(gx), gcz=toCell(gz), exact=true;
+  if(!isFree(gcx,gcz)){ const f=nearestFree(gcx,gcz,12*SUBC); if(!f) return null; gcx=f[0]; gcz=f[1]; exact=false; }
+  if(!isFree(scx,scz)){ const f=nearestFree(scx,scz,6*SUBC); if(f){ scx=f[0]; scz=f[1]; } }
+  const goal = exact ? { x:gx, z:gz } : { x:cellCenter(gcx), z:cellCenter(gcz) };
+  if((scx===gcx && scz===gcz) || los(sx,sz,goal.x,goal.z)) return [goal];
+  gen++; heap.clear();
+  const s=idx(scx,scz), g=idx(gcx,gcz);
+  openStamp[s]=gen; gScore[s]=0; came[s]=-1; heap.push(s, octile(scx,scz,gcx,gcz));
+  let best=s, bestH=Infinity, iter=0, found=false;
+  while(heap.size && iter<Math.max(24000, NCELLS*0.4)){
+    iter++; const cur=heap.pop(); if(closedStamp[cur]===gen) continue; closedStamp[cur]=gen;
+    if(cur===g){ found=true; break; }
+    const cx=cur%GRID, cz=(cur/GRID)|0, h=octile(cx,cz,gcx,gcz);
+    if(h<bestH){ bestH=h; best=cur; }
+    for(const [dx,dz,c] of DIRS){
+      const nx=cx+dx, nz=cz+dz; if(!isFree(nx,nz)) continue;
+      if(dx && dz && (!isFree(cx+dx,cz) || !isFree(cx,cz+dz))) continue;
+      const ni=idx(nx,nz); if(closedStamp[ni]===gen) continue;
+      const ng=gScore[cur]+c;
+      if(openStamp[ni]!==gen || ng<gScore[ni]){ openStamp[ni]=gen; gScore[ni]=ng; came[ni]=cur; heap.push(ni, ng+octile(nx,nz,gcx,gcz)); } }
+  }
+  const cells=[]; for(let c=found?g:best; c!==-1; c=came[c]) cells.push(c); cells.reverse();
+  // Un punto por unidad del mundo (cada SUBC/2 celdas) y el último: el suavizado cuesta lo mismo que con celdas de 1 unidad
+  const paso = Math.max(1, SUBC/2), pts = cells.filter((c, k) => k % paso === 0 || k === cells.length-1).map(c => ({ x:cellCenter(c%GRID), z:cellCenter((c/GRID)|0) }));
+  if(found) pts[pts.length-1] = goal;
+  const out=[]; let ax=sx, az=sz, i=0;
+  while(i<pts.length){ let j=i; while(j+1<pts.length && los(ax,az,pts[j+1].x,pts[j+1].z)) j++; out.push(pts[j]); ax=pts[j].x; az=pts[j].z; i=j+1; }
+  return out.length ? out : null;
+}
+function stepMove(u, speed){
+  if(!u.path) return true;
+  const wp=u.path[u.pi], dx=wp.x-u.x, dz=wp.z-u.z, d=hyp(dx,dz), step=speed*DT;
+  const last = u.pi===u.path.length-1;
+  if(u.lastD!==undefined && u.lastD-d < step*0.3) u.stuck=(u.stuck||0)+1; else u.stuck=0;
+  u.lastD = d;
+  if(u.stuck > TICK_HZ*2){ u.stuck=0; u.lastD=undefined; const goal=u.path[u.path.length-1];
+    if(hyp(goal.x-u.x, goal.z-u.z) < 4.5){ u.path=null; return true; } u.path=findPath(u.x,u.z,goal.x,goal.z); u.pi=0; return !u.path; }
+  if(d<=step || (last && d<0.3)){ if(d<=step){ u.x=wp.x; u.z=wp.z; } u.pi++; u.lastD=undefined;
+    if(u.pi>=u.path.length){ u.path=null; return true; } }
+  else { u.x+=dx/d*step; u.z+=dz/d*step; }
+  return false;
+}
+function flyTo(u, x, z, speed){
+  const dx=x-u.x, dz=z-u.z, d=hyp(dx,dz), step=speed*DT;
+  if(d<=step){ u.x=x; u.z=z; return true; }
+  u.x+=dx/d*step; u.z+=dz/d*step; return false;
+}
+
+// ---------- Visión y niebla de guerra ----------
+function markCircle(vis, exp, x, z, sight){
+  const r=sight/CELL, R=Math.ceil(r), r2=r*r, cx=toCell(x), cz=toCell(z);
+  for(let dz=-R; dz<=R; dz++) for(let dx=-R; dx<=R; dx++){
+    if(dx*dx+dz*dz>r2) continue; const xx=cx+dx, zz=cz+dz; if(!inB(xx,zz)) continue; const i=idx(xx,zz); vis[i]=1; exp[i]=1; }
+}
+function updateVision(){
+  if(S.reveals.length) S.reveals = S.reveals.filter(r => r.until > S.tick);
+  for(let p=0; p<S.players.length; p++){
+    const vis=S.vis[p], exp=S.exp[p]; vis.fill(0);
+    for(const e of S.ents){
+      if(e.dead || e.owner!==p || e.kind==='depot') continue;
+      markCircle(vis, exp, e.x, e.z, e.kind==='unit' ? UT(p,e.type).sight : BT(p,e.type).sight);
+    }
+    for(const r of S.reveals) if(r.p===p) markCircle(vis, exp, r.x, r.z, r.r);
+  }
+  // Aliados: comparten lo que ven y lo explorado (con equipos de un solo jugador no cambia nada)
+  for(let p=0; p<S.players.length; p++) for(let q=p+1; q<S.players.length; q++){
+    if(S.players[p].team !== S.players[q].team) continue;
+    const a = S.vis[p], b = S.vis[q], ea = S.exp[p], eb = S.exp[q];
+    for(let i=0; i<NCELLS; i++){ const v = a[i] | b[i], x = ea[i] | eb[i]; a[i] = b[i] = v; ea[i] = eb[i] = x; }
+  }
+  for(let p=0; p<S.players.length; p++){
+    const vis=S.vis[p];
+    for(const e of S.ents){
+      if(e.dead || e.kind!=='bld' || e.owner===p || (e.seen & (1<<p))) continue;
+      if(stealthed(e) && !detectedBy(e, p)) continue;                     // trinchera sin descubrir
+      outer: for(let z=e.cz; z<e.cz+e.h; z++) for(let x=e.cx; x<e.cx+e.w; x++) if(vis[idx(x,z)]){ e.seen |= (1<<p); break outer; }
+    }
+  }
+}
+
+// ---------- Energía ----------
+function powerOf(p){
+  if(FACTIONS[S.players[p].faction].noPower) return { prod:0, cons:0, low:false, none:true };
+  let prod=0, cons=0;
+  for(const e of S.ents){ if(e.kind!=='bld' || e.dead || e.owner!==p || !e.built) continue; const w=BT(p,e.type).power; if(w>0) prod+=w; else cons-=w; }
+  return { prod, cons, low:cons>prod };
+}
+
+// ---------- Construcción ----------
+function canPlace(p, type, cx, cz, margin){
+  const bt = BT(p,type), w=footW(bt), h=footH(bt), exp=S.exp[p]; margin *= SUBC;   // el margen se da en celdas de diseño
+  if(bt.naval){
+    let water = 0;
+    for(let z=cz-1; z<=cz+h; z++) for(let x=cx-1; x<=cx+w; x++){
+      const inside = x>=cx && x<cx+w && z>=cz && z<cz+h;
+      if(inside){ if(!isFree(x,z) || !exp[idx(x,z)]) return false; }
+      else if(inB(x,z) && S.water[idx(x,z)]) water++;
+    }
+    return water >= 3*SUBC;
+  }
+  for(let z=cz-margin; z<cz+h+margin; z++) for(let x=cx-margin; x<cx+w+margin; x++){
+    const inside = x>=cx && x<cx+w && z>=cz && z<cz+h;
+    if(inside){ if(!isFree(x,z) || !exp[idx(x,z)]) return false; }
+    else if(inB(x,z) && S.blocked[idx(x,z)]) return false;
+  }
+  return true;
+}
+function rectDist(a, b){ const hw=(b.w||b.n)*CELL/2, hh=(b.h||b.n)*CELL/2; return hyp(Math.max(0, Math.abs(a.x-b.x)-hw), Math.max(0, Math.abs(a.z-b.z)-hh)); }
+function builderTick(u, t){
+  const o = u.order; u.working = null; if(!o) return;
+  if(o.type==='move'){
+    if(!u.path){ u.path=findPath(u.x,u.z,o.x,o.z); u.pi=0; }
+    if(!u.path || stepMove(u,t.speed)) u.order=null;
+    return;
+  }
+  if(o.type!=='build') return;
+  const b = S.byId.get(o.id);
+  if(!b || b.dead || b.owner!==u.owner || (b.built && b.hp>=b.maxhp)){ u.order=null; u.path=null; return; }
+  if(rectDist(u,b) <= LC*1.05){
+    u.path=null; u.working=b.id;
+    if(!b.built){
+      const inc = DT/BT(b.owner,b.type).time * (1 + S.players[b.owner].mods.build);
+      b.bprog = Math.min(1, b.bprog+inc); b.hp = Math.min(b.maxhp, b.hp + b.maxhp*0.9*inc);
+      if(b.bprog>=1){ b.built=true; const bb=BT(b.owner,b.type); if(bb.superCd) b.readyAt = S.tick + bb.superCd*TICK_HZ;
+        if(bb.refinery){ const c = adjacentTarget(b, { x:WORLD/2, z:WORLD/2 }); if(c) addUnit('recolector', b.owner, c.x, c.z); }
+        hooks.built(b); }
+    } else b.hp = Math.min(b.maxhp, b.hp + b.maxhp*0.04*DT);
+    return;
+  }
+  if(!u.path){ const p=adjacentTarget(b,u); u.path=findPath(u.x,u.z,p.x,p.z); u.pi=0; if(!u.path){ u.order=null; return; } }
+  if(stepMove(u,t.speed) && rectDist(u,b) > LC*1.05) u.path=null;
+}
+
+// ---------- Combate ----------
+function distTo(a,b){ return b.kind==='unit' ? hyp(a.x-b.x, a.z-b.z) : rectDist(a,b); }
+function armorOf(e){ return e.kind==='bld' ? 'bld' : UT(e.owner,e.type).armor; }
+const canHit = (weapon, e) => DMG[weapon][armorOf(e)] > 0;
+// Camuflaje: unidades con 'stealth' quedan ocultas si no dispararon en 3 s y no están capturando
+function stealthed(e){
+  if(e.kind==='bld') return e.owner>=0 && !!BT(e.owner,e.type).stealthBld && S.tick - (e.lastFire===undefined ? -1e9 : e.lastFire) > 3*TICK_HZ;
+  if(e.kind!=='unit' || !UT(e.owner,e.type).stealth) return false;
+  if(e.order && e.order.type==='capture' && e.capT>0) return false;
+  return S.tick - (e.lastFire===undefined ? -1e9 : e.lastFire) > 3*TICK_HZ;
+}
+// Detecta: cualquier unidad a 4 o menos, o una defensa a 8 o menos
+function detectedBy(e, p, peek){
+  if(!peek){ if(!e.det) e.det = { t:[], v:[] }; if(e.det.t[p]===S.tick) return e.det.v[p]; }
+  let v = false;
+  for(const o of S.ents){
+    if(o.dead || o.owner!==p) continue;
+    if(o.kind==='unit'){ if(hyp(o.x-e.x, o.z-e.z) <= 4){ v = true; break; } }
+    else if(o.kind==='bld' && o.built && BT(p,o.type).weapon && rectDist(e,o) <= 8){ v = true; break; }
+  }
+  if(!peek){ e.det.t[p] = S.tick; e.det.v[p] = v; }
+  return v;
+}
+const targetable = (p, e) => !stealthed(e) || detectedBy(e, p);
+function findTarget(u, radius, weapon){
+  const ut = u.kind==='unit' ? UT(u.owner,u.type) : null, minR = ut && ut.minRange ? ut.minRange : 0, vis = S.vis[u.owner];
+  let best=null, bs=1e9;
+  for(const e of S.ents){
+    if(e.dead || !isEnemy(u.owner, e.owner) || e.kind==='depot' || e.kind==='crate' || !canHit(weapon,e)) continue;
+    const d=distTo(u,e); if(d>radius || d<minR) continue;
+    if(minR && !vis[cellOf(e)]) continue;                 // la artillería necesita visión aliada del objetivo
+    if(!targetable(u.owner, e)) continue;
+    const s=d + (e.kind==='bld'?(e.type==='torre'||e.type==='tunel'||(e.owner>=0 && (BT(e.owner,e.type).weapon||BT(e.owner,e.type).garrison))?2:6):0) + (e.kind==='unit' && !UT(e.owner,e.type).weapon ? 2 : 0);
+    if(s<bs){ bs=s; best=e; } }
+  return best;
+}
+function curTarget(u){
+  const t = u.order && (u.order.type==='attack' || u.order.type==='capture') ? S.byId.get(u.order.id) || null : u.target!=null ? (S.byId.get(u.target) || null) : null;
+  return t && t.owner>=0 && !isEnemy(u.owner, t.owner) ? null : t;   // un objetivo que pasó a ser aliado (captura) deja de serlo
+}
+function addXp(p, v){
+  const pl = S.players[p]; pl.xp += v;
+  while(pl.rank < RANK_XP.length && pl.xp >= RANK_XP[pl.rank]){ pl.rank++; pl.cp++; hooks.rankUp(p, pl.rank); }
+}
+// Destrucción: los pozos no se destruyen, vuelven a ser neutrales
+function onDestroyed(tg, by){
+  if(tg.type==='pozo'){ tg.owner=-1; tg.hp=tg.maxhp; tg.target=null; hooks.captured(tg); return false; }
+  kill(tg);
+  if(tg.kind==='unit' && UT(tg.owner,tg.type).hero) hooks.heroDown(tg);
+  if(tg.kind==='unit' && !tg.air && UT(tg.owner,tg.type).armor==='veh' && S.players.some(pl => FACTIONS[pl.faction].salvage)) addCrate(tg.x, tg.z);
+  if(by>=0 && by!==tg.owner){
+    S.players[by].kills++;
+    if(tg.kind==='unit' && UT(tg.owner,tg.type).naval) S.players[by].navKills++;
+    addXp(by, tg.kind==='unit' ? UT(tg.owner,tg.type).cost : Math.max(400, BT(tg.owner,tg.type).cost || 1500));
+  }
+  return true;
+}
+function damage(src, tg, base, weapon, mult){
+  const res = tg.kind==='bld' ? (BT(tg.owner, tg.type).resist || 1) : 1;
+  tg.hp -= base * DMG[weapon][armorOf(tg)] * mult * res;
+  hooks.shot(src, tg, weapon);
+  return tg.hp<=0 && !tg.dead ? onDestroyed(tg, src.owner) : false;
+}
+// peek=true: consulta desde la interfaz, sin escribir la caché (evita desincronizar entre clientes)
+function hordeActive(u, peek){
+  if(!FACTIONS[S.players[u.owner].faction].horde || u.air) return false;
+  if(!peek && u.hordeTick === S.tick) return u.horde;
+  let n=0;
+  for(const e of S.ents){ if(e===u || e.dead || e.kind!=='unit' || e.owner!==u.owner || e.air || !UT(e.owner,e.type).weapon) continue; if(hyp(e.x-u.x,e.z-u.z) <= 7) n++; if(n>=4) break; }
+  if(!peek){ u.horde = n>=4; u.hordeTick = S.tick; }
+  return n>=4;
+}
+function auraBoost(u){
+  const hid = S.heroes[u.owner]; if(hid==null || hid===u.id) return false;
+  const h = S.byId.get(hid); if(!h || h.dead || !UT(h.owner,h.type).aura) return false;
+  return hyp(h.x-u.x, h.z-u.z) <= 8;
+}
+function heroCount(p){
+  let n = S.players[p].tunnel.filter(u => UT(p,u.type).hero).length;
+  for(const e of S.ents){ if(e.dead || e.owner!==p) continue; if(e.kind==='unit' && UT(p,e.type).hero) n++; else if(e.kind==='bld') n += e.queue.filter(q => q==='heroe').length; }
+  return n;
+}
+function fire(u, tg, t){
+  u.cd = t.cd; u.lastFire = S.tick;
+  const mult = (1+0.25*u.vet) * (hordeActive(u) ? 1.25 : 1) * (auraBoost(u) ? 1.2 : 1) * (1 + (S.players[u.owner].mods.dmg[t.armor]||0));
+  if(t.splash) splash(u, tg, t, mult);
+  if(damage(u, tg, t.dmg, t.weapon, mult) && tg.kind==='unit'){
+    u.kills++;
+    if(u.vet<3 && u.kills>=VET_KILLS[u.vet]){ u.vet++; const base=t.hp; u.maxhp=Math.round(base*(1+0.2*u.vet)); u.hp=Math.min(u.maxhp, u.hp+base*0.3); }
+  }
+}
+function splash(u, tg, t, mult){
+  for(const e of S.ents){
+    if(e===tg || e.dead || !isEnemy(u.owner, e.owner) || e.air || e.kind==='depot' || e.kind==='crate') continue;
+    if(distTo(tg, e) > t.splash) continue;
+    e.hp -= t.dmg * 0.5 * DMG[t.weapon][armorOf(e)] * mult;
+    if(e.hp<=0) onDestroyed(e, u.owner);
+  }
+}
+function capturable(u, b){
+  if(!b || b.dead || b.kind!=='bld' || b.owner===u.owner || (b.owner>=0 && !isEnemy(u.owner, b.owner))) return false;   // no se capturan edificios aliados
+  const ut = UT(u.owner,u.type);
+  if(b.type==='pozo') return !!(ut.capture || ut.engineer);
+  return !!ut.engineer && b.owner>=0 && b.type!=='centro' && b.built;
+}
+const captureTime = (u, b) => b.type==='pozo' ? (UT(u.owner,u.type).engineer ? 2 : 4) : 6;
+function transferBuilding(b, p){
+  const was = b.owner;
+  ejectGarrison(b); if(b.upq && was>=0){ S.players[was].ups[b.upq.key] = 0; b.upq = null; }
+  b.owner = p; b.target = null; b.queue = []; b.prog = 0; b.rally = null; b.seen = 0;
+  if(b.type==='pozo') b.hp = b.maxhp;
+  hooks.captured(b, was);
+}
+function captureTick(u, t){
+  const b = S.byId.get(u.order.id);
+  if(!capturable(u,b)){ u.order=null; u.path=null; u.capT=0; return; }
+  if(rectDist(u,b) <= LC*1.05){
+    u.path=null; u.capT += DT;
+    if(u.capT >= captureTime(u,b)){ transferBuilding(b, u.owner); u.capT=0; u.order=null; }
+    return;
+  }
+  u.capT = 0;
+  if(!u.path){ const p=adjacentTarget(b,u); u.path=findPath(u.x,u.z,p.x,p.z); u.pi=0; if(!u.path){ u.order=null; return; } }
+  if(stepMove(u,t.speed) && rectDist(u,b) > LC*1.05) u.path=null;
+}
+function engineerTick(u, t){
+  const o = u.order; if(!o) return;
+  if(o.type==='capture'){ captureTick(u,t); return; }
+  if(o.type==='move'){ if(!u.path){ u.path=findPath(u.x,u.z,o.x,o.z); u.pi=0; } if(!u.path || stepMove(u,t.speed)) u.order=null; }
+}
+// Túneles: la unidad camina hasta el túnel y sale del mapa; queda en la red del jugador
+function enterTick(u, t){
+  const b = S.byId.get(u.order.id), pl = S.players[u.owner];
+  const cap = b ? (b.type==='tunel' ? 8 - pl.tunnel.length : (BT(b.owner,b.type).garrison||0) - (b.gar ? b.gar.length : 0)) : 0;
+  if(!b || b.dead || b.owner!==u.owner || !b.built || cap <= 0){ u.order=null; u.path=null; return; }
+  if(rectDist(u,b) <= LC*1.05){
+    u.order=null; u.path=null; u.target=null; u.mode=null; u.tunneled=true;
+    if(b.type==='tunel') pl.tunnel.push(u); else (b.gar = b.gar || []).push(u);
+    hooks.tunnel(u, b, 'in'); return;
+  }
+  if(!u.path){ const p=adjacentTarget(b,u); u.path=findPath(u.x,u.z,p.x,p.z); u.pi=0; if(!u.path){ u.order=null; return; } }
+  if(stepMove(u,t.speed) && rectDist(u,b) > LC*1.05) u.path=null;
+}
+// Desaloja la guarnición de un búnker o trinchera (también al destruirse o cambiar de dueño)
+function ejectGarrison(b){
+  if(!b.gar || !b.gar.length) return;
+  const list = b.gar; b.gar = [];
+  const cells = goalCells(b.x, b.z, list.length);
+  list.forEach((u,i) => { const g = cells[i] || { x:b.x, z:b.z+LC }; u.tunneled = false; u.x = u.px = g.x; u.z = u.pz = g.z; u.order = null; u.path = null; u.target = null; u.mode = null; u.lastD = undefined; u.stuck = 0; register(u); });
+  hooks.tunnel(null, b, 'out');
+}
+function exitTunnel(p, b){
+  const pl = S.players[p]; if(!pl.tunnel.length) return;
+  const list = pl.tunnel; pl.tunnel = [];
+  const cells = goalCells(b.x, b.z, list.length);
+  list.forEach((u,i) => {
+    const g = cells[i] || { x:b.x, z:b.z+LC };
+    u.tunneled = false; u.x = u.px = g.x; u.z = u.pz = g.z;
+    u.order = null; u.path = null; u.target = null; u.mode = null; u.lastD = undefined; u.stuck = 0;
+    register(u);
+  });
+  hooks.tunnel(null, b, 'out');
+}
+// Hangares: cada aeródromo admite 4 aviones; el avión ocioso aterriza en su puesto de la pista
+const HANGARES = 4;
+const esAvion = (p, type) => { const t = UT(p, type); return !!(t && t.air && !t.hover && t.ammo); };
+function cupoAviones(p){ let n = 0; for(const e of S.ents) if(!e.dead && e.kind==='bld' && e.owner===p && e.type==='aerodromo' && e.built) n++; return n*HANGARES; }
+function avionesDe(p){ let n = 0; for(const e of S.ents){ if(e.dead || e.owner!==p) continue; if(e.kind==='unit' && esAvion(p, e.type)) n++; else if(e.kind==='bld') n += e.queue.filter(q => esAvion(p, q)).length; } return n; }
+// Puesto de estacionamiento: aeródromo más cercano con lugar y el orden del avión entre los asignados a él
+function puestoAvion(u){
+  let base = u.base!=null ? S.byId.get(u.base) : null;
+  if(!base || base.dead || base.owner!==u.owner || !base.built){ base = null; u.base = null; }
+  if(!base){ let bd = 1e9;
+    for(const e of S.ents){ if(e.kind!=='bld' || e.dead || !e.built || e.owner!==u.owner || e.type!=='aerodromo') continue;
+      let usados = 0; for(const o of S.ents) if(!o.dead && o.kind==='unit' && o.base===e.id) usados++;
+      if(usados >= HANGARES) continue; const d = hyp(e.x-u.x, e.z-u.z); if(d < bd){ bd = d; base = e; } }
+    if(!base) return null; u.base = base.id; }
+  let k = 0; for(const o of S.ents) if(!o.dead && o.kind==='unit' && o.base===base.id && o.id < u.id) k++;
+  const w = (base.w||base.n)*CELL;
+  return { x: base.x - w*0.375 + k*w*0.25, z: base.z + (base.h||base.n)*CELL*0.18, base };
+}
+function nearestAirfield(u){
+  let best=null, bd=1e9;
+  for(const e of S.ents){ if(e.kind!=='bld'||e.dead||!e.built||e.owner!==u.owner||e.type!=='aerodromo') continue; const d=hyp(e.x-u.x,e.z-u.z); if(d<bd){ bd=d; best=e; } }
+  return best;
+}
+// Aviones: vuelan en línea recta, gastan munición y vuelven al aeródromo a rearmarse
+function heliTick(u, t){
+  let tg = null;
+  if(u.order && u.order.type==='attack'){
+    tg = S.byId.get(u.order.id);
+    if(!tg || tg.dead || tg.owner<0 || !canHit(t.weapon,tg) || !targetable(u.owner,tg)){ u.order=null; tg=null; }
+  }
+  if(!tg && (!u.order || u.order.type==='amove')){
+    let cur = u.target!=null ? S.byId.get(u.target) : null;
+    if(cur && (cur.dead || cur.owner<0 || distTo(u,cur)>t.sight+3 || !targetable(u.owner,cur))) cur=null;
+    if(!cur && (S.tick+u.id)%4===0) cur = findTarget(u, t.sight, t.weapon);
+    u.target = cur ? cur.id : null; tg = cur;
+  }
+  if(tg){ if(distTo(u,tg) <= t.range){ if(u.cd<=0) fire(u,tg,t); } else flyTo(u, clampW(tg.x), clampW(tg.z), t.speed); return; }
+  if(u.order && (u.order.type==='move' || u.order.type==='amove')){ if(flyTo(u, clampW(u.order.x), clampW(u.order.z), t.speed)) u.order=null; }
+}
+function airTick(u, t){
+  if(t.hover){ heliTick(u,t); return; }
+  if(u.parked && (u.order || u.astate!=='rtb' && u.target!=null)) u.parked = false;   // despega al recibir una orden
+  if(u.astate==='rtb'){
+    const home = puestoAvion(u) || nearestAirfield(u);
+    if(!home){ if(u.ammo<=0){ if(u.order && u.order.type!=='move') u.order=null; u.astate=null; } else u.astate=null; }
+    else {
+      if(flyTo(u, home.x, home.z, t.speed)){ u.parked = true;
+        u.reload += DT;
+        if(u.reload >= 3){ u.reload=0; u.ammo=t.ammo; u.hp=Math.min(u.maxhp, u.hp+u.maxhp*0.15); u.astate=null; }
+      }
+      return;
+    }
+  }
+  let tg = null;
+  if(u.order && u.order.type==='attack'){
+    tg = S.byId.get(u.order.id);
+    if(!tg || tg.dead || tg.owner<0 || !canHit(t.weapon,tg)){ u.order=null; tg=null; }
+  }
+  if(!tg && u.order && u.order.type==='amove'){
+    let cur = u.target!=null ? S.byId.get(u.target) : null;
+    if(cur && (cur.dead || distTo(u,cur)>t.sight+3)) cur=null;
+    if(!cur && (S.tick+u.id)%4===0) cur = findTarget(u, t.sight, t.weapon);
+    u.target = cur ? cur.id : null; tg = cur;
+  }
+  if(tg && u.ammo>0){
+    if(distTo(u,tg) <= t.range){
+      if(u.cd<=0){ fire(u,tg,t); u.ammo--; if(u.ammo<=0){ u.astate='rtb'; u.target=null; } }
+      flyTo(u, tg.x, tg.z, t.speed*0.5);
+    } else flyTo(u, tg.x, tg.z, t.speed);
+    return;
+  }
+  if(tg && u.ammo<=0){ u.astate='rtb'; return; }
+  if(u.order && (u.order.type==='move' || u.order.type==='amove')){ u.parked = false; if(flyTo(u, u.order.x, u.order.z, t.speed)) u.order=null; return; }
+  if(!u.order && u.ammo < t.ammo && nearestAirfield(u)) u.astate='rtb';
+  else if(!u.order && !tg){ const pt = puestoAvion(u); if(pt){ if(flyTo(u, pt.x, pt.z, t.speed)) u.parked = true; } }   // aterriza en su hangar
+}
+function unitTick(u){
+  if(UT(u.owner,u.type).naval){ naval(() => unitTickInner(u)); return; }
+  unitTickInner(u);
+}
+function unitTickInner(u){
+  const t = UT(u.owner,u.type);
+  if(u.cd>0) u.cd -= DT;
+  if(t.regen && u.hp < u.maxhp) u.hp = Math.min(u.maxhp, u.hp + u.maxhp*t.regen*DT);
+  if(t.air && t.weapon){ airTick(u,t); return; }   // el helicóptero de carga (sin arma) usa la lógica de recolección
+  if(u.order && u.order.type==='enter'){ enterTick(u,t); return; }
+  if(!t.weapon){ if(u.type==='recolector') harvestTick(u,t); else if(t.engineer) engineerTick(u,t); else builderTick(u,t); return; }
+  if(u.order && u.order.type==='capture'){ captureTick(u,t); return; }
+  const reach = Math.max(t.sight, t.range);
+  let tg = null;
+  if(u.order && u.order.type==='attack'){
+    tg = S.byId.get(u.order.id);
+    if(!tg || tg.dead || tg.owner<0 || !isEnemy(u.owner, tg.owner) || !canHit(t.weapon,tg) || !targetable(u.owner,tg)){ u.order=null; tg=null; u.path=null; u.mode=null; }
+  }
+  if(!tg && (!u.order || u.order.type==='amove')){
+    let cur = u.target!=null ? S.byId.get(u.target) : null;
+    if(cur && (cur.dead || cur.owner<0 || !isEnemy(u.owner, cur.owner) || distTo(u,cur)>reach+3 || !targetable(u.owner,cur) || (t.minRange && distTo(u,cur)<t.minRange))) cur = null;
+    if(!cur && (S.tick+u.id)%4===0) cur = findTarget(u, reach, t.weapon);
+    u.target = cur ? cur.id : null; tg = cur;
+  } else if(u.order && u.order.type==='move') u.target = null;
+
+  if(tg){
+    const d = distTo(u,tg);
+    if(d <= t.range){
+      u.path=null; u.mode='fire';
+      if(t.minRange && d < t.minRange){ if(u.order && u.order.type==='attack') u.order=null; u.target=null; return; }
+      if(u.cd<=0) fire(u,tg,t); return;
+    }
+    if(u.mode!=='chase' || !u.path || u.repath<=0){
+      const p = tg.kind==='bld' ? adjacentTarget(tg,u) : { x:tg.x, z:tg.z };
+      u.path = findPath(u.x,u.z,p.x,p.z); u.pi=0; u.repath=TICK_HZ; u.mode='chase';
+    }
+    u.repath--; if(u.path) stepMove(u, t.speed); return;
+  }
+  if(u.mode){ u.mode=null; u.path=null; }
+  if(u.order && (u.order.type==='move' || u.order.type==='amove')){
+    if(!u.path){ u.path=findPath(u.x,u.z,u.order.x,u.order.z); u.pi=0; if(!u.path){ u.order=null; return; } }
+    if(stepMove(u, t.speed)) u.order = null;
+  }
+}
+
+// ---------- Economía ----------
+function nearestDepot(u){ let best=null, bd=1e9; for(const e of S.ents){ if(e.kind!=='depot'||e.dead||e.amount<=0) continue; const d=hyp(e.x-u.x,e.z-u.z); if(d<bd){ bd=d; best=e; } } return best; }
+function nearestOwn(u, type){ let best=null, bd=1e9; for(const e of S.ents){ if(e.kind!=='bld'||e.dead||!e.built||e.owner!==u.owner||e.type!==type) continue; const d=hyp(e.x-u.x,e.z-u.z); if(d<bd){ bd=d; best=e; } } return best; }
+// Recolección. Los recolectores terrestres siguen rutas; el helicóptero de carga (Atlas) vuela en línea recta.
+function harvestTick(u, t){
+  if(u.order && u.order.type==='move'){
+    if(u.air){ if(flyTo(u, u.order.x, u.order.z, t.speed)){ u.order=null; u.hstate='hold'; } return; }
+    if(!u.path){ u.path=findPath(u.x,u.z,u.order.x,u.order.z); u.pi=0; }
+    if(!u.path || stepMove(u,t.speed)){ u.order=null; u.hstate='hold'; }
+    return;
+  }
+  if(!u.hstate) u.hstate = 'toDepot';
+  switch(u.hstate){
+    case 'toDepot': {
+      let d = u.depot!=null ? S.byId.get(u.depot) : null;
+      if(!d || d.dead || d.amount<=0){ d=nearestDepot(u); u.depot=d?d.id:null; u.path=null; if(!d){ u.hstate='idle'; return; } }
+      if(hyp(d.x-u.x,d.z-u.z) <= LC*2.4){ u.path=null; u.hstate='loading'; u.htimer=Math.round(2.5*TICK_HZ); break; }
+      if(u.air){ flyTo(u, d.x, d.z, t.speed); break; }
+      if(!u.path){ const p=adjacentTarget(d,u); u.path=findPath(u.x,u.z,p.x,p.z); u.pi=0; if(!u.path){ u.hstate='idle'; return; } }
+      if(stepMove(u,t.speed) && hyp(d.x-u.x,d.z-u.z) > LC*2.7) u.hstate='idle';
+      break; }
+    case 'loading': {
+      const d = S.byId.get(u.depot);
+      if(!d || d.dead){ u.hstate='toDepot'; break; }
+      if(--u.htimer<=0){ const take=Math.min(t.carry, d.amount); d.amount-=take; u.carry+=take; if(d.amount<=0) kill(d); u.hstate='toBase'; u.path=null; }
+      break; }
+    case 'toBase': {
+      const b = nearestOwn(u,'recoleccion'); if(!b){ u.hstate='idle'; return; }
+      if(hyp(b.x-u.x,b.z-u.z) <= b.radius+LC*1.6){ S.players[u.owner].credits += Math.round(u.carry*incomeMult(u.owner)); u.carry=0; u.hstate='toDepot'; u.path=null; break; }
+      if(u.air){ flyTo(u, b.x, b.z, t.speed); break; }
+      if(!u.path){ const p=adjacentTarget(b,u); u.path=findPath(u.x,u.z,p.x,p.z); u.pi=0; if(!u.path){ u.hstate='idle'; return; } }
+      stepMove(u,t.speed);
+      break; }
+    case 'idle':
+      if((S.tick+u.id)%TICK_HZ===0) u.hstate = u.carry>0 ? 'toBase' : 'toDepot';
+      break;
+    case 'hold': break;
+  }
+}
+
+// ---------- Edificios ----------
+// Los edificios de producción curan a sus unidades cercanas: infantería en el cuartel, vehículos en la fábrica,
+// aviones en el aeródromo, barcos en el astillero, recolectores y constructores en el centro de mando.
+function healAround(b){
+  const prod = BT(b.owner,b.type).produce; if(!prod || !prod.length || b.offUntil > S.tick) return;
+  for(const u of S.ents){
+    if(u.dead || u.kind!=='unit' || u.owner!==b.owner || u.hp>=u.maxhp || !prod.includes(u.type)) continue;
+    if(rectDist(u,b) <= 4) u.hp = Math.min(u.maxhp, u.hp + u.maxhp*0.03);
+  }
+}
+function bldTick(b){
+  if(!b.built || b.owner<0) return;
+  if((S.tick + b.id) % TICK_HZ === 0) healAround(b);
+  const bt = BT(b.owner,b.type), low = S.power[b.owner].low;
+  if(b.offUntil > S.tick){ if(bt.superCd) b.readyAt++; b.target = null; return; }   // saboteado
+  if(b.upq){ const U = MEJORAS[b.upq.key]; b.upq.prog += DT * (low ? 0.5 : 1);
+    if(b.upq.prog >= U.time){ const pl = S.players[b.owner]; pl.ups[b.upq.key] = 2; applyUpFx(b.owner, U.fx); hooks.upgraded(b, b.upq.key); b.upq = null; } }
+  if(bt.garrison){   // búnker y trinchera: cada ocupante aporta su daño; los antitanque usan su arma contra blindados
+    if(b.cd > 0) b.cd -= DT;
+    if(!b.gar || !b.gar.length){ b.target = null; return; }
+    let tg = b.target!=null ? S.byId.get(b.target) : null;
+    if(!tg || tg.dead || tg.owner<0 || !isEnemy(b.owner, tg.owner) || distTo(b,tg) > bt.range || !targetable(b.owner, tg)){ tg = (S.tick+b.id)%3===0 ? findTarget(b, bt.range, 'rifle') : null; b.target = tg ? tg.id : null; }
+    if(tg && b.cd <= 0){ b.cd = bt.cd; b.lastFire = S.tick; let rf = 0, at = 0;
+      for(const u of b.gar){ const t = UT(u.owner, u.type); if(t.weapon==='antitanque') at += t.dmg; else if(t.weapon) rf += t.dmg; }
+      const mult = 1 + (S.players[b.owner].mods.dmg.inf||0);
+      if(rf) damage(b, tg, rf, 'rifle', mult);
+      if(at && !tg.dead && armorOf(tg)!=='inf') damage(b, tg, at, 'antitanque', mult); }
+    return;
+  }
+  if(bt.superCd){ if(low) b.readyAt++; return; }                                   // sin energía no carga
+  if(bt.income){ if((S.tick+b.id) % (3*TICK_HZ) === 0){ const g = Math.round(bt.income*incomeMult(b.owner)*(low && bt.power < 0 ? 0.5 : 1)); S.players[b.owner].credits += g; if(b.type!=='pozo') hooks.income(b, g); } return; }
+  if(bt.weapon){
+    if(b.cd>0) b.cd -= DT;
+    if(low){ b.target=null; return; }
+    let tg = b.target!=null ? S.byId.get(b.target) : null;
+    if(!tg || tg.dead || tg.owner<0 || !isEnemy(b.owner, tg.owner) || distTo(b,tg)>bt.range){ tg = (S.tick+b.id)%3===0 ? findTarget(b, bt.range, bt.weapon) : null; b.target = tg ? tg.id : null; }
+    let mult = 1 + (S.players[b.owner].mods.dmg.bld||0);
+    if(bt.linkR){   // enlace de datos: baterías cercanas comparten objetivo y suman 15 % de daño cada una (máximo 3)
+      let n = 0;
+      for(const o of S.ents){ if(o===b || o.dead || o.kind!=='bld' || o.owner!==b.owner || o.type!==b.type || !o.built || o.offUntil > S.tick || distTo(b,o) > bt.linkR) continue; n++;
+        if(!tg && o.target!=null){ const ot = S.byId.get(o.target); if(ot && !ot.dead && distTo(b,ot) <= bt.range && canHit(bt.weapon, ot) && targetable(b.owner, ot)){ tg = ot; b.target = ot.id; } } }
+      mult *= 1 + 0.15*Math.min(3, n);
+    }
+    if(tg && b.cd<=0){ b.cd = bt.cd; b.lastFire = S.tick; damage(b, tg, bt.dmg, bt.weapon, mult); }
+    return;
+  }
+  if(!b.queue.length) return;
+  b.prog += DT * (low ? 0.5 : 1) * (1 + S.players[b.owner].mods.prod);
+  const type = b.queue[0], ut = UT(b.owner,type);
+  if(b.prog >= ut.time){
+    b.prog = 0; b.queue.shift();
+    const c = ut.naval ? naval(() => adjacentTarget(b, b.rally || { x:WORLD/2, z:WORLD/2 })) : adjacentTarget(b, b.rally || { x:WORLD/2, z:WORLD/2 });
+    const u = addUnit(type, b.owner, c.x, c.z);
+    if(b.rally && ut.weapon) u.order = { type:'move', x:b.rally.x, z:b.rally.z };
+  }
+}
+
+// ---------- Poderes de comandante ----------
+const clampW = v => Math.max(2, Math.min(WORLD-2, v));
+function powerReady(p, id){ const pl=S.players[p]; return !!pl.unlocked[id] && (pl.cool[id]||0) <= S.tick; }
+function usePower(c){
+  const pl = S.players[c.p], P = POWERS[c.power];
+  if(!P || !treeNode(pl.faction, c.power) || !powerReady(c.p, c.power)) return;
+  const x = clampW(c.x), z = clampW(c.z);
+  if(c.power==='tropas' && !S.exp[c.p][idx(toCell(x),toCell(z))]) return;
+  pl.cool[c.power] = S.tick + P.cd*TICK_HZ;
+  switch(c.power){
+    case 'radar': S.reveals.push({ p:c.p, x, z, r:P.r, until:S.tick+12*TICK_HZ }); break;
+    case 'reparacion':
+      for(const e of S.ents){ if(e.dead || e.owner!==c.p || e.kind==='depot') continue; if(distTo({x,z},e) <= P.r) e.hp = Math.min(e.maxhp, e.hp + e.maxhp*0.35); }
+      break;
+    case 'tropas': S.events.push({ at:S.tick+3*TICK_HZ, kind:'tropas', p:c.p, x, z }); break;
+    case 'artilleria': for(let w=0; w<3; w++) S.events.push({ at:S.tick+(4+w)*TICK_HZ, kind:'artilleria', p:c.p, x, z }); break;
+    case 'precision': S.events.push({ at:S.tick+2*TICK_HZ, kind:'precision', p:c.p, x, z }); break;
+    case 'sabotaje':
+      for(const e of S.ents){ if(e.dead || e.kind!=='bld' || !isEnemy(c.p, e.owner) || e.type==='pozo') continue; if(rectDist({x,z},e) <= P.r) e.offUntil = S.tick + 25*TICK_HZ; }
+      break;
+  }
+  hooks.power(c.p, c.power, x, z);
+}
+function areaDamage(p, x, z, r, dmg, bldMult){
+  for(const e of S.ents){
+    if(e.dead || e.kind==='depot' || e.kind==='crate' || e.air) continue;
+    const d = e.kind==='unit' ? hyp(e.x-x, e.z-z) : rectDist({x,z}, e);
+    if(d > r) continue;
+    const arm = armorOf(e), m = arm==='bld' ? (bldMult || 0.6) : arm==='veh' ? 0.85 : 1;
+    e.hp -= dmg * (1 - 0.5*d/r) * m;
+    if(e.hp<=0) onDestroyed(e, p);
+  }
+}
+function processEvents(){
+  if(!S.events.length) return;
+  const due = S.events.filter(e => e.at <= S.tick); if(!due.length) return;
+  S.events = S.events.filter(e => e.at > S.tick);
+  for(const ev of due){
+    if(ev.kind==='tropas'){ goalCells(ev.x, ev.z, 5).forEach(c => addUnit('infanteria', ev.p, c.x, c.z)); hooks.impact(ev.x, ev.z, 'tropas'); }
+    else if(ev.kind==='artilleria'){
+      for(let k=0; k<6; k++){
+        let ox, oz; do { ox=(S.rng()*2-1)*9; oz=(S.rng()*2-1)*9; } while(ox*ox+oz*oz > 81);
+        areaDamage(ev.p, ev.x+ox, ev.z+oz, 3, 70); hooks.impact(ev.x+ox, ev.z+oz, 'shell');
+      }
+    }
+    else if(ev.kind==='precision'){ areaDamage(ev.p, ev.x, ev.z, 4.5, 450); hooks.impact(ev.x, ev.z, 'big'); }
+    else if(ev.kind==='super'){
+      if(ev.sk==='cohetes'){
+        for(let k=0; k<8; k++){ let ox, oz; do { ox=(S.rng()*2-1)*ev.r; oz=(S.rng()*2-1)*ev.r; } while(ox*ox+oz*oz > ev.r*ev.r);
+          areaDamage(ev.p, ev.x+ox, ev.z+oz, 4, 380, 1); hooks.impact(ev.x+ox, ev.z+oz, 'shell'); }
+      } else {
+        areaDamage(ev.p, ev.x, ev.z, ev.r, ev.dmg, 1); hooks.impact(ev.x, ev.z, ev.sk);
+        if(ev.sk==='nuclear') for(let w=1; w<=4; w++) S.events.push({ at:S.tick+w*2*TICK_HZ, kind:'rad', p:ev.p, x:ev.x, z:ev.z, r:ev.r*0.8 });
+      }
+    }
+    else if(ev.kind==='rad'){ areaDamage(ev.p, ev.x, ev.z, ev.r, 60); hooks.impact(ev.x, ev.z, 'rad'); }
+  }
+}
+
+// ---------- Comandos (único punto de entrada de cambios) ----------
+let cmdSink = null;   // en línea: la interfaz asigna una función que envía la orden al servidor
+function queueCmd(c){ if(cmdSink) return cmdSink(c); c.tick = S.tick + 1; S.cmdQueue.push(c); }
+function applyCmd(c){
+  if(!c || typeof c.t!=='string' || !(Number.isInteger(c.p) && c.p>=0 && c.p<S.players.length) || (c.ids!==undefined && (!Array.isArray(c.ids) || c.ids.length>200))) return;
+  const own = id => { const e=S.byId.get(id); return e && !e.dead && e.owner===c.p ? e : null; };
+  const pl = S.players[c.p];
+  switch(c.t){
+    case 'move': case 'amove': {
+      const us = c.ids.map(own).filter(e => e && e.kind==='unit');
+      us.sort((a,b) => (hyp(a.x-c.x,a.z-c.z) - hyp(b.x-c.x,b.z-c.z)) || a.id-b.id);
+      const navs = us.filter(u => UT(u.owner,u.type).naval), lands = us.filter(u => !UT(u.owner,u.type).naval);
+      const cellsL = goalCells(c.x, c.z, lands.length), cellsN = navs.length ? naval(() => goalCells(c.x, c.z, navs.length)) : [];
+      const cells = []; let li = 0, ni = 0; for(const u of us) cells.push(UT(u.owner,u.type).naval ? cellsN[ni++] : cellsL[li++]);
+      us.forEach((u,i) => { const g=cells[i]||{x:c.x,z:c.z};
+        u.order={ type:(UT(u.owner,u.type).weapon ? c.t : 'move'), x:g.x, z:g.z }; u.path=null; u.target=null; u.mode=null; if(u.air && u.astate!=='rtb') u.astate=null; });
+      break; }
+    case 'attack': {
+      const tg = S.byId.get(c.target); if(!tg || tg.dead || tg.owner===c.p || tg.owner<0) break;
+      c.ids.map(own).filter(e => e && e.kind==='unit' && UT(e.owner,e.type).weapon && canHit(UT(e.owner,e.type).weapon, tg))
+        .forEach(u => { u.order={ type:'attack', id:tg.id }; u.path=null; u.target=null; u.mode=null; u.repath=0; });
+      break; }
+    case 'capture': {
+      const b = S.byId.get(c.target); if(!b || b.dead || b.kind!=='bld' || b.owner===c.p) break;
+      c.ids.map(own).filter(e => e && e.kind==='unit' && !e.air && capturable(e, b))
+        .forEach(u => { u.order={ type:'capture', id:b.id }; u.path=null; u.target=null; u.mode=null; u.capT=0; });
+      break; }
+    case 'enter': {
+      const b = own(c.target); if(!b || !b.built) break;
+      const gar = BT(c.p, b.type).garrison;
+      if(b.type!=='tunel' && !gar) break;
+      c.ids.map(own).filter(e => e && e.kind==='unit' && !e.air && !UT(e.owner,e.type).naval && (b.type==='tunel' || UT(e.owner,e.type).armor==='inf')).forEach(u => { u.order={ type:'enter', id:b.id }; u.path=null; u.target=null; u.mode=null; });
+      break; }
+    case 'exit': { const b = own(c.id); if(b && b.built){ if(b.type==='tunel') exitTunnel(c.p, b); else ejectGarrison(b); } break; }
+    case 'rendir': {
+      for(const e of S.ents){ if(e.dead || e.owner!==c.p) continue; if(e.type==='pozo'){ const was = e.owner; e.owner = -1; e.target = null; hooks.captured(e, was); continue; } kill(e); }
+      pl.tunnel = []; break; }
+    case 'upgrade': {
+      const b = own(c.id); if(!upgradeOk(c.p, b, c.type)) break;
+      pl.credits -= MEJORAS[c.type].cost; pl.ups[c.type] = 1; b.upq = { key:c.type, prog:0 };
+      break; }
+    case 'super': {
+      const b = own(c.id); if(!b || !b.built) break;
+      const bt = BT(c.p, b.type); if(!bt.superCd || b.readyAt > S.tick || S.power[c.p].low || b.offUntil > S.tick) break;
+      const x = clampW(c.x), z = clampW(c.z);
+      b.readyAt = S.tick + bt.superCd*TICK_HZ;
+      S.events.push({ at:S.tick+3*TICK_HZ, kind:'super', p:c.p, x, z, sk:bt.superKind, r:bt.superR, dmg:bt.superDmg });
+      hooks.superFire(c.p, b, x, z);
+      break; }
+    case 'harvest': {
+      const d = S.byId.get(c.target); if(!d || d.dead || d.kind!=='depot') break;
+      c.ids.map(own).filter(e => e && e.type==='recolector')
+        .forEach(u => { u.order=null; u.depot=d.id; u.hstate=u.carry>0?'toBase':'toDepot'; u.path=null; });
+      break; }
+    case 'stop': {
+      c.ids.map(own).filter(e => e && e.kind==='unit')
+        .forEach(u => { u.order=null; u.path=null; u.target=null; u.mode=null; if(u.type==='recolector') u.hstate='hold'; });
+      break; }
+    case 'build': {
+      const b = own(c.id); if(!b || b.kind!=='bld' || !b.built) break;
+      const ut = UT(c.p, c.type); if(!ut || !BT(c.p,b.type).produce.includes(c.type) || b.queue.length>=5) break;
+      if(pl.credits < ut.cost) break;
+      if(ut.hero && (pl.rank < ut.minRank || heroCount(c.p) > 0)) break;   // un héroe por jugador, desde rango 4
+      if(esAvion(c.p, c.type) && avionesDe(c.p) >= cupoAviones(c.p)) break;   // hangares llenos
+      pl.credits -= ut.cost; b.queue.push(c.type); break; }
+    case 'cancel': {
+      const b = own(c.id); if(!b || b.kind!=='bld' || !b.queue.length) break;
+      const type = b.queue.pop(); pl.credits += UT(c.p,type).cost; if(!b.queue.length) b.prog=0; break; }
+    case 'rally': { const b=own(c.id); if(b && b.kind==='bld') b.rally={ x:c.x, z:c.z }; break; }
+    case 'place': {
+      if(!FACTIONS[pl.faction].builds.includes(c.type)) break;
+      const bt = BT(c.p, c.type); if(!bt || !bt.buildable) break;
+      if(bt.minRank && pl.rank < bt.minRank) break;
+      if(bt.superCd && S.ents.some(e => !e.dead && e.owner===c.p && e.type===c.type)) break;   // una por jugador
+      if(bt.max && S.ents.filter(e => !e.dead && e.owner===c.p && e.type===c.type).length >= bt.max) break;
+      const builders = c.ids.map(own).filter(e => e && e.type==='constructor'); if(!builders.length) break;
+      if(pl.credits < bt.cost || !canPlace(c.p, c.type, c.cx, c.cz, 0)) break;
+      pl.credits -= bt.cost;
+      const b = addBuilding(c.type, c.p, c.cx, c.cz, false);
+      for(const u of S.ents){
+        if(u.kind!=='unit' || u.dead || u.air) continue;
+        const ux=toCell(u.x), uz=toCell(u.z);
+        if(ux>=c.cx && ux<c.cx+footW(bt) && uz>=c.cz && uz<c.cz+footH(bt)){ const f=nearestFree(ux,uz,6*SUBC); if(f){ u.x=u.px=cellCenter(f[0]); u.z=u.pz=cellCenter(f[1]); u.path=null; } }
+      }
+      builders.forEach(u => { u.order={ type:'build', id:b.id }; u.path=null; });
+      break; }
+    case 'repair': {
+      const b = S.byId.get(c.target); if(!b || b.dead || b.owner!==c.p || b.kind!=='bld') break;
+      c.ids.map(own).filter(e => e && e.type==='constructor').forEach(u => { u.order={ type:'build', id:b.id }; u.path=null; });
+      break; }
+    case 'cancelBuild': {
+      const b = own(c.id); if(!b || b.kind!=='bld' || b.built) break;
+      pl.credits += Math.round(BT(c.p,b.type).cost*0.75); kill(b); break; }
+    case 'unlock': {
+      const tn = typeof c.power==='string' ? treeNode(pl.faction, c.power) : null;
+      if(!tn || pl.unlocked[c.power] || pl.cp<1 || (tn.prev && !pl.unlocked[tn.prev])) break;
+      pl.unlocked[c.power] = true; pl.cp--;
+      if(tn.node.fx) applyNodeFx(c.p, tn.node.fx);
+      break; }
+    case 'power': usePower(c); break;
+  }
+}
+
+// ---------- IA básica (ve todo el mapa: no usa niebla) ----------
+function findSpot(p, type, x, z){
+  const bt=BT(p,type), c0=toCell(x)-Math.floor(footW(bt)/2), c1=toCell(z)-Math.floor(footH(bt)/2);
+  for(let r=0; r<=20; r++) for(let dz=-r; dz<=r; dz++) for(let dx=-r; dx<=r; dx++){
+    if(Math.max(Math.abs(dx),Math.abs(dz))!==r) continue;
+    if(canPlace(p, type, c0+dx, c1+dz, 1)) return [c0+dx, c1+dz];
+  }
+  return null;
+}
+function aiPowers(p, home, threat){
+  const me = S.players[p], F = FACTIONS[me.faction], foe = enemyOf(p);
+  for(let guard=0; me.cp>0 && guard<9; guard++){
+    let pick = null;
+    for(let lvl=0; lvl<3 && !pick; lvl++) for(const br of TREES[me.faction]){ const n = br.nodos[lvl]; if(!me.unlocked[n.id] && (!lvl || me.unlocked[br.nodos[lvl-1].id])){ pick = n.id; break; } }
+    if(!pick) break; applyCmd({ t:'unlock', p, power:pick });
+  }
+  if(powerReady(p,'reparacion')){
+    const hurt = S.ents.filter(e => e.owner===p && !e.dead && e.kind!=='depot' && e.hp < e.maxhp*0.6 && hyp(e.x-home.x, e.z-home.z) < 20).length;
+    if(hurt >= 3) applyCmd({ t:'power', p, power:'reparacion', x:home.x, z:home.z });
+  }
+  if(powerReady(p,'sabotaje')){
+    let tg=null, bd=1e9;
+    for(const e of S.ents){ if(e.dead||e.kind!=='bld'||e.owner!==foe||!e.built) continue; const k = e.type==='superarma' ? -100 : (e.type==='torre'||e.type==='fabrica') ? 0 : 20; const d=hyp(e.x-home.x,e.z-home.z)+k; if(d<bd){ bd=d; tg=e; } }
+    if(tg) applyCmd({ t:'power', p, power:'sabotaje', x:tg.x, z:tg.z });
+  }
+  if(threat && powerReady(p,'tropas')) applyCmd({ t:'power', p, power:'tropas', x:(home.x+threat.x)/2, z:(home.z+threat.z)/2 });
+  for(const id of ['artilleria','precision']){
+    if(!powerReady(p,id)) continue;
+    let tg = threat;
+    if(!tg){ let bd=1e9; for(const e of S.ents){ if(e.dead||e.kind!=='bld'||e.owner!==foe) continue; const d=hyp(e.x-home.x,e.z-home.z); if(d<bd){ bd=d; tg=e; } } }
+    if(tg) applyCmd({ t:'power', p, power:id, x:tg.x, z:tg.z });
+  }
+}
+// Celda de agua más cercana a la base (hasta 30 celdas), si hay suficiente agua para una flota
+// Costa más cercana a la base: punto de agua y si el jugador ya la exploró (el astillero exige terreno explorado)
+// Lista de celdas de agua en orden de índice (fila por fila), calculada una vez por partida: el agua no cambia
+const AGUA = new WeakMap();
+function celdasAgua(){ let l = AGUA.get(S.water); if(!l){ l = []; for(let i=0; i<NCELLS; i++) if(S.water[i]) l.push(i); AGUA.set(S.water, l); } return l; }
+function coastNear(home, p){
+  const cx = toCell(home.x), cz = toCell(home.z); let best = null, bd = 1e9, count = 0;
+  const R = 30*SUBC, x0 = Math.max(0, cx-R), x1 = Math.min(GRID-1, cx+R), z0 = Math.max(0, cz-R), z1 = Math.min(GRID-1, cz+R);
+  for(const i of celdasAgua()){
+    const z = Math.floor(i/GRID), x = i - z*GRID; if(z < z0 || z > z1 || x < x0 || x > x1) continue; count++;
+    const d = (x-cx)*(x-cx) + (z-cz)*(z-cz); if(d < bd){ bd = d; best = { x:cellCenter(x), z:cellCenter(z), explored: p===undefined ? true : !!S.exp[p][i] }; }
+  }
+  return count >= 25*SUBC*SUBC ? best : null;
+}
+function aiTick(p){
+  const ai = S.ai[p]; if(S.tick < ai.next) return; ai.next = S.tick + Math.round(TICK_HZ*2*S.thinkMult[p]);
+  const foe = enemyOf(p), me = S.players[p], pw = S.power[p], F = FACTIONS[me.faction]; let cst = null;
+  const mine = S.ents.filter(e => !e.dead && e.owner===p);
+  const blds = mine.filter(e => e.kind==='bld' && e.type!=='pozo'); if(!blds.length) return;
+  const units = mine.filter(e => e.kind==='unit');
+  const collectors = units.filter(u => u.type==='recolector');
+  const builders = units.filter(u => u.type==='constructor');
+  const army = units.filter(u => UT(p,u.type).weapon && (!u.air || UT(p,u.type).hover));
+  const air = units.filter(u => u.air && !UT(p,u.type).hover);
+  const helis = units.filter(u => u.air && UT(p,u.type).hover && UT(p,u.type).weapon);
+  const engineers = units.filter(u => u.type==='ingeniero');
+  const find = t => blds.find(b => b.type===t);
+  const findBuilt = t => blds.find(b => b.type===t && b.built);
+  const centro=findBuilt('centro'), acopio=findBuilt('recoleccion'), cuartel=findBuilt('cuartel'), fabrica=findBuilt('fabrica'), aerodromo=findBuilt('aerodromo');
+  const home = find('centro') || blds[0];
+  const dl = hyp(WORLD/2-home.x, WORLD/2-home.z) || 1, dx = (WORLD/2-home.x)/dl, dz = (WORLD/2-home.z)/dl;
+  let threat = null, td = 24;
+  for(const e of S.ents){ if(e.dead || e.kind!=='unit' || e.owner!==foe) continue; const d=hyp(e.x-home.x, e.z-home.z); if(d<td){ td=d; threat=e; } }
+
+  // Construcción
+  if(centro && !builders.length && !centro.queue.includes('constructor') && me.credits>=500) applyCmd({ t:'build', p, id:centro.id, type:'constructor' });
+  const b0 = builders.find(u => !u.order);
+  let reserve = 0;
+  if(b0){
+    const unfinished = blds.find(b => !b.built), defs = blds.filter(b => ['torre','bateria','minigun','bunker','trinchera'].includes(b.type)).length;
+    let want = null;
+    if(unfinished) applyCmd({ t:'repair', p, ids:[b0.id], target:unfinished.id });
+    else if(!F.noPower && pw.prod-pw.cons < 4) want = ['planta', home.x-dx*7, home.z-dz*7];
+    else if(!find('recoleccion')) want = ['recoleccion', home.x+dx*7+dz*3, home.z+dz*7-dx*3];
+    else if(!find('cuartel')) want = ['cuartel', home.x+dz*8, home.z-dx*8];
+    else if(!find('fabrica')) want = ['fabrica', home.x-dz*8, home.z+dx*8];
+    else if(!find('astillero') && celdasAgua().length > 75*SUBC*SUBC && S.tick>TICK_HZ*60 && (cst = coastNear(home, p)) && cst.explored){ const w = cst; want = ['astillero', w.x, w.z]; }
+    else if(F.builds.includes('aerodromo') && !find('aerodromo') && S.tick>TICK_HZ*120) want = ['aerodromo', home.x-dx*4-dz*10, home.z-dz*4+dx*10];
+    else if(!find('astillero') && S.tick>TICK_HZ*100 && (cst = coastNear(home, p)) && cst.explored){ const w = cst; want = ['astillero', w.x, w.z]; }
+    else if(F.builds.includes('superarma') && !find('superarma') && me.rank>=3 && S.tick>TICK_HZ*300) want = ['superarma', home.x-dx*5+dz*7, home.z-dz*5-dx*7];
+    else if(F.builds.includes('tunel') && blds.filter(b => b.type==='tunel').length<2 && S.tick>TICK_HZ*90){ const k = blds.filter(b => b.type==='tunel').length; want = ['tunel', home.x+dx*(9+k*8)-dz*4, home.z+dz*(9+k*8)+dx*4]; }
+    else if(F.builds.includes('suministros') && me.rank>=2 && blds.filter(b => b.type==='suministros').length < Math.min(4, me.rank) && me.credits>900) want = ['suministros', home.x-dz*9+dx*3, home.z+dx*9+dz*3];
+    else if(me.rank>=2 && F.builds.includes('investigacion') && !find('investigacion') && S.tick>TICK_HZ*150 && me.credits>600) want = ['investigacion', home.x+dz*4-dx*9, home.z-dx*4-dz*9];
+    else if(S.tick>TICK_HZ*80 && defs<4){ const tipos = ['torre', ...['bateria','minigun','bunker','trinchera'].filter(t => F.builds.includes(t))], d=11+defs*2, side=(defs-1)*5;
+      want = [tipos[defs % tipos.length], home.x+dx*d+dz*side, home.z+dz*d-dx*side]; }
+    if(want){
+      const cost = BT(p,want[0]).cost;
+      if(me.credits>=cost){ const sp=findSpot(p,want[0],want[1],want[2]); if(sp) applyCmd({ t:'place', p, ids:[b0.id], type:want[0], cx:sp[0], cz:sp[1] }); }
+      else reserve = cost;
+    } else if(!unfinished){ const dmg = blds.find(b => b.hp < b.maxhp*0.7); if(dmg) applyCmd({ t:'repair', p, ids:[b0.id], target:dmg.id }); }
+  }
+
+  // Producción (respeta el ahorro para construir)
+  const foeAir = S.ents.some(e => e.owner===foe && e.air && !e.dead);
+  const aa = army.filter(u => u.type==='antiaereo').length;
+  // Recolectores deseados según la carga: 3 vehículos o 6 trabajadores (guerrilla)
+  const RC = UT(p,'recolector'), wantRec = RC.carry < 60 ? 6 : 3;
+  if(acopio && collectors.length + acopio.queue.filter(q=>q==='recolector').length < wantRec && me.credits>=RC.cost) applyCmd({ t:'build', p, id:acopio.id, type:'recolector' });
+  else {
+    const r = S.rng();
+    const wantAir = aerodromo && air.length + aerodromo.queue.length < 2;
+    const airReserve = wantAir ? UT(p,'avion').cost : 0;   // ahorra para aviones
+    const can = (b, type, extra=airReserve) => b && b.queue.length<2 && me.credits >= UT(p,type).cost + reserve + extra;
+    const foeVeh = S.ents.filter(e => !e.dead && e.kind==='unit' && isEnemy(p, e.owner) && UT(e.owner,e.type).armor==='veh').length;
+    // Mejoras: cada 15 s compra la primera disponible de la lista si sobra dinero
+    if((S.tick + p*97) % (15*TICK_HZ) < TICK_HZ/2){
+      for(const key of ['reactor','carga','instruccion','blindaje','montaje','optica','municion','enlace','doblecanon','camuflaje','fortificacion']){
+        const U = MEJORAS[key], b = blds.find(x => x.type===U.edificio && x.built && !x.upq);
+        if(b && upgradeOk(p, b, key) && me.credits >= U.cost + 600){ applyCmd({ t:'upgrade', p, id:b.id, type:key }); break; }
+      }
+      // Guarnición: la infantería ociosa ocupa búnkeres y trincheras con plazas libres
+      for(const b of blds){ const gar = BT(p, b.type).garrison; if(!gar || !b.built || (b.gar ? b.gar.length : 0) >= gar) continue;
+        const inf = units.filter(u => UT(p,u.type).armor==='inf' && UT(p,u.type).weapon && !u.order && !UT(p,u.type).hero && hyp(u.x-b.x, u.z-b.z) < 22).slice(0, gar - (b.gar ? b.gar.length : 0));
+        if(inf.length){ applyCmd({ t:'enter', p, ids:inf.map(u => u.id), target:b.id }); break; } }
+    }
+    if(foeAir && aa<3 && can(fabrica,'antiaereo',0)) applyCmd({ t:'build', p, id:fabrica.id, type:'antiaereo' });
+    else if(wantAir && can(aerodromo,'avion',0)) applyCmd({ t:'build', p, id:aerodromo.id, type:'avion' });
+    else if(findBuilt('astillero') && r>0.5 && units.filter(u => UT(p,u.type).naval).length < 4){ const ast = findBuilt('astillero'), type = S.rng()<0.6 ? 'lancha' : 'fragata'; if(can(ast,type,0)) applyCmd({ t:'build', p, id:ast.id, type }); }
+    else if(fabrica && BT(p,'fabrica').produce.includes('helicoptero') && helis.length<2 && r>0.85 && can(fabrica,'helicoptero')) applyCmd({ t:'build', p, id:fabrica.id, type:'helicoptero' });
+    else if(cuartel && engineers.length + cuartel.queue.filter(q=>q==='ingeniero').length < 1 && S.tick>TICK_HZ*150 && r>0.7 && can(cuartel,'ingeniero')) applyCmd({ t:'build', p, id:cuartel.id, type:'ingeniero' });
+    else if(fabrica && r<0.5){ const list = BT(p,'fabrica').produce.filter(x => x!=='antiaereo' && x!=='helicoptero'); const type = list[Math.floor(S.rng()*list.length)]; if(can(fabrica,type)) applyCmd({ t:'build', p, id:fabrica.id, type }); }
+    else if(cuartel && cuartel.queue.length<3 && foeVeh>3 && S.rng()<0.45 && can(cuartel,'antitanque')) applyCmd({ t:'build', p, id:cuartel.id, type:'antitanque' });
+    else if(cuartel && cuartel.queue.length<3 && me.credits>=UT(p,'infanteria').cost+reserve+airReserve) applyCmd({ t:'build', p, id:cuartel.id, type:'infanteria' });
+  }
+
+  // Captura de pozos
+  if(!units.some(u => u.order && u.order.type==='capture')){
+    const inf = army.find(u => u.type==='infanteria' && !u.order);
+    if(inf){
+      let well=null, wd=1e9;
+      for(const e of S.ents){ if(e.dead || e.type!=='pozo' || e.owner===p || (e.owner>=0 && !isEnemy(p, e.owner))) continue; const d=hyp(e.x-home.x,e.z-home.z); if(d<wd){ wd=d; well=e; } }
+      if(well && wd < 70) applyCmd({ t:'capture', p, ids:[inf.id], target:well.id });
+    }
+  }
+
+  // Ingenieros: pozos primero; luego edificios enemigos cercanos
+  for(const en of engineers.filter(u => !u.order)){
+    let tg=null, bd=1e9;
+    for(const e of S.ents){ if(e.dead || e.kind!=='bld' || !capturable(en,e)) continue; const d=hyp(e.x-en.x,e.z-en.z) + (e.type==='pozo' ? 0 : 25); if(d<bd){ bd=d; tg=e; } }
+    if(tg && bd < 80) applyCmd({ t:'capture', p, ids:[en.id], target:tg.id });
+  }
+
+  // Túneles: curar unidades muy dañadas y sacarlas cuando no hay amenaza
+  const tunnels = blds.filter(b => b.type==='tunel' && b.built);
+  if(tunnels.length){
+    if(!threat && me.tunnel.length && me.tunnel.every(u => u.hp >= u.maxhp*0.95)) applyCmd({ t:'exit', p, id:tunnels[0].id });
+    for(const u of army){ if(u.air || u.hp >= u.maxhp*0.35 || (u.order && u.order.type==='enter')) continue;
+      let tn=null, bd=25; for(const tb of tunnels){ const d=hyp(tb.x-u.x,tb.z-u.z); if(d<bd){ bd=d; tn=tb; } }
+      if(tn && me.tunnel.length < 8) applyCmd({ t:'enter', p, ids:[u.id], target:tn.id }); }
+  }
+
+  // Superarma contra el edificio enemigo más valioso
+  const sw = blds.find(b => b.type==='superarma' && b.built && b.readyAt <= S.tick);
+  if(sw){
+    let tg=null, bv=-1;
+    for(const e of S.ents){ if(e.dead || e.kind!=='bld' || e.owner!==foe) continue; const v = e.type==='superarma' ? 5 : e.type==='centro' ? 4 : e.type==='fabrica' ? 3 : 1; if(v>bv){ bv=v; tg=e; } }
+    if(tg) applyCmd({ t:'super', p, id:sw.id, x:tg.x, z:tg.z });
+  }
+
+  aiPowers(p, home, threat);
+
+  // Aviación: ataca en pareja
+  const idleAir = air.filter(u => !u.order && u.ammo>0 && u.astate!=='rtb');
+  if(idleAir.length >= 2){
+    let tg=null, bd=1e9;
+    for(const e of S.ents){ if(e.dead || e.owner!==foe || e.kind==='depot' || e.air) continue; const d=hyp(e.x-home.x,e.z-home.z) + (e.kind==='bld'?10:0); if(d<bd){ bd=d; tg=e; } }
+    if(tg) applyCmd({ t:'attack', p, ids:idleAir.map(u=>u.id), target:tg.id });
+  }
+
+  // Defensa y ataque por oleadas
+  // Héroe desde rango 4
+  if(cuartel && me.rank >= 4 && heroCount(p)===0 && me.credits >= UT(p,'heroe').cost + reserve) applyCmd({ t:'build', p, id:cuartel.id, type:'heroe' });
+
+  // Flota: va aparte de las tropas, porque el punto de concentración está en tierra. Con 3 o más barcos ociosos
+  // (o ante una amenaza) navega hasta el agua frente al objetivo enemigo más cercano que tenga costa a tiro.
+  { const ociosos = army.filter(u => !u.order && UT(p,u.type).naval);
+    if(ociosos.length >= 3 || (threat && ociosos.length)){
+      const cx = ociosos.reduce((a,u)=>a+u.x,0)/ociosos.length, cz = ociosos.reduce((a,u)=>a+u.z,0)/ociosos.length;
+      // agua a 12 o menos de un punto, revisada por celdas de diseño (rápido y determinista)
+      const aguaCerca = (x, z) => { let mejor = null, md = 1e9; const c0 = toCell(x), c1 = toCell(z), R = 6*SUBC;
+        for(let dz=-R; dz<=R; dz+=SUBC) for(let dx=-R; dx<=R; dx+=SUBC){ const gx = c0+dx, gz = c1+dz; if(!inB(gx,gz) || !S.water[idx(gx,gz)]) continue; const d = dx*dx + dz*dz; if(d < md){ md = d; mejor = { x:cellCenter(gx), z:cellCenter(gz) }; } }
+        return mejor; };
+      let dest = null, bd = 1e9;
+      for(const e of S.ents){
+        if(e.dead || e.owner<0 || !isEnemy(p, e.owner) || e.kind==='depot' || e.kind==='crate' || e.air) continue;
+        if(e.kind==='unit' && !UT(e.owner,e.type).naval) continue;
+        const d = hyp(e.x-cx, e.z-cz) - (e.kind==='unit' ? 8 : 0); if(d >= bd) continue;
+        const w = e.kind==='unit' ? { x:e.x, z:e.z } : aguaCerca(e.x, e.z); if(!w) continue;
+        bd = d; dest = w;
+      }
+      if(dest) applyCmd({ t:'amove', p, ids:ociosos.map(u=>u.id), x:dest.x, z:dest.z });
+    } }
+  const idle = army.filter(u => !u.order && !UT(p,u.type).naval);
+  // Exploración: si hay costa cerca y aún no se exploró, una unidad ociosa la reconoce (para poder levantar el astillero)
+  { const w = S.tick > TICK_HZ*80 && !find('astillero') ? coastNear(home, p) : null;
+    if(w && !w.explored && S.tick - (ai.scoutT||0) > TICK_HZ*60){ const sc = idle.find(u => !UT(p,u.type).naval && !u.air); if(sc){ applyCmd({ t:'move', p, ids:[sc.id], x:w.x, z:w.z }); ai.scoutT = S.tick; } } }
+  if(threat){ if(idle.length) applyCmd({ t:'amove', p, ids:idle.map(u=>u.id), x:threat.x, z:threat.z }); return; }
+
+  // Ataque concentrado: reunir en un punto de concentración, atacar con fuerza suficiente,
+  // mantener la ofensiva sobre la base enemiga y retirarse si la fuerza cae por debajo del 35 %.
+  const stage = { x:clampW(home.x+dx*16), z:clampW(home.z+dz*16) };
+  for(const b of blds) if(b.built && !b.rally && BT(p,b.type).produce.some(k => UT(p,k).weapon)) applyCmd({ t:'rally', p, id:b.id, x:stage.x, z:stage.z });
+  const value = list => list.reduce((a,u) => a + UT(p,u.type).cost * u.hp / u.maxhp, 0);
+  const foeBlds = S.ents.filter(e => !e.dead && e.kind==='bld' && e.owner===foe && e.type!=='pozo');
+  if(ai.attack){
+    const force = ai.attack.ids.map(id => S.byId.get(id)).filter(u => u && !u.dead && !u.tunneled);
+    if(!force.length || value(force) < ai.attack.v0*0.35){
+      if(force.length) applyCmd({ t:'move', p, ids:force.map(u=>u.id), x:stage.x, z:stage.z });
+      ai.attack = null; ai.goal = Math.min(12000, ai.goal + 800);
+    } else {
+      const idleF = force.filter(u => !u.order);
+      if(idleF.length && foeBlds.length){
+        // continuar con el objetivo más cercano al grupo
+        const cx = idleF.reduce((a,u)=>a+u.x,0)/idleF.length, cz = idleF.reduce((a,u)=>a+u.z,0)/idleF.length;
+        let tg=null, bd=1e9; for(const e of foeBlds){ const d=hyp(e.x-cx,e.z-cz) - (e.type==='superarma'?20:0); if(d<bd){ bd=d; tg=e; } }
+        if(tg) applyCmd({ t:'amove', p, ids:idleF.map(u=>u.id), x:tg.x, z:tg.z });
+      }
+      // refuerzos que esperan en el punto de concentración se suman cuando son al menos 4
+      const fresh = idle.filter(u => !ai.attack.ids.includes(u.id) && hyp(u.x-stage.x,u.z-stage.z) < 14);
+      if(fresh.length >= 4 && force.length){ const lead = force[0]; applyCmd({ t:'amove', p, ids:fresh.map(u=>u.id), x:lead.x, z:lead.z }); ai.attack.ids.push(...fresh.map(u=>u.id)); }
+    }
+    return;
+  }
+  // mover a la concentración las unidades ociosas que estén lejos
+  const far = idle.filter(u => hyp(u.x-stage.x,u.z-stage.z) > 10);
+  if(far.length) applyCmd({ t:'move', p, ids:far.map(u=>u.id), x:stage.x, z:stage.z });
+  const ready = idle.filter(u => hyp(u.x-stage.x,u.z-stage.z) <= 12);
+  const late = S.tick > TICK_HZ*600;
+  if(foeBlds.length && ready.length >= 3 && (value(ready) >= (late ? ai.goal*0.6 : ai.goal) || S.tick-ai.lastAttack > TICK_HZ*240)){
+    ai.lastAttack = S.tick;
+    // objetivo: producción enemiga primero (fábrica, aeródromo, cuartel), luego el centro de mando
+    const prio = { fabrica:0, aerodromo:1, superarma:-1, cuartel:2, centro:3 };
+    let tg=null, bd=1e9;
+    // se evitan los objetivos protegidos por varias defensas
+    const guards = e => foeBlds.filter(t => t.built && BT(foe,t.type).weapon && hyp(t.x-e.x,t.z-e.z) <= 12).length;
+    for(const e of foeBlds){ const k = prio[e.type]!==undefined ? prio[e.type] : 4; const d = k*25 + hyp(e.x-stage.x,e.z-stage.z)*0.5 + guards(e)*35; if(d<bd){ bd=d; tg=e; } }
+    applyCmd({ t:'amove', p, ids:ready.map(u=>u.id), x:tg.x, z:tg.z });
+    ai.attack = { ids:ready.map(u=>u.id), v0:value(ready) };
+  }
+  return;
+
+}
+
+// ---------- Huella del estado (detección de desincronización) ----------
+function stateHash(){
+  let h = 2166136261 >>> 0;
+  const mix = v => { h ^= (v|0); h = Math.imul(h, 16777619) >>> 0; };
+  mix(S.tick); mix(S.events.length);
+  if(S.mission){ for(const st of S.mission.state) mix(st==='ok'?1:st==='fail'?2:0); }
+  for(const pl of S.players){ mix(pl.credits); mix(pl.kills); mix(pl.xp); mix(pl.cp); mix(pl.rank); mix(Object.keys(pl.unlocked).length); mix(pl.navKills); mix(pl.tunnel.length); for(const u of pl.tunnel){ mix(u.id); mix(Math.round(u.hp*100)); } }
+  for(const e of S.ents){ mix(e.id); mix(e.owner); mix(Math.round(e.x*1000)); mix(Math.round(e.z*1000)); mix(Math.round(e.hp*100)); if(e.kind==='depot') mix(e.amount); if(e.readyAt) mix(e.readyAt); if(e.offUntil) mix(e.offUntil); }
+  return h >>> 0;
+}
+
+// ---------- Ciclo de simulación ----------
+function separate(){
+  const us = S.ents.filter(e => e.kind==='unit' && !e.dead && !e.air);
+  for(let i=0; i<us.length; i++) for(let j=i+1; j<us.length; j++){
+    const a=us[i], b=us[j];
+    const na = !!UT(a.owner,a.type).naval; if(na !== !!UT(b.owner,b.type).naval) continue;   // agua y tierra son capas distintas
+    NAV = na;
+    let dx=b.x-a.x, dz=b.z-a.z; const min=(a.radius+b.radius)*0.85;
+    if(Math.abs(dx)>min || Math.abs(dz)>min) continue;
+    let d = hyp(dx,dz); if(d>=min) continue;
+    if(d<1e-4){ dx=((a.id*7+b.id*13)%9)-4 || 1; dz=((a.id*5+b.id*11)%9)-4; d=hyp(dx,dz); }
+    const push=(min-d)/2, nx=dx/d*push, nz=dz/d*push;
+    if(isFree(toCell(a.x-nx),toCell(a.z-nz))){ a.x-=nx; a.z-=nz; }
+    if(isFree(toCell(b.x+nx),toCell(b.z+nz))){ b.x+=nx; b.z+=nz; }
+  }
+  NAV = false;
+}
+function crateTick(c){
+  if(S.tick >= c.until){ kill(c); return; }
+  for(const u of S.ents){
+    if(u.dead || u.kind!=='unit' || u.air || !FACTIONS[S.players[u.owner].faction].salvage) continue;
+    if(hyp(u.x-c.x, u.z-c.z) > 1.8) continue;
+    S.players[u.owner].credits += 75;
+    const ut = UT(u.owner,u.type);
+    if(ut.weapon && u.vet<3){ u.vet++; u.maxhp = Math.round(ut.hp*(1+0.2*u.vet)); u.hp = Math.min(u.maxhp, u.hp + ut.hp*0.3); }
+    hooks.crate(c, u); kill(c); return;
+  }
+}
+// Objetivos y eventos de misión. Se evalúan una vez por segundo dentro de la simulación (deterministas).
+const ownBld = (p, type) => S.ents.filter(e => !e.dead && e.kind==='bld' && e.owner===p && (!type || e.type===type) && e.type!=='pozo');
+function nearBase(p){ const c = ownBld(p,'centro')[0] || ownBld(p)[0]; return c || { x:WORLD/2, z:WORLD/2 }; }
+function evalObjective(o, sec){
+  const enemy = 1;
+  switch(o.tipo){
+    case 'destruir': return o.edificio ? (ownBld(enemy, o.edificio).length===0 ? 'ok' : 'pend') : (ownBld(enemy).length===0 ? 'ok' : 'pend');
+    case 'sobrevivir': return sec >= o.segundos ? 'ok' : 'pend';
+    case 'pozos': return S.ents.filter(e => !e.dead && e.type==='pozo' && e.owner===0).length >= o.cantidad ? 'ok' : 'pend';
+    case 'rango': return S.players[0].rank >= o.rango ? 'ok' : 'pend';
+    case 'bajas': return S.players[0].kills >= o.cantidad ? 'ok' : 'pend';
+    case 'construir': return ownBld(0, o.edificio).some(b => b.built) ? 'ok' : 'pend';
+    case 'proteger': return ownBld(0, o.edificio).length ? (o.hasta && sec >= o.hasta ? 'ok' : 'pend') : 'fail';
+    case 'proteger_heroe': { const alive = S.heroes[0]!=null || S.players[0].tunnel.some(u => UT(0,u.type).hero); if(alive) S.mission.heroSeen = true; return S.mission.heroSeen && !alive ? 'fail' : (o.hasta && sec >= o.hasta ? 'ok' : 'pend'); }
+    case 'limite': return sec > o.segundos ? 'fail' : 'pend';
+    case 'unidades': return S.ents.filter(e => !e.dead && e.kind==='unit' && e.owner===0 && (!o.unidad || e.type===o.unidad)).length >= o.cantidad ? 'ok' : 'pend';
+    case 'llegar': { const tx = o.x*LC + LC/2, tz = o.z*LC + LC/2, r = (o.r||3)*LC; return S.ents.some(e => !e.dead && e.kind==='unit' && e.owner===0 && hyp(e.x-tx, e.z-tz) <= r) ? 'ok' : 'pend'; }
+    case 'hundir': return S.players[0].navKills >= o.cantidad ? 'ok' : 'pend';
+  }
+  return 'pend';
+}
+function runTrigger(tr){
+  const M = S.mission;
+  switch(tr.accion){
+    case 'refuerzos': {
+      const p = tr.jugador || 0, base = tr.cerca==='enemigo' ? nearBase(enemyOf(p)) : nearBase(p);
+      const dx = WORLD/2-base.x, dz = WORLD/2-base.z, d = hyp(dx,dz) || 1;
+      const list = []; for(const [type,n] of tr.unidades) for(let i=0; i<n; i++) list.push(type);
+      const land = list.filter(t => !UT(p,t).naval), sea = list.filter(t => UT(p,t).naval);
+      const cells = goalCells(base.x+dx/d*10, base.z+dz/d*10, land.length);
+      const coast = sea.length ? coastNear(base) : null;
+      const seaCells = coast ? naval(() => goalCells(coast.x, coast.z, sea.length)) : [];
+      const spawn = (type, c) => { if(!c) return; const u = addUnit(type, p, c.x, c.z); if(tr.atacar && p===1) u.order = { type:'amove', x:nearBase(0).x, z:nearBase(0).z }; };
+      land.forEach((type,i) => spawn(type, cells[i])); sea.forEach((type,i) => spawn(type, seaCells[i]));
+      break; }
+    case 'creditos': S.players[tr.jugador||0].credits += tr.cantidad; break;
+    case 'ataque': { const a = S.ai[tr.jugador||1]; if(a){ a.lastAttack = -1e9; a.goal = Math.min(a.goal, 1500); } break; }
+    case 'revelar': S.reveals.push({ p:0, x:nearBase(1).x, z:nearBase(1).z, r:16, until:S.tick + (tr.segundos||15)*TICK_HZ }); break;
+  }
+  if(tr.mensaje) hooks.mission('mensaje', tr.mensaje);
+}
+function missionTick(){
+  const M = S.mission; if(!M || S.over || S.tick % TICK_HZ) return;
+  const sec = S.tick / TICK_HZ, def = M.def;
+  def.eventos.forEach((tr,i) => {
+    if(M.trig[i]) return;
+    const due = tr.en!==undefined ? sec >= tr.en : tr.alCumplir!==undefined ? M.state[tr.alCumplir]==='ok' : false;
+    if(due){ M.trig[i] = true; runTrigger(tr); }
+  });
+  let changed = false;
+  def.objetivos.forEach((o,i) => { if(M.state[i]!=='pend') return; const r = evalObjective(o, sec); if(r!==M.state[i]){ M.state[i] = r; changed = true; } });
+  if(changed) hooks.mission('objetivos', M.state.slice());
+  if(def.objetivos.some((o,i) => !o.secundario && M.state[i]==='fail')){ S.over = true; S.winner = 1; M.result = 'fail'; }
+  else {
+    const guard = o => (o.tipo==='proteger' || o.tipo==='proteger_heroe') && !o.hasta;
+    const primary = def.objetivos.map((o,i) => i).filter(i => !def.objetivos[i].secundario);
+    if(primary.some(i => !guard(def.objetivos[i])) && primary.every(i => M.state[i]==='ok' || (guard(def.objetivos[i]) && M.state[i]==='pend'))){
+      primary.forEach(i => { if(M.state[i]==='pend') M.state[i] = 'ok'; });
+      S.over = true; S.winner = 0; M.result = 'ok'; hooks.mission('objetivos', M.state.slice());
+    }
+  }
+}
+function checkVictory(){
+  if(S.over) return;
+  const has = p => S.ents.some(e => !e.dead && e.kind==='bld' && e.owner===p && e.type!=='pozo');
+  const alive = []; for(let p=0; p<S.players.length; p++) if(has(p) && !alive.includes(S.players[p].team)) alive.push(S.players[p].team);
+  const a = has(0);
+  if(alive.length <= 1){
+    S.over=true; S.winner = alive.length ? alive[0] : -1;   // equipo ganador (con equipos por defecto, el número de jugador)
+    const M = S.mission;
+    if(M){
+      if(!a){ M.result = 'fail'; }
+      else {
+        // sin edificios enemigos: las condiciones de resistencia y destrucción quedan cumplidas
+        M.def.objetivos.forEach((o,i) => { if(M.state[i]==='pend' && ['proteger','proteger_heroe','sobrevivir','limite','destruir'].includes(o.tipo)) M.state[i] = 'ok'; });
+        M.result = 'ok';
+      }
+      hooks.mission('objetivos', M.state.slice());
+    }
+  }
+}
+function simTick(){
+  const now = [];
+  for(const c of S.cmdQueue) if(c.tick<=S.tick) now.push(c);
+  if(now.length){ S.cmdQueue = S.cmdQueue.filter(c => c.tick>S.tick); S.log.push([S.tick, now.map(c => { const o = Object.assign({}, c); delete o.tick; return o; })]); now.forEach(applyCmd); }
+  S.power = S.players.map((_, p) => powerOf(p));
+  S.heroes = [null, null];
+  for(const e of S.ents) if(e.kind==='unit' && !e.dead && UT(e.owner,e.type).hero) S.heroes[e.owner] = e.id;
+  for(const p of S.aiPlayers) aiTick(p);
+  for(const e of S.ents){ e.px=e.x; e.pz=e.z; }
+  for(let i=0; i<S.ents.length; i++){ const e=S.ents[i]; if(e.dead) continue; if(e.kind==='unit') unitTick(e); else if(e.kind==='bld') bldTick(e); }
+  processEvents();
+  for(let i=0; i<S.ents.length; i++){ const c=S.ents[i]; if(c.kind==='crate' && !c.dead) crateTick(c); }
+  for(let p=0; p<S.players.length; p++){
+    const pl = S.players[p]; if(!pl.tunnel.length) continue;
+    if(!S.ents.some(e => !e.dead && e.owner===p && e.type==='tunel' && e.built)){ pl.tunnel = []; continue; }   // sin túneles, se pierden
+    for(const u of pl.tunnel) u.hp = Math.min(u.maxhp, u.hp + u.maxhp*0.05*DT);
+  }
+  separate(); cleanup();
+  if(S.tick%3===0) updateVision();
+  missionTick(); checkVictory(); S.tick++;
+}
+// Dificultad de la IA: ingresos y frecuencia de decisión
+const AI_LEVELS = { facil:{ bonus:0.75, think:1.5 }, normal:{ bonus:1, think:1 }, dificil:{ bonus:1.3, think:0.75 } };
+function setupMission(def){
+  S.mission = { def, state:def.objetivos.map(() => 'pend'), trig:def.eventos.map(() => false), heroSeen:false, result:null };
+  const lv = AI_LEVELS[def.dificultad] || AI_LEVELS.normal; S.bonus[1] = lv.bonus; S.thinkMult[1] = lv.think;
+  if(def.creditos) def.creditos.forEach((c,p) => { if(c!=null) S.players[p].credits = c; });
+  if(def.rango) for(let r=1; r<def.rango; r++){ S.players[0].rank++; S.players[0].cp++; S.players[0].xp = RANK_XP[S.players[0].rank-1]; }
+  // quitar unidades o edificios iniciales indicados
+  if(def.quitar) for(const [p, types] of Object.entries(def.quitar)) for(const e of S.ents) if(e.owner===+p && types.includes(e.type)) e.dead = true;
+  cleanup();
+  updateVision();
+  // edificios adicionales (defensas enemigas, por ejemplo) cerca de su base
+  if(def.edificios) for(const [p, type, n] of def.edificios){
+    const base = nearBase(p), dx = WORLD/2-base.x, dz = WORLD/2-base.z, d = hyp(dx,dz) || 1;
+    for(let k=0; k<(n||1); k++){
+      let sp = null;
+      if(BT(p,type).naval){ const w = coastNear(base); if(w){ const cx = toCell(w.x), cz = toCell(w.z); for(let z=cz-8*SUBC; z<=cz+8*SUBC; z++) for(let x=cx-8*SUBC; x<=cx+8*SUBC; x++) if(inB(x,z)) S.exp[p][idx(x,z)] = 1; sp = findSpot(p, type, w.x, w.z); } }
+      else { const side = (k - ((n||1)-1)/2)*7; sp = findSpot(p, type, base.x+dx/d*12 + dz/d*side, base.z+dz/d*12 - dx/d*side); }
+      if(sp) addBuilding(type, p, sp[0], sp[1], true);
+    }
+  }
+  if(def.unidades) runTrigger({ accion:'refuerzos', jugador:0, unidades:def.unidades });
+  if(def.unidadesEnemigas) runTrigger({ accion:'refuerzos', jugador:1, unidades:def.unidadesEnemigas });
+}
+const ladoMapa = n => n <= 2 ? 64 : n <= 4 ? 96 : 128;
+// Rotación exacta para la simetría de N bases (solo raíces cuadradas: determinista entre motores)
+const ROT = { 2:[-1, 0], 3:[-0.5, Math.sqrt(3)/2], 4:[0, 1], 6:[0.5, Math.sqrt(3)/2], 8:[Math.SQRT1_2, Math.SQRT1_2] };
+function newGame(seed, aiPlayers=[1], factions=['atlas','hierro'], map=null, mission=null, aiLevel='normal', creditos=3000, equipos=null){
+  const NJ = factions.length; if(NJ > 2 && !ROT[NJ]) throw new Error('Número de jugadores no admitido: ' + NJ);
+  setGrid(ladoMapa(NJ)); if(NJ > 2){ map = null; mission = null; }
+  // Recursos iniciales de escaramuza y partidas en línea (500 a 20.000). Las misiones parten de 2.000 y los ajustan con def.creditos.
+  const ini = mission ? 2000 : Math.max(500, Math.min(20000, Math.floor(+creditos || 3000)));
+  // Equipo de cada jugador: por defecto uno por jugador (todos contra todos). Se valida: enteros de 0 a 7.
+  const eq = i => Array.isArray(equipos) && Number.isInteger(equipos[i]) && equipos[i] >= 0 && equipos[i] < 8 ? equipos[i] : i;
+  const player = (f, i) => ({ team:eq(i), ups:{}, credits:ini, kills:0, faction:f, xp:0, rank:1, cp:1, unlocked:{}, cool:{}, tunnel:[], navKills:0, mods:{ dmg:{}, prod:0, build:0, income:0 } });
+  Object.assign(S, { tick:0, seed, rng:mulberry32(seed), nextId:1, ents:[], byId:new Map(), blocked:new Uint8Array(NCELLS),
+    rocks:[], ruins:[], rockGrid:new Uint8Array(NCELLS), players:factions.map(player), cmdQueue:[], over:false, winner:-1, aiPlayers,
+    vis:factions.map(() => new Uint8Array(NCELLS)), exp:factions.map(() => new Uint8Array(NCELLS)),
+    power:factions.map(() => ({prod:0,cons:0,low:false})), events:[], reveals:[], log:[], heroes:factions.map(() => null), water:new Uint8Array(NCELLS), bonus:factions.map(() => 1), thinkMult:factions.map(() => 1), mission:null, map:map ? String(map.nombre||'Mapa personalizado').slice(0,40) : 'Estándar',
+    tab:factions.map(f => buildTables(f)),
+    ai:Object.fromEntries(factions.map((f, p) => [p, {next:TICK_HZ*10,wave:6,lastAttack:0,goal:3000,attack:null,rallied:false}])) });
+  const mirL = (x,z,n) => [LG-x-n, LG-z-n];   // espejo central en celdas de diseño
+  // Bloquea una celda de diseño completa (SUBC × SUBC celdas finas): roca o agua
+  const tapar = (x, z, agua, s=0.7+S.rng()*0.6, r=S.rng()*6.28) => { const fx = L2F(x), fz = L2F(z);
+    for(let dz=0; dz<SUBC; dz++) for(let dx=0; dx<SUBC; dx++){ const k = idx(fx+dx, fz+dz); S.blocked[k] = 1; if(agua) S.water[k] = 1; else S.rockGrid[k] = 1; }
+    if(!agua) S.rocks.push({ cx:fx, cz:fz, s, r }); };
+  const ruina = (x, z, w, h, t, r) => { for(let dz=0; dz<h*SUBC; dz++) for(let dx=0; dx<w*SUBC; dx++) S.blocked[idx(L2F(x)+dx, L2F(z)+dz)] = 1; S.ruins.push({ cx:L2F(x), cz:L2F(z), w:w*SUBC, h:h*SUBC, t, r }); };
+  const libreL = (x, z) => { for(let dz=0; dz<SUBC; dz++) for(let dx=0; dx<SUBC; dx++) if(S.blocked[idx(L2F(x)+dx, L2F(z)+dz)]) return false; return true; };
+  // La guerrilla no usa energía: inicia con una red de túneles en lugar de la planta
+  const startType = (t, p) => t==='planta' && FACTIONS[factions[p]].noPower ? 'tunel' : t;
+  // Escaramuza y en línea: solo el centro de mando y un constructor; el resto se construye.
+  // Las misiones conservan la base completa con la que fueron diseñadas.
+  const BASE = [['centro',5,54],['cuartel',11,58],['fabrica',5,47],['planta',1,55],['recoleccion',10,49]];
+  S.baseZones = BASE_ZONES; S.lg = LG;
+  if(NJ > 2){ mapaGrande(NJ, startType); finInicio(mission, aiPlayers, aiLevel); return; }
+  (mission ? BASE : BASE.slice(0,1)).forEach(([t,x,z]) => {
+    addBuilding(startType(t,0),0,L2F(x),L2F(z)); const m=mirL(x,z,BUILD_TYPES[t].size); addBuilding(startType(t,1),1,L2F(m[0]),L2F(m[1])); });
+  // Zona de base reservada (sin rocas) aunque los edificios aún no existan
+  const baseZones = [];
+  for(const [t,x,z] of BASE){ const n = BUILD_TYPES[t].size, m = mirL(x,z,n); baseZones.push({ x:x+n/2, z:z+n/2, r:7 }, { x:m[0]+n/2, z:m[1]+n/2, r:7 }); }   // en celdas de diseño
+  if(map){
+    // Mapa del editor: terreno, depósitos y pozos. Las zonas de base se respetan siempre.
+    for(let z=0; z<LG; z++) for(let x=0; x<LG; x++){
+      const ch = map.terrain[z*LG+x];
+      if(ch==='.' || inBaseZone(x,z) || !libreL(x,z)) continue;
+      tapar(x, z, ch==='w');
+    }
+    const fits = (x,z) => [0,1].every(dz => [0,1].every(dx => libreL(x+dx,z+dz) && !inBaseZone(x+dx,z+dz)));
+    for(const [x,z,a] of map.depots) if(fits(x,z)) addDepot(L2F(x),L2F(z),a);
+    for(const [x,z] of map.wells) if(fits(x,z)) addBuilding('pozo',-1,L2F(x),L2F(z));
+  } else {
+    [[12,50,2500],[2,40,2500],[21,44,3500]].forEach(([x,z,a]) => { addDepot(L2F(x),L2F(z),a); const m=mirL(x,z,2); addDepot(L2F(m[0]),L2F(m[1]),a); });
+    addDepot(L2F(31),L2F(31),6000);
+    [[14,30],[34,50]].forEach(([x,z]) => { addBuilding('pozo',-1,L2F(x),L2F(z)); const m=mirL(x,z,2); addBuilding('pozo',-1,L2F(m[0]),L2F(m[1])); });
+    // Rocas en celdas de diseño (zonas libres alrededor de bases y recursos)
+    const zones = S.ents.map(e => ({ x:(e.cx+e.w/2)/SUBC, z:(e.cz+e.h/2)/SUBC, r:e.kind==='bld' && e.type!=='pozo' ? 7 : 4 })).concat(baseZones);
+    const okRock = (x,z) => x>0 && z>0 && x<LG-1 && z<LG-1 && libreL(x,z) && zones.every(q => hyp(x+0.5-q.x, z+0.5-q.z) > q.r);
+    for(let k=0; k<52; k++){
+      const cx=1+Math.floor(S.rng()*(LG-2)), cz=1+Math.floor(S.rng()*(LG-2)), sz=1+Math.floor(S.rng()*3);
+      for(let dz=0; dz<sz; dz++) for(let dx=0; dx<sz; dx++){
+        if(S.rng()<0.25) continue;
+        const x=cx+dx, z=cz+dz, mx=LG-1-x, mz=LG-1-z;
+        if(!okRock(x,z) || !okRock(mx,mz)) continue;
+        const s=0.7+S.rng()*0.6, r=S.rng()*6.28;
+        tapar(x, z, false, s, r);
+        if(mx!==x || mz!==z) tapar(mx, mz, false, s, r+1);
+      }
+    }
+    // Edificaciones abandonadas: casa en ruinas, gasolinera, tanque de agua caído y camión quemado con barricada
+    for(let k=0, puestas=0; k<40 && puestas<4; k++){
+      const t = puestas, w = t===1 ? 3 : 2, h = 2, x = 3 + Math.floor(S.rng()*(LG-8)), z = 3 + Math.floor(S.rng()*(LG-8)), mx = LG-x-w, mz = LG-z-h;
+      let ok = true; for(let dz=-1; dz<=h && ok; dz++) for(let dx=-1; dx<=w && ok; dx++) if(!okRock(x+dx, z+dz) || !okRock(mx+dx, mz+dz)) ok = false;
+      if(!ok || Math.abs(x-mx) < w+2 && Math.abs(z-mz) < h+2) continue;
+      ruina(x, z, w, h, t, 0); ruina(mx, mz, w, h, t, 2); puestas++;
+    }
+  }
+  finInicio(mission, aiPlayers, aiLevel);
+}
+function finInicio(mission, aiPlayers, aiLevel){
+  for(let p=0; p<S.players.length; p++){
+    const c = S.ents.find(e => e.kind==='bld' && e.owner===p && e.type==='centro');
+    const dx=WORLD/2-c.x, dz=WORLD/2-c.z, d=hyp(dx,dz);
+    const cells = goalCells(c.x+dx/d*9, c.z+dz/d*9, 8);
+    (mission ? ['recolector','recolector','constructor','infanteria','infanteria','infanteria','infanteria','tanque'] : ['constructor']).forEach((t,i) => addUnit(t,p,cells[i].x,cells[i].z));
+  }
+  if(mission) setupMission(mission);
+  else { const lv = AI_LEVELS[aiLevel] || AI_LEVELS.normal; for(const p of aiPlayers){ S.bonus[p] = lv.bonus; S.thinkMult[p] = lv.think; } }
+  S.power = S.players.map((_, p) => powerOf(p));
+  updateVision();
+}
+// Mapa grande de N jugadores: bases en anillo, recursos propios por base, pozos entre vecinos, oasis central
+// y rocas repetidas con la misma simetría rotacional (ninguna posición tiene ventaja).
+function mapaGrande(N, startType){
+  const C = LG/2, R = LG*0.39, [cr, sr] = ROT[N];
+  const giro = (vx, vz, k) => { for(let i=0; i<k; i++){ const nx = vx*cr - vz*sr; vz = vx*sr + vz*cr; vx = nx; } return [vx, vz]; };
+  const u0 = [-Math.SQRT1_2, Math.SQRT1_2];   // jugador 0 al suroeste, como en los mapas de 2
+  const bases = [], zonas = [];
+  const tapar = (x, z, agua) => { if(x<1 || z<1 || x>=LG-1 || z>=LG-1) return; const fx = L2F(x), fz = L2F(z);
+    for(let dz=0; dz<SUBC; dz++) for(let dx=0; dx<SUBC; dx++) if(S.blocked[idx(fx+dx, fz+dz)]) return;
+    for(let dz=0; dz<SUBC; dz++) for(let dx=0; dx<SUBC; dx++){ const k = idx(fx+dx, fz+dz); S.blocked[k] = 1; if(agua) S.water[k] = 1; else S.rockGrid[k] = 1; }
+    if(!agua) S.rocks.push({ cx:fx, cz:fz, s:0.7+S.rng()*0.6, r:S.rng()*6.28 }); };
+  // Bases y zonas reservadas
+  for(let p=0; p<N; p++){
+    const [ux, uz] = giro(u0[0], u0[1], p), bx = Math.round(C + ux*R), bz = Math.round(C + uz*R);
+    bases.push({ x:bx, z:bz, ux, uz }); zonas.push({ x:bx, z:bz, r:9 });
+    addBuilding(startType('centro', p), p, L2F(bx - 1), L2F(bz - 1));
+  }
+  S.baseZones = bases.map(b => [b.x-8, b.z-8, b.x+8, b.z+8]);
+  // Oasis central (agua) y depósitos grandes a su alrededor
+  const ro = Math.max(4, Math.round(LG*0.05));
+  for(let z=-ro; z<=ro; z++) for(let x=-ro; x<=ro; x++) if(x*x + z*z <= ro*ro) tapar(Math.round(C) + x, Math.round(C) + z, true);
+  for(let p=0; p<N; p++){ const b = bases[p], [vx, vz] = giro(b.ux, b.uz, 0), d = ro + 5; addDepot(L2F(Math.round(C + vx*d) - 1), L2F(Math.round(C + vz*d) - 1), 5000); zonas.push({ x:C + vx*d, z:C + vz*d, r:3 }); }
+  // Recursos de cada base: tres depósitos (dos a los lados y uno hacia el centro) y un pozo entre cada par de vecinos
+  for(let p=0; p<N; p++){
+    const b = bases[p], fx = -b.ux, fz = -b.uz, sx = -fz, sz = fx;
+    for(const [ox, oz, a] of [[sx*9 + fx*2, sz*9 + fz*2, 2500], [-sx*9 + fx*2, -sz*9 + fz*2, 2500], [fx*11, fz*11, 3500]]){
+      const x = Math.round(b.x + ox) - 1, z = Math.round(b.z + oz) - 1; addDepot(L2F(x), L2F(z), a); zonas.push({ x:x+1, z:z+1, r:3 }); }
+    const q = bases[(p+1) % N], mx = (b.x + q.x)/2, mz = (b.z + q.z)/2, k = 0.82, wx = Math.round(C + (mx - C)*k) - 1, wz = Math.round(C + (mz - C)*k) - 1;
+    addBuilding('pozo', -1, L2F(wx), L2F(wz)); zonas.push({ x:wx+1, z:wz+1, r:3 });
+  }
+  // Rocas: cada grupo se repite en las N direcciones
+  const libre = (x, z) => x>1 && z>1 && x<LG-2 && z<LG-2 && zonas.every(q => hyp(x+0.5-q.x, z+0.5-q.z) > q.r);
+  for(let k=0; k<Math.round(10*LG/64); k++){
+    const a = S.rng(), rad = LG*(0.12 + S.rng()*0.34), ang = S.rng(), sz = 1 + Math.floor(S.rng()*3);
+    // punto base en el sector del jugador 0 (interpolación entre su dirección y la del vecino, sin trigonometría)
+    const [vx1, vz1] = giro(u0[0], u0[1], 1), wx = u0[0]*(1-ang) + vx1*ang, wz = u0[1]*(1-ang) + vz1*ang, wl = Math.sqrt(wx*wx + wz*wz) || 1;
+    const px = wx/wl*rad, pz = wz/wl*rad;
+    for(let dz=0; dz<sz; dz++) for(let dx=0; dx<sz; dx++){ if(S.rng() < 0.25) continue;
+      for(let p=0; p<N; p++){ const [rx, rz] = giro(px + dx, pz + dz, p), x = Math.round(C + rx), z = Math.round(C + rz); if(libre(x, z)) tapar(x, z, false); } }
+    void a;
+  }
+  for(let k=0, puestas=0; k<60 && puestas<3; k++){
+    const t = puestas % 4, w = t===1 ? 3 : 2, h = 2, rad = LG*(0.16 + S.rng()*0.22), ang = S.rng();
+    const [vx1, vz1] = giro(u0[0], u0[1], 1), wx = u0[0]*(1-ang) + vx1*ang, wz = u0[1]*(1-ang) + vz1*ang, wl = Math.sqrt(wx*wx + wz*wz) || 1;
+    const pos = []; let ok = true;
+    for(let p=0; p<N && ok; p++){ const [rx, rz] = giro(wx/wl*rad, wz/wl*rad, p), x = Math.round(C + rx - w/2), z = Math.round(C + rz - h/2);
+      for(let dz=-1; dz<=h && ok; dz++) for(let dx=-1; dx<=w && ok; dx++){ const xx = x+dx, zz = z+dz; if(!libre(xx, zz) || xx<1 || zz<1 || xx>=LG-1 || zz>=LG-1) ok = false; else for(let a=0; a<SUBC && ok; a++) for(let b=0; b<SUBC && ok; b++) if(S.blocked[idx(L2F(xx)+a, L2F(zz)+b)]) ok = false; }
+      pos.push([x, z]); }
+    if(!ok) continue;
+    pos.forEach(([x, z], p) => { for(let dz=0; dz<h*SUBC; dz++) for(let dx=0; dx<w*SUBC; dx++) S.blocked[idx(L2F(x)+dx, L2F(z)+dz)] = 1; S.ruins.push({ cx:L2F(x), cz:L2F(z), w:w*SUBC, h:h*SUBC, t, r:p }); });
+    puestas++;
+  }
+}
+
+const ESC = [{"nombre":"Guerrilla contra Hierro","seed":20261004,"factions":["guerrilla","hierro"],"map":null,"esperado":3361477390,"ticks":4500},{"nombre":"Atlas contra Guerrilla","seed":7,"factions":["atlas","guerrilla"],"map":null,"esperado":3470593129,"ticks":4500},{"nombre":"Hierro contra Atlas, mapa del río","seed":11,"factions":["hierro","atlas"],"map":{"formato":"frente-arido-mapa","version":1,"nombre":"Río de prueba","grid":64,"terrain":"..............................................................ww.............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www..............................................................w.......................................................................................................................................................................................................................................................................................................................................................................................w..................................................r...........www.................................................r..........www..................................................r.........www...................................................r........www....................................................r.......www.....................................................r......www......................................................r.....www.......................................................r....www..............................................................w.......................................................................................................................................................................................................................................................................................................................................................................................w..............................................................www............................................................www....r.......................................................www.....r......................................................www......r.....................................................www.......r....................................................www........r...................................................www.........r..................................................www..........r.................................................www...........r..................................................w.......................................................................................................................................................................................................................................................................................................................................................................................w..............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www............................................................www.............................................................ww..............................................................","depots":[[20,38,4000],[42,24,4000],[10,30,3000],[52,32,3000]],"wells":[[26,20],[36,42]]},"esperado":2156990327,"ticks":4500},{"nombre":"Hierro contra Guerrilla, mapa Canal (flota)","seed":21,"factions":["hierro","guerrilla"],"map":{"formato":"frente-arido-mapa","version":1,"nombre":"Canal","grid":64,"terrain":"wwwww...........................................................wwwwww..........................................................wwwwwww.........................................................wwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww..............................r.........................wwwwwwwww............................rrr.........................wwwwwwwww............................r...........................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwww.........................................................wwwwww...........................................................wwww.............................................................ww............................................................................................rr..............................................................rrr.............................................................rr...........................................ww.............................................................wwww...........................................................wwwwww.........................................................wwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww.................r......................................wwwwwwwww...............rrr..............................r.......wwwwwwwww...............r.....r..............r.........rrr.......wwwwwwwww.........r.....r...rrr............rrr...r.....r.........wwwwwwwww.......rrr.........r..............r.....r...............wwwwwwwww.......r..............................rrr...............wwwwwwwww......................................r.................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwww.........................................................wwwwww...........................................................wwww.............................................................ww...........................................rr.............................................................rrr..............................................................rr............................................................................................ww.............................................................wwww...........................................................wwwwww.........................................................wwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww...........................r............................wwwwwwwww.........................rrr............................wwwwwwwww.........................r..............................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwwww........................................................wwwwwwww.........................................................wwwwwww..........................................................wwwwww...........................................................wwwww","depots":[[12,50,2500],[50,12,2500],[2,40,2500],[60,22,2500],[21,44,3500],[41,18,3500],[24,36,3000],[38,26,3000]],"wells":[[14,30],[48,32],[30,50],[32,12]]},"esperado":2141294275,"ticks":4500}];
+document.getElementById('ua').textContent = navigator.userAgent;
+const res = document.getElementById('res');
+res.innerHTML = ESC.map((e,i) => '<tr><td>'+e.nombre+'</td><td>'+e.esperado+'</td><td id="h'+i+'">–</td><td id="r'+i+'">pendiente</td></tr>').join('');
+document.getElementById('go').onclick = async () => {
+  document.getElementById('go').disabled = true; let ok = 0;
+  for(let i=0; i<ESC.length; i++){
+    const e = ESC[i]; newGame(e.seed, [0,1], e.factions, e.map);
+    while(S.tick < 4500 && !S.over){ for(let k=0; k<150 && S.tick < 4500 && !S.over; k++) simTick(); document.getElementById('r'+i).textContent = 'tick ' + S.tick; await new Promise(r => setTimeout(r, 0)); }
+    const h = stateHash(), good = h === e.esperado && S.tick === e.ticks; if(good) ok++;
+    document.getElementById('h'+i).textContent = h;
+    const r = document.getElementById('r'+i); r.textContent = good ? 'coincide' : 'NO coincide'; r.className = good ? 'ok' : 'bad';
+  }
+  const sum = document.getElementById('sum');
+  sum.textContent = ok === ESC.length ? 'Todas las huellas coinciden. Este navegador reproduce la simulación igual que V8.' : 'Hay diferencias. Este navegador no debe jugar en línea contra otros motores hasta revisar la simulación.';
+  sum.className = ok === ESC.length ? 'ok' : 'bad';
+};
+</script></body></html>

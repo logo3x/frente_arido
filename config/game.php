@@ -24,7 +24,58 @@ return [
     'validator_url' => env('GAME_VALIDATOR_URL', 'http://127.0.0.1:8080/validar-mision'),
     // true: si el validador no responde, no se registra la misión. false: se registra como no verificada.
     'validar_campania' => (bool) env('GAME_VALIDAR_CAMPANIA', true),
-    'sim_version' => env('GAME_SIM_VERSION', '0.8'),
+    'sim_version' => env('GAME_SIM_VERSION', '0.9.2'),
+
+    // Presentación de las facciones en el sitio (resumen de FACTIONS del cliente).
+    'facciones' => [
+        'atlas' => [
+            'nombre' => 'Coalición Atlas',
+            'lema' => 'Tecnología y aviación',
+            'rasgos' => ['Aeródromo y aviones de ataque', 'Tanques más resistentes y costosos', 'Poder exclusivo: ataque de precisión', 'Superarma: cañón de partículas'],
+        ],
+        'hierro' => [
+            'nombre' => 'Frente Hierro',
+            'lema' => 'Masa y blindaje',
+            'rasgos' => ['Tanque pesado y helicóptero de ataque', 'Horda: +25 % de daño con 4 aliados cerca', 'Poder exclusivo: bombardeo de artillería', 'Superarma: silo nuclear'],
+        ],
+        'guerrilla' => [
+            'nombre' => 'Red Guerrillera',
+            'lema' => 'Emboscada y movilidad',
+            'rasgos' => ['No necesita energía', 'Rebeldes camuflados y red de túneles', 'Poder exclusivo: sabotaje', 'Superarma: tormenta de cohetes'],
+        ],
+    ],
+
+    // Nombres de las campañas y misiones (CAMPAIGNS del cliente), para mostrarlos en el panel.
+    'campanias' => ['atlas' => 'Operación Horizonte', 'hierro' => 'Puño de Hierro', 'guerrilla' => 'Red de Sombras'],
+    'nombres_mision' => [
+        'atlas-1' => 'Cabeza de playa', 'atlas-2' => 'Cielo abierto', 'atlas-3' => 'Tormenta de acero', 'atlas-4' => 'Dominio del canal',
+        'hierro-1' => 'La leva', 'hierro-2' => 'Muro de acero', 'hierro-3' => 'Ocaso nuclear', 'hierro-4' => 'Bloqueo fluvial',
+        'guerrilla-1' => 'Arena y pozos', 'guerrilla-2' => 'Sabotaje', 'guerrilla-3' => 'La gran rebelión', 'guerrilla-4' => 'Piratas del canal',
+        'tutorial' => 'Entrenamiento básico',
+    ],
+
+    // Experiencia de carrera (se calcula en Laravel con datos del servidor; ver App\Services\Carrera).
+    'carrera' => [
+        'xp' => [
+            'online_victoria' => 300,   // partidas en línea con duración mínima (elo_min_ticks)
+            'online_derrota' => 100,
+            'estrella' => 120,          // por estrella de campaña (verificada si validar_campania = true)
+            'escaramuza_victoria' => 60, // registros del cliente de al menos escaramuza_min_s
+            'escaramuza_derrota' => 20,
+        ],
+        'escaramuza_min_s' => 180,
+        'niveles' => [
+            ['nombre' => 'Recluta', 'xp' => 0],
+            ['nombre' => 'Soldado', 'xp' => 500],
+            ['nombre' => 'Cabo', 'xp' => 1500],
+            ['nombre' => 'Sargento', 'xp' => 3000],
+            ['nombre' => 'Teniente', 'xp' => 5500],
+            ['nombre' => 'Capitán', 'xp' => 9000],
+            ['nombre' => 'Mayor', 'xp' => 14000],
+            ['nombre' => 'Coronel', 'xp' => 21000],
+            ['nombre' => 'General', 'xp' => 30000],
+        ],
+    ],
 
     // Misiones válidas por facción (deben coincidir con CAMPAIGNS del cliente).
     'misiones' => [

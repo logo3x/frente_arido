@@ -1,0 +1,210 @@
+{
+  "estilo": "Stylized concept art for an original real-time strategy video game, desert setting, warm sand and dusty sky palette, soft cinematic lighting, clean shapes, no text, no letters, no logos, no flags, no real-world insignia",
+  "imagenes": [
+    {
+      "nombre": "fondo-menu",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 11,
+      "prompt": "Wide panoramic view of a vast desert battlefield at dusk, distant military outposts, oil derricks and supply crates, dust clouds, armored vehicles in silhouette"
+    },
+    {
+      "nombre": "faccion-atlas",
+      "ancho": 1024,
+      "alto": 1024,
+      "semilla": 21,
+      "prompt": "High-tech coalition army base, sleek steel-blue buildings with glass panels and radar dishes, attack jets on an airfield, cool blue accents"
+    },
+    {
+      "nombre": "faccion-hierro",
+      "ancho": 1024,
+      "alto": 1024,
+      "semilla": 22,
+      "prompt": "Heavy industrial army fortress, dark rusted steel bunkers, smokestacks, rows of massive tanks, red-orange accents, imposing and brutal"
+    },
+    {
+      "nombre": "faccion-guerrilla",
+      "ancho": 1024,
+      "alto": 1024,
+      "semilla": 23,
+      "prompt": "Hidden guerrilla desert camp, sandbag walls, camouflage nets, tunnel entrances, light armed pickup trucks, olive green accents"
+    },
+    {
+      "nombre": "mision-tutorial",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 30,
+      "prompt": "Training ground in the desert with practice targets, a small command post and a few soldiers, calm morning light"
+    },
+    {
+      "nombre": "mision-atlas-1",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 31,
+      "prompt": "Blue coalition infantry advancing toward oil derricks in the desert, an enemy factory in the distance"
+    },
+    {
+      "nombre": "mision-atlas-2",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 32,
+      "prompt": "Desert oasis with palm trees and a small lake, coalition airfield being built nearby, hidden enemy camps in the dunes"
+    },
+    {
+      "nombre": "mision-atlas-3",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 33,
+      "prompt": "Narrow rocky canyon, coalition tanks and an elite soldier advancing toward a large missile silo at the far end"
+    },
+    {
+      "nombre": "mision-atlas-4",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 34,
+      "prompt": "Naval battle in a desert canal, sleek missile frigates against heavy river monitors, shipyards on the banks"
+    },
+    {
+      "nombre": "mision-hierro-1",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 41,
+      "prompt": "Large mass of infantry marching across the desert under red banners without symbols, enemy barracks on the horizon"
+    },
+    {
+      "nombre": "mision-hierro-2",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 42,
+      "prompt": "Fortified river crossing in the desert, defensive towers guarding shallow fords, waves of light vehicles approaching"
+    },
+    {
+      "nombre": "mision-hierro-3",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 43,
+      "prompt": "Massive missile silo opening at dusk inside an industrial fortress, power plants glowing in the background"
+    },
+    {
+      "nombre": "mision-hierro-4",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 44,
+      "prompt": "Heavy armored river boats blockading a desert canal, shore artillery and towers on both banks"
+    },
+    {
+      "nombre": "mision-guerrilla-1",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 51,
+      "prompt": "Rebels in desert clothing crouching near oil derricks at sunrise, camouflaged and ready for an ambush"
+    },
+    {
+      "nombre": "mision-guerrilla-2",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 52,
+      "prompt": "Saboteurs approaching a heavily defended airfield at night through a rocky canyon, guard towers with searchlights"
+    },
+    {
+      "nombre": "mision-guerrilla-3",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 53,
+      "prompt": "Popular uprising in a desert town, rebel fighters, technical pickup trucks and captured artillery moving forward"
+    },
+    {
+      "nombre": "mision-guerrilla-4",
+      "ancho": 1344,
+      "alto": 768,
+      "semilla": 54,
+      "prompt": "Fast small speedboats attacking supply ships in a desert canal, splashes and smoke, dramatic low angle"
+    }
+  ],
+  "audios": [
+    {
+      "nombre": "musica-menu",
+      "clase": "musica",
+      "faccion": "neutral",
+      "ambiente": "menu",
+      "duracion": 32
+    },
+    {
+      "nombre": "musica-atlas-campana",
+      "clase": "musica",
+      "faccion": "atlas",
+      "ambiente": "campana",
+      "duracion": 32
+    },
+    {
+      "nombre": "musica-atlas-combate",
+      "clase": "musica",
+      "faccion": "atlas",
+      "ambiente": "combate",
+      "duracion": 32
+    },
+    {
+      "nombre": "musica-hierro-campana",
+      "clase": "musica",
+      "faccion": "hierro",
+      "ambiente": "campana",
+      "duracion": 32
+    },
+    {
+      "nombre": "musica-hierro-combate",
+      "clase": "musica",
+      "faccion": "hierro",
+      "ambiente": "combate",
+      "duracion": 32
+    },
+    {
+      "nombre": "musica-guerrilla-campana",
+      "clase": "musica",
+      "faccion": "guerrilla",
+      "ambiente": "campana",
+      "duracion": 32
+    },
+    {
+      "nombre": "musica-guerrilla-combate",
+      "clase": "musica",
+      "faccion": "guerrilla",
+      "ambiente": "combate",
+      "duracion": 32
+    },
+    {
+      "nombre": "efecto-explosion",
+      "clase": "efecto",
+      "efecto": "explosion"
+    },
+    {
+      "nombre": "efecto-canon",
+      "clase": "efecto",
+      "efecto": "canon"
+    },
+    {
+      "nombre": "efecto-disparo",
+      "clase": "efecto",
+      "efecto": "disparo"
+    },
+    {
+      "nombre": "efecto-alerta",
+      "clase": "efecto",
+      "efecto": "alerta"
+    },
+    {
+      "nombre": "efecto-construccion",
+      "clase": "efecto",
+      "efecto": "construccion"
+    },
+    {
+      "nombre": "efecto-victoria",
+      "clase": "efecto",
+      "efecto": "victoria"
+    },
+    {
+      "nombre": "efecto-derrota",
+      "clase": "efecto",
+      "efecto": "derrota"
+    }
+  ]
+}

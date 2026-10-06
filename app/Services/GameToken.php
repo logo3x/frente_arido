@@ -17,6 +17,8 @@ class GameToken
     {
         $payload = self::b64(json_encode([
             'room' => $partida->codigo,
+            'plazas' => (int) ($partida->plazas ?: 2),
+            'modo' => $partida->modo === 'equipos' ? 'equipos' : 'todos',
             'uid' => (string) $user->id,
             'name' => mb_substr($user->name, 0, 24),
             'exp' => time() + (int) config('game.token_ttl'),

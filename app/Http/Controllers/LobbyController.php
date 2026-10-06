@@ -21,14 +21,14 @@ class LobbyController extends Controller
     {
         $user = $request->user();
 
-        $misPartidas = Partida::with(['anfitrion:id,name', 'rival:id,name'])
+        $misPartidas = Partida::with(['anfitrion:id,name', 'rival:id,name', 'jugadores:id,name'])
             ->whereIn('estado', [Partida::ESPERANDO, Partida::LISTA])
-            ->where(fn ($q) => $q->where('anfitrion_id', $user->id)->orWhere('rival_id', $user->id))
+            ->delUsuario($user)
             ->latest()->get();
 
-        $historial = Partida::with(['anfitrion:id,name', 'rival:id,name', 'ganador:id,name'])
+        $historial = Partida::with(['anfitrion:id,name', 'rival:id,name', 'ganador:id,name', 'jugadores:id,name'])
             ->where('estado', Partida::FINALIZADA)
-            ->where(fn ($q) => $q->where('anfitrion_id', $user->id)->orWhere('rival_id', $user->id))
+            ->delUsuario($user)
             ->latest('finalizada_at')->limit(10)->get();
 
         $ranking = User::query()
@@ -53,12 +53,17 @@ class LobbyController extends Controller
     {
         $partidas = Partida::abiertas()
             ->with('anfitrion:id,name')
+            ->withCount('jugadores')
+            ->whereNull('invitado_id')                       // los retos directos no aparecen en el listado público
             ->where('anfitrion_id', '!=', $request->user()->id)
             ->where('created_at', '>=', now()->subHours(2))
             ->latest()->limit(30)->get()
             ->map(fn (Partida $p) => [
                 'codigo' => $p->codigo,
                 'anfitrion' => $p->anfitrion->name,
+                'plazas' => (int) $p->plazas,
+                'ocupadas' => $p->plazas > 2 ? (int) $p->jugadores_count : 1,
+                'modo' => $p->modo,
                 'creada' => $p->created_at->diffForHumans(),
                 'unirse_url' => route('lobby.unirse', $p),
             ]);
@@ -68,10 +73,31 @@ class LobbyController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        // Reto directo: el invitado debe ser un amigo aceptado.
+        $datos = $request->validate([
+            'invitado' => ['nullable', 'integer'],
+            'plazas' => ['nullable', 'integer', 'in:'.implode(',', Partida::PLAZAS)],
+            'modo' => ['nullable', 'in:todos,equipos'],
+        ]);
+        $invitado = $datos['invitado'] ?? null;
+        $plazas = (int) ($datos['plazas'] ?? 2);
+        if ($invitado !== null && $plazas > 2) {
+            return back()->with('error', 'Los retos directos son de 2 jugadores.');
+        }
+        if ($invitado !== null && ! $request->user()->esAmigoDe((int) $invitado)) {
+            return back()->with('error', 'Solo puede retar a jugadores de su lista de amigos.');
+        }
+
         $partida = Partida::create([
             'codigo' => Partida::nuevoCodigo(),
+            'plazas' => $plazas,
+            'modo' => $plazas > 2 ? ($datos['modo'] ?? 'todos') : 'todos',
             'anfitrion_id' => $request->user()->id,
+            'invitado_id' => $invitado,
         ]);
+        if ($plazas > 2) {
+            $partida->jugadores()->attach($request->user()->id, ['plaza' => 0, 'equipo' => $partida->modo === 'equipos' ? 0 : null]);
+        }
         $this->avisarLobby();
 
         return redirect()->route('lobby.jugar', $partida);
@@ -87,7 +113,20 @@ class LobbyController extends Controller
             if ($p->participa($user)) {
                 return true;
             }
-            if ($p->estado !== Partida::ESPERANDO || $p->rival_id !== null) {
+            if ($p->esMultijugador()) {
+                // Sala de más de 2: se toma la siguiente plaza libre; la sala queda lista al completarse
+                $ocupadas = $p->jugadores()->count();
+                if ($p->estado !== Partida::ESPERANDO || $ocupadas >= $p->plazas) {
+                    return false;
+                }
+                $p->jugadores()->attach($user->id, ['plaza' => $ocupadas, 'equipo' => $p->modo === 'equipos' ? intdiv($ocupadas, intdiv($p->plazas, 2)) : null]);
+                if ($ocupadas + 1 >= $p->plazas) {
+                    $p->update(['estado' => Partida::LISTA]);
+                }
+
+                return true;
+            }
+            if ($p->estado !== Partida::ESPERANDO || $p->rival_id !== null || ! $p->puedeUnirse($user)) {
                 return false;
             }
             $p->update(['rival_id' => $user->id, 'estado' => Partida::LISTA]);
@@ -118,13 +157,25 @@ class LobbyController extends Controller
         return redirect()->to(config('game.client_url').'?'.$query);
     }
 
-    // Abre el cliente en modo campaña con un token de perfil de corta duración
+    // Abre el cliente en la pantalla de campaña (continuar o nueva) con un token de perfil de corta duración
     public function campania(Request $request): RedirectResponse
     {
+        return $this->abrirCliente($request, 'campania');
+    }
+
+    // Abre el cliente directamente en la configuración de escaramuza; los resultados se registran en la cuenta
+    public function escaramuza(Request $request): RedirectResponse
+    {
+        return $this->abrirCliente($request, 'escaramuza');
+    }
+
+    private function abrirCliente(Request $request, string $modo): RedirectResponse
+    {
         $query = http_build_query([
+            'modo' => $modo,
             'api' => url('/api'),
             'perfil' => PerfilToken::make($request->user()),
-            'return' => route('lobby.index'),
+            'return' => route('dashboard'),
         ]);
 
         return redirect()->to(config('game.client_url').'?'.$query);

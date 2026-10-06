@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estudio de recursos · Frente Árido</title>
+<style>
+:root{--bg:#1d2220;--panel:#232c2e;--line:#3f4c4c;--ink:#ece5d1;--muted:#a9a48f;--amber:#e8a33d;--ok:#79c25a;--bad:#e0553d;--info:#5fb4ff;
+      --font:"Bahnschrift","DIN Alternate","Roboto Condensed","Arial Narrow",system-ui,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font)}
+main{max-width:1280px;margin:0 auto;padding:16px}
+h1{margin:0;font-size:26px;font-weight:600} h2{margin:0 0 8px;font-size:16px;color:var(--amber);font-weight:600}
+.sub{color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:340px 1fr;gap:14px;margin-top:12px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:12px}
+section+section{margin-top:12px}
+label{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--muted);margin:6px 0}
+input,select,textarea{font:inherit;font-size:14px;color:var(--ink);background:#1a2122;border:1px solid #4b5a5a;border-radius:3px;padding:6px 8px}
+textarea{min-height:90px;resize:vertical}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.row label{flex:1;min-width:90px}
+button{font:inherit;font-size:14px;color:var(--ink);background:#2c3739;border:1px solid #4b5a5a;border-radius:3px;padding:7px 12px;cursor:pointer}
+button:hover:not(:disabled){background:#37464a} button:disabled{opacity:.45;cursor:default}
+button.primary{background:#5a3f16;border-color:var(--amber)}
+.estado{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;margin-top:6px}
+.estado b{color:var(--amber);font-variant-numeric:tabular-nums}
+.bar{height:8px;background:#121a1c;border-radius:2px;overflow:hidden;margin:8px 0}
+.bar i{display:block;height:100%;width:0;background:var(--amber);transition:width .3s}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px;border-top:1px solid #344041;vertical-align:middle}
+th{color:var(--muted);font-weight:500;border-top:none}
+td.prompt{max-width:360px;color:var(--muted)}
+.b{display:inline-block;padding:2px 7px;border-radius:2px;font-size:12px;background:#2c3739}
+.b.pendiente{color:var(--muted)} .b.encurso{background:#173a57;color:var(--info)} .b.listo{background:#24401f;color:var(--ok)}
+.b.externa{background:#2a2f4a;color:#a8b4ff} .b.omitido{color:#6b6b60}
+.b.error{background:#4a1f18;color:var(--bad)} .b.cancelado{color:var(--muted);text-decoration:line-through} .b.espera{background:#4a3a14;color:var(--amber)}
+img.th{width:96px;height:auto;border-radius:2px;display:block;cursor:zoom-in}
+audio{width:200px;height:30px}
+.cadena{display:flex;flex-direction:column;gap:4px;margin:6px 0}
+.cadena .it{display:flex;gap:6px;align-items:center;background:#1a2122;border:1px solid #3a4646;border-radius:3px;padding:5px 6px;font-size:13px}
+.cadena .it.off{opacity:.5} .cadena .it .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cadena .it button{padding:1px 6px;font-size:12px} .tag{font-size:11px;padding:1px 5px;border-radius:2px;background:#2c3739;color:var(--muted)}
+.tag.gratis{background:#24401f;color:var(--ok)} .tag.pago{background:#4a3a14;color:var(--amber)}
+#salud td{font-size:12px} .ok{color:var(--ok)} .mal{color:var(--bad)} .esp{color:var(--amber)}
+#log{font-family:ui-monospace,Consolas,monospace;font-size:12px;max-height:180px;overflow:auto;color:var(--muted);white-space:pre-wrap}
+.aviso{border-left:3px solid var(--amber);padding:6px 10px;margin:8px 0;font-size:13px;background:rgba(232,163,61,.08)}
+.aviso.mal{border-color:var(--bad);background:rgba(224,85,61,.08)}
+#zoom{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:9}
+#zoom[hidden]{display:none} #zoom img{max-width:94vw;max-height:94vh}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Estudio de recursos</h1>
+  <p class="sub">Genera imágenes con la API de NVIDIA y pistas de audio procedurales para Frente Árido, en cola y con control de tiempos.</p>
+  <div id="srv" class="aviso">Conectando con el servidor local…</div>
+
+  <div class="grid">
+    <div>
+      <section>
+        <h2>1. Indicaciones</h2>
+        <label>Archivo (.json, .md o .txt)<input type="file" id="archivo" accept=".json,.md,.txt,application/json,text/markdown,text/plain"></label>
+        <label>O pegue aquí (una indicación por línea, o «nombre: indicación»)<textarea id="pegar" placeholder="fondo-menu: Wide panoramic desert battlefield at dusk"></textarea></label>
+        <button id="btnPegar">Agregar a la cola</button>
+        <div id="selCat" hidden>
+          <div class="row">
+            <label>Sección<select id="seccion"><option value="">Todas</option></select></label>
+          </div>
+          <div class="row">
+            <label>Desde N.º<input type="number" id="desde" min="1" value="1"></label>
+            <label>Hasta N.º<input type="number" id="hasta" min="1" value="999"></label>
+          </div>
+          <div class="row"><button id="btnSel">Aplicar selección</button><button id="btnLista">Exportar lista de control</button></div>
+          <p class="sub" id="infoCat"></p>
+        </div>
+        <label style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="traducir" checked> Traducir al inglés antes de generar (mejor calidad)</label>
+        <label>Estilo común (solo para indicaciones sin estilo propio)<textarea id="estilo" style="min-height:60px">Stylized concept art for an original real-time strategy video game, desert setting, warm sand palette, soft cinematic lighting, no text, no logos, no flags</textarea></label>
+      </section>
+      <section>
+        <h2>2. Proveedores de imagen</h2>
+        <p class="sub">El estudio intenta en este orden. Si un proveedor falla, se satura o se queda sin crédito, salta al siguiente y lo deja en espera.</p>
+        <div class="cadena" id="cadena"></div>
+        <div class="row">
+          <label>Modo<select id="modo"><option value="prioridad">Prioridad (en orden)</option><option value="alternar">Alternar (repartir carga)</option></select></label>
+          <label>Presupuesto de pago (USD)<input type="number" id="presupuesto" value="1" min="0" step="0.5"></label>
+        </div>
+        <p class="sub" id="gasto">Gasto en modelos de pago: USD 0,0000</p>
+        <select id="modeloImg" hidden></select><p class="sub" id="infoImg" hidden></p>
+        <label>Audio<select id="modeloAud"></select></label>
+        <p class="sub" id="infoAud"></p>
+        <div class="row">
+          <label>Ancho<select id="ancho"><option>768</option><option>1024</option><option selected>1344</option></select></label>
+          <label>Alto<select id="alto"><option selected>768</option><option>1024</option><option>1344</option></select></label>
+        </div>
+        <p class="sub" id="notas"></p>
+      </section>
+      <section>
+        <h2>3. Control de la cola</h2>
+        <div class="row">
+          <label>Simultáneas<select id="conc"><option>1</option><option selected>2</option><option>3</option></select></label>
+          <label>Intervalo mínimo (s)<input type="number" id="intervalo" value="2" min="0" max="60" step="0.5"></label>
+        </div>
+        <div class="row">
+          <label>Tiempo máximo (s)<input type="number" id="timeout" value="200" min="20" max="600"></label>
+          <label>Reintentos<input type="number" id="reintentos" value="3" min="0" max="8"></label>
+        </div>
+        <label style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="guardar" checked> Guardar en el proyecto (public/juego/arte y audio)</label>
+      </section>
+    </div>
+
+    <div>
+      <section>
+        <div class="row">
+          <button id="btnIniciar" class="primary">Iniciar</button>
+          <button id="btnPausa" disabled>Pausar</button>
+          <button id="btnCancelar" disabled>Cancelar</button>
+          <button id="btnReintentar" disabled>Reintentar fallidos</button>
+          <button id="btnLimpiar">Vaciar cola</button>
+          <button id="btnDiag">Probar conexión</button>
+        </div>
+        <div class="bar"><i id="barra"></i></div>
+        <div class="estado">
+          <span>Listas <b id="eListo">0</b> / <b id="eTotal">0</b></span>
+          <span>Errores <b id="eError">0</b></span>
+          <span>En curso <b id="eCurso">0</b></span>
+          <span>Promedio <b id="eProm">–</b></span>
+          <span>Transcurrido <b id="eTrans">0:00</b></span>
+          <span>Restante estimado <b id="eEta">–</b></span>
+        </div>
+        <div id="esperaGlobal" class="aviso" hidden></div>
+      </section>
+      <section>
+        <h2>Estado de los proveedores</h2>
+        <table id="salud"><thead><tr><th>Proveedor y modelo</th><th>Estado</th><th>Correctas</th><th>Errores</th><th>Promedio</th><th>Último error</th></tr></thead><tbody></tbody></table>
+      </section>
+      <section>
+        <table><thead><tr><th>#</th><th>Nombre</th><th>Tipo y modelo</th><th>Indicación</th><th>Estado</th><th>Int.</th><th>Tiempo</th><th>Vista</th></tr></thead><tbody id="cola"></tbody></table>
+      </section>
+      <section>
+        <h2>Registro</h2>
+        <div id="log"></div>
+      </section>
+    </div>
+  </div>
+</main>
+<div id="zoom" hidden><img alt="Vista ampliada"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[<>&"]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c]));
+const reloj = s => s==null || !isFinite(s) ? '–' : `${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let MODELOS = { imagen:[], audio:[], notas:[] }, SERVIDOR = { clave:false };
+const COLA = [];             // { id, nombre, tipo:'imagen'|'audio', prompt, ancho, alto, semilla, modelo, params, estado, intentos, t0, t, url, error }
+const Q = { activo:false, pausa:false, cancelado:false, ultimoInicio:0, esperaHasta:0, inicio:0, enCurso:0 };
+let contador = 0;
+
+function log(msg, tipo){ const el = $('log'); const l = `${new Date().toLocaleTimeString()}  ${msg}\n`; el.textContent = l + el.textContent; if(tipo==='error') console.warn(msg); }
+
+// ---------- Servidor y modelos ----------
+async function estado(){
+  try {
+    const r = await fetch('/api/estado'); const j = await r.json(); MODELOS = j.modelos; SERVIDOR = j;
+    $('srv').className = 'aviso';
+    if(j.eleven) $('modeloAud').value = 'elevenlabs';
+    const nd = id => (j.directos && j.directos[id] ? j.directos[id].llaves.length : 0);
+    $('srv').textContent = `Servidor local activo · Cloudflare: ${(j.cloudflare && j.cloudflare.cuentas.length) || 0} · Pollinations: ${j.pollinations ? 'sí' : 'no'} · Gemini: ${nd('gemini')} · Grok: ${nd('xai')} · OpenAI: ${nd('openai')} · OpenRouter: ${j.openrouter ? 1 : 0} · NVIDIA: ${j.clave ? 1 : 0} · ElevenLabs: ${j.eleven ? 1 : 0} clave(s) · Salida: ${j.salida}`;
+    if(!(j.cloudflare && j.cloudflare.cuentas.length) && !j.pollinations && !nd('gemini') && !nd('xai') && !nd('openai') && !j.openrouter && !j.clave){ $('srv').className = 'aviso mal'; $('srv').textContent += ' · No hay claves: defínalas en la MISMA ventana de PowerShell antes de iniciar el servidor.'; }
+    construirCadena();
+
+    $('modeloAud').innerHTML = MODELOS.audio.map(m => `<option value="${m.id}">${esc(m.nombre)}</option>`).join('');
+    $('notas').textContent = MODELOS.notas.join(' ');
+    if(j.eleven) $('modeloAud').value = 'elevenlabs';
+    infoModelos();
+  } catch(e){ $('srv').className = 'aviso mal'; $('srv').textContent = 'No hay conexión con el servidor local. Ejecute: node herramientas/estudio/servidor.js y abra http://localhost:5173'; }
+}
+function infoModelos(){
+  const a = MODELOS.audio.find(x => x.id===$('modeloAud').value);
+  $('infoAud').textContent = a ? a.uso : '';
+}
+$('modeloImg').addEventListener('change', infoModelos); $('modeloAud').addEventListener('change', infoModelos);
+
+// ---------- Carga de indicaciones ----------
+function agregar(item){
+  const tipo = item.tipo==='audio' || item.audio || ['musica','efecto'].includes(item.clase) ? 'audio' : 'imagen';
+  COLA.push({ id:++contador, nombre: (item.nombre || `${tipo}-${contador}`).toString().slice(0,60), tipo, prompt: item.prompt || item.descripcion || '',
+              ancho: +item.ancho || +$('ancho').value, alto: +item.alto || +$('alto').value, semilla: Number.isInteger(item.semilla) ? item.semilla : contador*7,
+              modelo: item.modelo || null, params: item, estado:'pendiente', intentos:0, t:null, url:null, error:null });
+}
+// Catálogos del proyecto (prompts-imagenes.md y prompts-audio.md): «### N.º · Título», «Archivo: `ruta` · …» y un bloque de código
+function parsearCatalogo(txt){
+  let seccion = '', cur = null, enCodigo = false, cuenta = 0;
+  const cerrar = () => { if(cur && cur.ruta && cur.prompt){ agregarCatalogo(cur); cuenta++; } cur = null; };
+  for(const linea of txt.split(/\r?\n/)){
+    if(enCodigo){ if(/^```/.test(linea)){ enCodigo = false; if(cur) cur.cerrado = true; } else if(cur && !cur.cerrado) cur.prompt += (cur.prompt ? '\n' : '') + linea; continue; }
+    const sec = linea.match(/^##\s+(?!#)(.+)/); if(sec){ cerrar(); seccion = sec[1].trim(); continue; }
+    const h = linea.match(/^###\s+(\d+)\s*·\s*(.+)/); if(h){ cerrar(); cur = { num:+h[1], titulo:h[2].trim(), seccion, prompt:'', meta:'' }; continue; }
+    if(!cur) continue;
+    const a = linea.match(/^Archivo:\s*`([^`]+)`\s*(.*)$/); if(a){ cur.ruta = a[1].trim(); cur.meta = a[2]; continue; }
+    if(/^```/.test(linea) && cur.ruta && !cur.cerrado){ enCodigo = true; continue; }
+  }
+  cerrar();
+  return cuenta;
+}
+function agregarCatalogo(c){
+  const ext = c.ruta.split('.').pop().toLowerCase(), imagen = ['png','jpg','webp'].includes(ext);
+  const it = { id:++contador, num:c.num, nombre:`${String(c.num).padStart(3,'0')} · ${c.titulo}`, titulo:c.titulo, seccion:c.seccion, ruta:c.ruta, catalogo:true,
+               tipo: imagen ? 'imagen' : 'audio', prompt:c.prompt.trim(), params:{}, estado:'pendiente', intentos:0, t:null, url:null, error:null, modelo:null };
+  if(imagen){
+    const m = c.meta.match(/(\d+)\s*×\s*(\d+)/); it.ancho = m ? +m[1] : 1024; it.alto = m ? +m[2] : 1024;
+    it.quitarFondo = /transparente/i.test(c.meta) || /fondo transparente/i.test(c.prompt);
+    it.semilla = c.num * 97;
+  } else {
+    const mm = c.meta.match(/(\d+):(\d{2})/), d = c.meta.match(/([\d,\.]+)\s*s\b/);
+    it.duracion = mm ? (+mm[1])*60 + (+mm[2]) : d ? parseFloat(d[1].replace(',', '.')) : null;
+    it.bucle = /\bbucle\b/i.test(c.meta) && !/sin bucle/i.test(c.meta);
+    it.estereo = /est[eé]reo/i.test(c.meta);
+    if(/m[uú]sica|voces|voz/i.test(c.seccion)){ it.estado = 'externa'; it.error = /m[uú]sica/i.test(c.seccion) ? 'Generar en Suno o Udio (instrumental)' : 'Generar con ElevenLabs TTS'; }
+  }
+  COLA.push(it);
+}
+function actualizarSecciones(){
+  const secs = [...new Set(COLA.filter(i => i.catalogo).map(i => i.seccion))];
+  $('selCat').hidden = !secs.length;
+  $('seccion').innerHTML = '<option value="">Todas</option>' + secs.map(x => `<option>${esc(x)}</option>`).join('');
+  const im = COLA.filter(i => i.catalogo && i.tipo==='imagen').length, au = COLA.filter(i => i.catalogo && i.tipo==='audio').length, ex = COLA.filter(i => i.estado==='externa').length;
+  $('infoCat').textContent = `Catálogo: ${im} imágenes y ${au} audios (${ex} externos: música para Suno o Udio). Las voces (diseño de voz y líneas) se generan con ElevenLabs TTS y no entran a la cola. Use la selección para generar por partes y controlar el consumo de créditos.`;
+}
+function parsearTexto(txt, ext){
+  if(ext==='md' && /^###\s+\d+\s*·/m.test(txt) && /^Archivo:/m.test(txt)){ const n = parsearCatalogo(txt); log(`Catálogo reconocido: ${n} entradas`); actualizarSecciones(); return; }
+  if(ext==='json'){
+    const d = JSON.parse(txt);
+    if(d.estilo) $('estilo').value = d.estilo;
+    (d.imagenes || []).forEach(i => agregar(Object.assign({ tipo:'imagen' }, i)));
+    (d.audios || []).forEach(a => agregar(Object.assign({ tipo:'audio' }, a)));
+    if(Array.isArray(d)) d.forEach(agregar);
+    return;
+  }
+  if(ext==='md'){
+    // Formato: "## nombre" seguido de la indicación. Una línea "tipo: audio" convierte la entrada en pista de audio.
+    let cur = null;
+    for(const linea of txt.split(/\r?\n/)){
+      const h = linea.match(/^#{2,3}\s+(.+)/);
+      if(h){ if(cur) agregar(cur); cur = { nombre:h[1].trim(), prompt:'' }; continue; }
+      if(!cur) continue;
+      const kv = linea.match(/^\s*[-*]?\s*(tipo|clase|faccion|ambiente|duracion|tempo|efecto|ancho|alto|semilla|modelo)\s*:\s*(.+)$/i);
+      if(kv){ const k = kv[1].toLowerCase(), v = kv[2].trim(); cur[k] = /^\d+$/.test(v) ? +v : v; continue; }
+      if(linea.trim()) cur.prompt += (cur.prompt ? ' ' : '') + linea.trim();
+    }
+    if(cur) agregar(cur); return;
+  }
+  for(const l of txt.split(/\r?\n/)){ const t = l.trim(); if(!t) continue; const m = t.match(/^([\w\-áéíóúñ]+)\s*:\s*(.+)$/i); agregar(m ? { nombre:m[1], prompt:m[2] } : { prompt:t }); }
+}
+$('archivo').addEventListener('change', e => {
+  const f = e.target.files[0]; if(!f) return;
+  const ext = f.name.split('.').pop().toLowerCase();
+  f.text().then(t => { const antes = COLA.length; parsearTexto(t, ext); log(`Cargadas ${COLA.length-antes} entradas desde ${f.name}`); pintar(); })
+          .catch(err => log('No fue posible leer el archivo: ' + err.message, 'error'));
+  e.target.value = '';
+});
+$('btnSel').addEventListener('click', () => {
+  const sec = $('seccion').value, d = +$('desde').value || 1, h = +$('hasta').value || 9999; let n = 0;
+  COLA.forEach(i => { if(!i.catalogo || ['listo','externa','encurso','espera'].includes(i.estado)) return; const ok = (!sec || i.seccion===sec) && i.num>=d && i.num<=h; i.estado = ok ? 'pendiente' : 'omitido'; if(ok) n++; });
+  log(`Selección aplicada: ${n} pendientes`); pintar();
+});
+$('btnLista').addEventListener('click', () => {
+  const lineas = COLA.filter(i => i.catalogo).map(i => `- [${i.estado==='listo' ? 'x' : ' '}] ${i.nombre}${i.archivo ? ` → ${i.archivo}` : ''}`);
+  const blob = new Blob([`# Lista de control generada por el estudio\n\n${lineas.join('\n')}\n`], { type:'text/markdown' }), a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'lista-de-control.md'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+$('btnPegar').addEventListener('click', () => { const antes = COLA.length; parsearTexto($('pegar').value, 'txt'); $('pegar').value = ''; log(`Agregadas ${COLA.length-antes} entradas`); pintar(); });
+
+// ---------- Cadena de proveedores con salto automático ----------
+const CADENA_KEY = 'estudio-cadena-v1';
+let CADENA = [], RR = 0;
+const GASTO = { total:0 };
+const SALUD = {};                                       // por clave «proveedor/modelo»: ok, err, seguidos, tiempos, hasta, desactivado, ultimo
+const clave = c => c.proveedor + '/' + c.modelo + (c.llave !== undefined ? '#' + c.llave : '');
+const salud = c => SALUD[clave(c)] || (SALUD[clave(c)] = { ok:0, err:0, seguidos:0, tiempos:[], hasta:0, desactivado:false, ultimo:'' });
+async function construirCadena(){
+  const lista = [];
+  // Gratuitos primero: Cloudflare (una entrada por cuenta) y Pollinations (sin clave)
+  const cfs = SERVIDOR.cloudflare || { modelos:[], cuentas:[] };
+  cfs.modelos.forEach((m, mi) => cfs.cuentas.forEach((k, ki) => lista.push({ proveedor:'cloudflare', modelo:m, llave:ki, nombre:`Cloudflare · ${m.split('/').pop()} · cuenta ${ki+1} (${k})`, gratis:true, activo: mi===0 })));
+  if(SERVIDOR.pollinations){ const tk = SERVIDOR.pollToken, gap = tk ? 5500 : 15500, et = tk ? 'con token' : 'sin token, con marca de agua';
+    lista.push({ proveedor:'pollinations', modelo:'flux', nombre:`Pollinations · flux (${et})`, gratis:true, activo:true, gap });
+    lista.push({ proveedor:'pollinations', modelo:'turbo', nombre:`Pollinations · turbo (${et})`, gratis:true, activo:false, gap }); }
+  // Proveedores directos: una entrada por modelo y por clave (al agotarse una clave, sigue la siguiente)
+  for(const id of ['gemini','xai','openai']){
+    const d = (SERVIDOR.directos || {})[id]; if(!d) continue;
+    d.modelos.forEach((m, mi) => d.llaves.forEach((k, ki) => lista.push({ proveedor:id, modelo:m, llave:ki, nombre:`${d.nombre} · ${m} · clave ${ki+1} (${k})`, gratis:true, cuenta:true, activo: mi===0 })));
+  }
+  if(SERVIDOR.openrouter){
+    try {
+      const r = await fetch('/api/modelos-openrouter'); const j = await r.json();
+      (j.modelos || []).sort((a,b) => (b.gratis - a.gratis)).forEach(m => lista.push({ proveedor:'openrouter', modelo:m.id, nombre:`OpenRouter · ${m.nombre}`, gratis:m.gratis, activo:m.gratis }));
+      log(`OpenRouter: ${(j.modelos||[]).length} modelos de imagen (${(j.modelos||[]).filter(m => m.gratis).length} gratuitos)` + (j.error ? ' · ' + j.error : ''));
+    } catch(e){ log('No fue posible listar los modelos de OpenRouter', 'error'); }
+  }
+  // NVIDIA queda disponible para imágenes, pero desactivado por defecto (se usa para traducir)
+  if(SERVIDOR.clave) MODELOS.imagen.forEach(m => lista.push({ proveedor:'nvidia', modelo:m.id, nombre:`NVIDIA · ${m.nombre}`, gratis:true, activo:false }));
+  // conserva el orden y la activación que el usuario eligió antes
+  let guardada = []; try { guardada = JSON.parse(localStorage.getItem(CADENA_KEY)) || []; } catch(e){}
+  // los proveedores nuevos gratuitos van al principio; el resto conserva el orden guardado
+  const pos = k => { const i = guardada.findIndex(g => g.k===k); return i>=0 ? i : /^(cloudflare|pollinations)\//.test(k) ? -1 : 1e6; };
+  lista.forEach(c => { const g = guardada.find(x => x.k===clave(c)); if(g) c.activo = g.activo; });
+  CADENA = lista.sort((a,b) => pos(clave(a)) - pos(clave(b)));
+  pintarCadena();
+}
+function guardarCadena(){ try { localStorage.setItem(CADENA_KEY, JSON.stringify(CADENA.map(c => ({ k:clave(c), activo:c.activo })))); } catch(e){} }
+function pintarCadena(){
+  $('cadena').innerHTML = CADENA.length ? CADENA.map((c,i) => `<div class="it ${c.activo ? '' : 'off'}">
+      <input type="checkbox" data-act="${i}" ${c.activo ? 'checked' : ''} title="Usar este proveedor">
+      <span class="n" title="${esc(c.modelo)}">${i+1}. ${esc(c.nombre)}</span>
+      <span class="tag ${c.cuenta ? '' : c.gratis ? 'gratis' : 'pago'}">${c.cuenta ? 'su cuenta' : c.gratis ? 'sin costo' : 'pago'}</span>
+      <button data-sub="${i}" title="Subir">↑</button><button data-baj="${i}" title="Bajar">↓</button></div>`).join('')
+    : '<p class="sub">Sin proveedores: defina NVIDIA_API_KEY u OPENROUTER_API_KEY y reinicie el servidor.</p>';
+}
+$('cadena').addEventListener('click', e => {
+  const b = e.target.closest('[data-sub],[data-baj],[data-act]'); if(!b) return;
+  if(b.dataset.act!==undefined){ CADENA[+b.dataset.act].activo = b.checked; }
+  else { const i = +(b.dataset.sub ?? b.dataset.baj), j = b.dataset.sub!==undefined ? i-1 : i+1; if(j<0 || j>=CADENA.length) return; [CADENA[i], CADENA[j]] = [CADENA[j], CADENA[i]]; }
+  guardarCadena(); pintarCadena(); pintarSalud();
+});
+// Penaliza un proveedor según el tipo de error y devuelve el mensaje
+function penalizar(c, status, tipo, msg, retry){
+  const s = salud(c), ahora = Date.now(); s.err++; s.seguidos++; s.ultimo = `${tipo || 'error'}: ${String(msg || status).slice(0, 90)}`;
+  if(tipo==='clave' || tipo==='credito' || tipo==='modelo'){ s.desactivado = true; log(`${c.nombre}: desactivado (${s.ultimo})`, 'error'); }
+  else if(tipo==='limite'){ s.hasta = ahora + (Number(retry) > 0 ? Number(retry) : 30) * 1000; log(`${c.nombre}: límite de solicitudes; en espera hasta ${new Date(s.hasta).toLocaleTimeString()}`); }
+  else if(tipo==='temporal'){ s.hasta = ahora + Math.min(240, 45 * s.seguidos) * 1000; log(`${c.nombre}: ${s.ultimo}; en espera ${Math.round((s.hasta-ahora)/1000)} s`); }
+  return `${c.nombre} → ${s.ultimo}`;
+}
+function disponibles(){
+  const ahora = Date.now(), presupuesto = Number($('presupuesto').value) || 0;
+  // un modelo de pago solo se usa si su último costo conocido cabe en lo que queda del presupuesto
+  const ok = CADENA.filter(c => c.activo && !salud(c).desactivado && salud(c).hasta <= ahora && (!c.gap || ahora - (salud(c).uso || 0) >= c.gap) && (c.gratis || GASTO.total + (salud(c).costo || 0) <= presupuesto));
+  if($('modo').value==='alternar' && ok.length > 1){ const k = RR++ % ok.length; return ok.slice(k).concat(ok.slice(0, k)); }
+  return ok;
+}
+function msHastaDisponible(){
+  const ah = Date.now(), t = CADENA.filter(c => c.activo && !salud(c).desactivado).map(c => Math.max(salud(c).hasta - ah, c.gap ? (salud(c).uso || 0) + c.gap - ah : 0));
+  return t.length ? Math.max(3000, Math.min(...t)) : 0;
+}
+function pintarSalud(){
+  const ah = Date.now(), tb = $('salud').querySelector('tbody');
+  const filas = CADENA.filter(c => c.activo || SALUD[clave(c)]);
+  tb.innerHTML = filas.map(c => { const s = salud(c), prom = s.tiempos.length ? (s.tiempos.reduce((a,b) => a+b, 0)/s.tiempos.length).toFixed(1) + ' s' : '–';
+    const est = !c.activo ? '<span class="sub">no usado</span>' : s.desactivado ? '<span class="mal">desactivado</span>' : s.hasta > ah ? `<span class="esp">en espera ${Math.ceil((s.hasta-ah)/1000)} s</span>` : '<span class="ok">disponible</span>';
+    return `<tr><td>${esc(c.nombre)}</td><td>${est}${s.desactivado ? ` <button data-reac="${esc(clave(c))}" style="padding:1px 6px;font-size:12px">Reactivar</button>` : ''}</td><td>${s.ok}</td><td>${s.err}</td><td>${prom}</td><td class="sub">${esc(s.ultimo)}</td></tr>`; }).join('')
+    || '<tr><td colspan="6" class="sub">Active al menos un proveedor.</td></tr>';
+  $('gasto').textContent = `Gasto en modelos de pago: USD ${GASTO.total.toFixed(4).replace('.', ',')}${GASTO.total >= (Number($('presupuesto').value)||0) ? ' · presupuesto alcanzado: solo se usan modelos sin costo' : ''}`;
+}
+$('salud').addEventListener('click', e => { const b = e.target.closest('[data-reac]'); if(!b) return; const s = SALUD[b.dataset.reac]; if(s){ s.desactivado = false; s.hasta = 0; s.seguidos = 0; } pintarSalud(); });
+
+// ---------- Generación de imágenes (vía servidor local) ----------
+function aspecto(w, h){ const r = w/h, op = [['16:9',16/9],['4:3',4/3],['1:1',1],['3:4',3/4],['9:16',9/16]]; return op.reduce((a,b) => Math.abs(b[1]-r) < Math.abs(a[1]-r) ? b : a)[0]; }
+const TAM = [768,832,896,960,1024,1088,1152,1216,1280,1344];
+// Tamaño de generación permitido más cercano a la proporción del archivo final
+function tamGeneracion(w, h){
+  const r = w/h; let best = [1024,1024], err = 1e9;
+  for(const a of TAM) for(const b of TAM){ const e = Math.abs(a/b - r)*10 + Math.abs(a*b - 1024*1024)/1e7; if(e < err){ err = e; best = [a,b]; } }
+  return best;
+}
+async function prepararPrompt(it){
+  if(it.promptFinal) return it.promptFinal;
+  let p = it.prompt;
+  if(it.catalogo){
+    p = p.replace(/\s*Mantenga el estilo de la lámina de referencia adjunta\.?/gi, '');
+    if(it.quitarFondo) p = p.replace(/,?\s*(sobre|con|en)?\s*fondo transparente/gi, '');
+  } else p = [p, $('estilo').value.trim()].filter(Boolean).join('. ');
+  if($('traducir').checked && (SERVIDOR.clave || SERVIDOR.openrouter) && /[áéíóúñ¿¡]|\b(de|con|sin|el|la|los|las|para)\b/i.test(p)){
+    const r = await fetch('/api/traducir', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ texto:p }) });
+    const j = await r.json().catch(() => ({}));
+    if(r.ok && j.texto) p = j.texto; else log(`${it.nombre}: no se pudo traducir (${j.error || r.status}); se usa el texto original`);
+  }
+  // instrucciones de fondo en inglés: magenta para recortar después, o transparencia nativa (OpenAI)
+  it.promptTransp = it.quitarFondo ? `${p}. Transparent background, isolated subject, no shadow on the background.` : p;
+  it.promptFinal = it.quitarFondo ? `${p}. Isolated subject on a plain flat solid pure magenta (#ff00ff) background, no gradients, no shadow on the background.` : p;
+  return it.promptFinal;
+}
+// Recorte, escala, fondo transparente (magenta) y formato según la extensión del archivo final
+async function posprocesar(b64, it){
+  if(!it.catalogo) return { b64, mime: b64.startsWith('iVBOR') ? 'image/png' : 'image/jpeg' };
+  const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+  let src = document.createElement('canvas'); src.width = img.naturalWidth; src.height = img.naturalHeight;
+  let cx = src.getContext('2d'); cx.drawImage(img, 0, 0);
+  if(it.quitarFondo){
+    const d = cx.getImageData(0, 0, src.width, src.height), px = d.data;
+    for(let i=0; i<px.length; i+=4){
+      const r = px[i], g = px[i+1], b = px[i+2], k = (Math.min(r,b) - g) / 255;           // cuánto se parece al magenta
+      if(k > 0.12){ const a = Math.max(0, Math.min(1, 1 - (k - 0.25)/0.3)); px[i+3] = Math.round(px[i+3]*a);
+        const sp = Math.min(r,b) - g; px[i] = Math.max(0, r - sp*0.8); px[i+2] = Math.max(0, b - sp*0.8); }   // quita el reflejo magenta en los bordes
+    }
+    cx.putImageData(d, 0, 0);
+  }
+  // recorte tipo «cubrir» a la proporción final y reducción por pasos (mejor calidad en íconos pequeños)
+  const W = it.ancho, H = it.alto, r = W/H; let sw = src.width, sh = src.height;
+  if(sw/sh > r) sw = Math.round(sh*r); else sh = Math.round(sw/r);
+  let cur = document.createElement('canvas'); cur.width = sw; cur.height = sh;
+  cur.getContext('2d').drawImage(src, (src.width-sw)/2, (src.height-sh)/2, sw, sh, 0, 0, sw, sh);
+  while(cur.width/2 >= W){ const n = document.createElement('canvas'); n.width = Math.round(cur.width/2); n.height = Math.round(cur.height/2); const c = n.getContext('2d'); c.imageSmoothingQuality = 'high'; c.drawImage(cur, 0, 0, n.width, n.height); cur = n; }
+  const fin = document.createElement('canvas'); fin.width = W; fin.height = H; const fc = fin.getContext('2d'); fc.imageSmoothingQuality = 'high';
+  const ext = it.ruta.split('.').pop().toLowerCase();
+  if(ext==='jpg'){ fc.fillStyle = '#1d2220'; fc.fillRect(0, 0, W, H); }
+  fc.drawImage(cur, 0, 0, W, H);
+  const mime = ext==='webp' ? 'image/webp' : ext==='jpg' ? 'image/jpeg' : 'image/png';
+  const url = fin.toDataURL(mime, 0.9);
+  return { b64: url.split(',')[1], mime };
+}
+function cuerpoImagen(m, it){
+  if(!m) throw new Error('Modelo de NVIDIA no disponible');
+  const prompt = it.promptFinal;
+  const [gw, gh] = it.catalogo ? tamGeneracion(it.ancho, it.alto) : [it.ancho, it.alto];
+  if(m.formato==='flux') return { prompt, width:gw, height:gh, seed:it.semilla, steps:m.pasos };
+  if(m.formato==='flux-dev') return { prompt, width:gw, height:gh, seed:it.semilla, steps:m.pasos, cfg_scale:3.5, mode:'base' };
+  if(m.formato==='sd35') return { prompt, negative_prompt:'text, letters, watermark, logo, flag, blurry', aspect_ratio:aspecto(it.ancho, it.alto), seed:it.semilla, steps:m.pasos, cfg_scale:5 };
+  throw new Error('Formato de modelo desconocido');
+}
+async function generarImagen(it){
+  await prepararPrompt(it);
+  const candidatos = disponibles();
+  if(!candidatos.length){ const e = new Error('Ningún proveedor disponible en este momento'); e.reintentar = true; e.espera = msHastaDisponible() || 15000; throw e; }
+  let ultimo = '';
+  for(const c of candidatos){
+    const s = salud(c), t0 = performance.now(); s.uso = Date.now(); it.modeloNombre = c.nombre; pintar();
+    const nativa = it.quitarFondo && c.proveedor==='openai';      // OpenAI genera fondo transparente real
+    const cuerpo = c.proveedor==='nvidia' ? cuerpoImagen(MODELOS.imagen.find(m => m.id===c.modelo), it)
+                                          : { prompt: nativa ? it.promptTransp : it.promptFinal, ancho:it.ancho, alto:it.alto, semilla:it.semilla, transparente:nativa };
+    try {
+      const r = await fetch('/api/generar', { method:'POST', signal:AbortSignal.timeout((+$('timeout').value || 200)*1000), headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ proveedor:c.proveedor, modelo:c.modelo, llave:c.llave, cuerpo }) });
+      const j = await r.json().catch(() => ({}));
+      if(r.ok && j.b64){
+        s.ok++; s.seguidos = 0; s.tiempos.push((performance.now()-t0)/1000); if(s.tiempos.length > 20) s.tiempos.shift();
+        GASTO.total += Number(j.costo) || 0; it.costo = Number(j.costo) || 0; if(it.costo) s.costo = it.costo;
+        return j.b64.replace(/^data:[^;]+;base64,/, '');
+      }
+      ultimo = penalizar(c, r.status, j.tipo, j.error, r.headers.get('Retry-After'));
+    } catch(e){ ultimo = penalizar(c, 504, 'temporal', e.name==='TimeoutError' ? 'sin respuesta en el tiempo máximo' : e.message); }
+    pintarSalud();
+  }
+  const err = new Error('Fallaron todos los proveedores disponibles. ' + ultimo); err.reintentar = true; err.espera = msHastaDisponible() || 15000; throw err;
+}
+
+// ---------- Audio procedural (OfflineAudioContext → WAV) ----------
+const ESCALAS = { atlas:[0,2,4,7,9,12], hierro:[0,1,3,5,7,8,12], guerrilla:[0,3,5,7,10,12], neutral:[0,2,3,5,7,10,12] };
+const TIMBRE = { atlas:'sine', hierro:'sawtooth', guerrilla:'triangle', neutral:'triangle' };
+function rng(seed){ let a = seed>>>0 || 1; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a>>>15, 1|a); t = t + Math.imul(t ^ t>>>7, 61|t) ^ t; return ((t ^ t>>>14)>>>0)/4294967296; }; }
+function hashNombre(s){ let h = 2166136261; for(const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h>>>0; }
+function ruido(ctx){ const b = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), d = b.getChannelData(0); for(let i=0;i<d.length;i++) d[i] = Math.random()*2-1; return b; }
+function nota(ctx, dest, t, dur, freq, tipo, vol, att=0.01){
+  const o = ctx.createOscillator(), g = ctx.createGain(); o.type = tipo; o.frequency.value = freq;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t+att); g.gain.exponentialRampToValueAtTime(0.0008, t+dur);
+  o.connect(g); g.connect(dest); o.start(t); o.stop(t+dur+0.05);
+}
+function golpe(ctx, dest, nb, t, dur, filtro, f, vol){
+  const s = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), g = ctx.createGain(); s.buffer = nb; fl.type = filtro; fl.frequency.value = f;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t+dur); s.connect(fl); fl.connect(g); g.connect(dest); s.start(t, Math.random()*0.5); s.stop(t+dur+0.02);
+}
+async function musica(p){
+  const fac = ESCALAS[p.faccion] ? p.faccion : 'neutral', amb = p.ambiente || 'campana';
+  const tempo = +p.tempo || (amb==='combate' ? 128 : amb==='menu' ? 84 : 100), dur = Math.min(120, +p.duracion || 32);
+  const sr = 44100, ctx = new OfflineAudioContext(2, Math.ceil(sr*dur), sr), R = rng(hashNombre(p.nombre || 'pista'));
+  const master = ctx.createGain(); master.gain.value = 0.8; const comp = ctx.createDynamicsCompressor(); master.connect(comp); comp.connect(ctx.destination);
+  const nb = ruido(ctx), beat = 60/tempo, base = fac==='hierro' ? 55 : fac==='atlas' ? 65.4 : 58.3, esc = ESCALAS[fac];
+  const f = semi => base * Math.pow(2, semi/12);
+  const prog = [0, esc[3]||5, esc[4]||7, esc[2]||3];                 // progresión de 4 compases
+  const barras = Math.floor(dur / (beat*4));
+  for(let b=0; b<barras; b++){
+    const t0 = b*beat*4, raiz = prog[b%4];
+    // pad (acorde sostenido)
+    for(const iv of [0, esc[2]||4, esc[3]||7]) nota(ctx, master, t0, beat*4, f(raiz+iv+24), fac==='hierro' ? 'sawtooth' : 'triangle', amb==='menu' ? 0.05 : 0.035, beat);
+    // bajo
+    for(let k=0; k<4; k++) if(amb!=='menu' || k%2===0) nota(ctx, master, t0+k*beat, beat*0.9, f(raiz+12), fac==='atlas' ? 'sine' : 'sawtooth', 0.12, 0.005);
+    // percusión
+    if(amb!=='menu') for(let k=0; k<8; k++){
+      const t = t0 + k*beat/2;
+      if(k%4===0) nota(ctx, master, t, 0.25, 90, 'sine', 0.5, 0.002);                                     // bombo
+      if(k%4===2) golpe(ctx, master, nb, t, 0.18, fac==='guerrilla' ? 'bandpass' : 'highpass', fac==='guerrilla' ? 900 : 1800, 0.25);   // caja
+      golpe(ctx, master, nb, t, 0.04, 'highpass', 6000, amb==='combate' ? 0.08 : 0.05);                 // platillo
+    }
+    // melodía
+    const n = amb==='combate' ? 8 : 4;
+    for(let k=0; k<n; k++) if(R() < (amb==='menu' ? 0.45 : 0.7)) nota(ctx, master, t0 + k*beat*4/n, beat*4/n*0.9, f(raiz + esc[Math.floor(R()*esc.length)] + 36), TIMBRE[fac], 0.07);
+  }
+  return wav(await ctx.startRendering());
+}
+async function efecto(p){
+  const tipo = p.efecto || 'explosion', sr = 44100, dur = { explosion:2.2, disparo:0.35, canon:1.2, alerta:1.2, click:0.15, victoria:3, derrota:3, construccion:1 }[tipo] || 1.5;
+  const ctx = new OfflineAudioContext(2, Math.ceil(sr*dur), sr), out = ctx.createGain(); out.gain.value = 0.9; out.connect(ctx.destination); const nb = ruido(ctx);
+  if(tipo==='explosion'){ golpe(ctx, out, nb, 0, 2, 'lowpass', 600, 1); nota(ctx, out, 0, 1.5, 48, 'sine', 0.9, 0.003); }
+  else if(tipo==='disparo') golpe(ctx, out, nb, 0, 0.3, 'highpass', 1500, 0.8);
+  else if(tipo==='canon'){ golpe(ctx, out, nb, 0, 1, 'lowpass', 450, 1); nota(ctx, out, 0, 0.8, 70, 'sine', 0.8, 0.002); }
+  else if(tipo==='alerta'){ nota(ctx, out, 0, 0.3, 880, 'square', 0.25); nota(ctx, out, 0.4, 0.4, 660, 'square', 0.25); }
+  else if(tipo==='click') nota(ctx, out, 0, 0.08, 700, 'sine', 0.4, 0.002);
+  else if(tipo==='construccion'){ for(let k=0;k<4;k++) golpe(ctx, out, nb, k*0.22, 0.12, 'bandpass', 1200, 0.6); }
+  else if(tipo==='victoria') [523,659,784,1047].forEach((fr,i) => nota(ctx, out, i*0.35, 1.2, fr, 'triangle', 0.3));
+  else if(tipo==='derrota') [392,349,311,262].forEach((fr,i) => nota(ctx, out, i*0.45, 1.3, fr, 'triangle', 0.3));
+  return wav(await ctx.startRendering());
+}
+function wav(buf){
+  const ch = buf.numberOfChannels, n = buf.length, data = new DataView(new ArrayBuffer(44 + n*ch*2));
+  const w = (o, s) => { for(let i=0;i<s.length;i++) data.setUint8(o+i, s.charCodeAt(i)); };
+  w(0,'RIFF'); data.setUint32(4, 36 + n*ch*2, true); w(8,'WAVE'); w(12,'fmt '); data.setUint32(16,16,true); data.setUint16(20,1,true); data.setUint16(22,ch,true);
+  data.setUint32(24,buf.sampleRate,true); data.setUint32(28,buf.sampleRate*ch*2,true); data.setUint16(32,ch*2,true); data.setUint16(34,16,true); w(36,'data'); data.setUint32(40,n*ch*2,true);
+  const canales = [...Array(ch)].map((_,c) => buf.getChannelData(c)); let o = 44;
+  for(let i=0;i<n;i++) for(let c=0;c<ch;c++){ const s = Math.max(-1, Math.min(1, canales[c][i])); data.setInt16(o, s<0 ? s*0x8000 : s*0x7fff, true); o += 2; }
+  return new Uint8Array(data.buffer);
+}
+const aB64 = bytes => { let s = ''; for(let i=0;i<bytes.length;i+=0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i+0x8000)); return btoa(s); };
+function presetProcedural(it){
+  const t = (it.seccion + ' ' + it.titulo + ' ' + it.ruta).toLowerCase();
+  const fac = /atlas/.test(t) ? 'atlas' : /hierro/.test(t) ? 'hierro' : /guerr|rebel/.test(t) ? 'guerrilla' : 'neutral';
+  if(/m[uú]sica/.test(t)) return { clase:'musica', faccion:fac, ambiente:/combate/.test(t) ? 'combate' : /men[uú]/.test(t) ? 'menu' : 'campana', duracion:Math.min(60, it.duracion || 32) };
+  const ef = /explos|boom|big|superarma|hundim|caida/.test(t) ? 'explosion' : /canon|obus|torre|canonaval/.test(t) ? 'canon' : /rifle|ametr|minigun|aa\b|misil|cohete|heroe|antitanque/.test(t) ? 'disparo'
+          : /alerta|aviso|ataque/.test(t) ? 'alerta' : /construc|edific/.test(t) ? 'construccion' : /victoria|cumplid/.test(t) ? 'victoria' : /derrota|fallid/.test(t) ? 'derrota' : 'click';
+  return { clase:'efecto', efecto:ef };
+}
+async function generarAudio(it){
+  if(it.catalogo){
+    if(SERVIDOR.eleven && $('modeloAud').value==='elevenlabs'){
+      it.modeloNombre = 'ElevenLabs Sound Effects';
+      const r = await fetch('/api/efecto11', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ texto:it.prompt, duracion:it.duracion, bucle:it.bucle }) });
+      const j = await r.json().catch(() => ({}));
+      if(r.status===429){ const e = new Error('Límite de solicitudes de ElevenLabs (429)'); e.reintentar = true; e.espera = 20000; throw e; }
+      if(!r.ok) throw new Error('ElevenLabs: ' + (j.error || r.status));
+      it.rutaFinal = it.ruta.replace(/\.(ogg|wav)$/i, '.mp3'); it.mime = 'audio/mpeg'; return j.b64;
+    }
+    // sin ElevenLabs: sonido procedural provisional con el mismo nombre (WAV), para integrar ya y reemplazar después
+    it.params = Object.assign({ nombre:it.ruta }, presetProcedural(it)); it.modeloNombre = 'Procedural provisional';
+    it.rutaFinal = it.ruta.replace(/\.(ogg|mp3)$/i, '.wav');
+  }
+  const id = it.modelo || it.params.clase || $('modeloAud').value; it.modeloNombre = (MODELOS.audio.find(a => a.id===id) || {}).nombre || id;
+  const bytes = id==='efecto' || it.params.efecto ? await efecto(it.params) : await musica(Object.assign({ nombre:it.nombre }, it.params));
+  return aB64(bytes);
+}
+
+// ---------- Cola ----------
+async function procesar(it){
+  const max = +$('reintentos').value || 0;
+  it.estado = 'encurso'; it.t0 = performance.now(); it.error = null; Q.enCurso++; pintar();
+  while(true){
+    if(Q.cancelado){ it.estado = 'cancelado'; break; }
+    it.intentos++;
+    try {
+      let b64 = it.tipo==='imagen' ? await generarImagen(it) : await generarAudio(it), mime;
+      if(it.tipo==='imagen'){ const pp = await posprocesar(b64, it); b64 = pp.b64; mime = pp.mime; }
+      else mime = it.mime || 'audio/wav';
+      it.url = `data:${mime};base64,${b64}`;
+      if($('guardar').checked){
+        const destino = it.catalogo ? (it.rutaFinal || it.ruta) : null;
+        const r = await fetch('/api/guardar', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ nombre:it.nombre, tipo:it.tipo, b64, ruta:destino }) });
+        const j = await r.json(); if(!r.ok) throw new Error('No se pudo guardar: ' + j.error); it.archivo = j.archivo;
+      }
+      it.estado = 'listo'; it.t = (performance.now()-it.t0)/1000;
+      log(`${it.nombre}: lista en ${it.t.toFixed(1)} s${it.modeloNombre && it.tipo==='imagen' ? ' con ' + it.modeloNombre : ''}${it.costo ? ` (USD ${it.costo.toFixed(4)})` : ''}${it.archivo ? ' → ' + it.archivo : ''}`);
+      break;
+    } catch(e){
+      it.error = e.message;
+      if(e.reintentar && it.intentos <= max && !Q.cancelado){
+        const espera = e.espera || Math.min(60000, 4000 * Math.pow(2, it.intentos-1));
+        if(e.espera) Q.esperaHasta = Date.now() + espera;           // el límite de tasa frena toda la cola
+        it.estado = 'espera'; log(`${it.nombre}: ${e.message}. Reintento ${it.intentos}/${max} en ${Math.round(espera/1000)} s`); pintar();
+        await sleep(espera); it.estado = 'encurso'; pintar(); continue;
+      }
+      it.estado = 'error'; it.t = (performance.now()-it.t0)/1000; log(`${it.nombre}: ERROR · ${e.message}`, 'error'); break;
+    }
+  }
+  Q.enCurso--; pintar();
+}
+async function bucle(){
+  Q.activo = true; Q.cancelado = false; Q.inicio = Q.inicio || performance.now(); botones();
+  log(`Cola iniciada: ${COLA.filter(i => i.estado==='pendiente').length} pendientes, hasta ${$('conc').value} simultáneas`);
+  while(!Q.cancelado){
+    const pend = COLA.filter(i => i.estado==='pendiente');
+    if(!pend.length && Q.enCurso===0) break;
+    const ahora = Date.now(), intervalo = (+$('intervalo').value || 0) * 1000;
+    $('esperaGlobal').hidden = !(Q.esperaHasta > ahora);
+    if(Q.esperaHasta > ahora) $('esperaGlobal').textContent = `Límite de solicitudes de la API: la cola espera ${Math.ceil((Q.esperaHasta-ahora)/1000)} s antes de continuar.`;
+    if(!Q.pausa && pend.length && Q.enCurso < +$('conc').value && ahora - Q.ultimoInicio >= intervalo && ahora >= Q.esperaHasta){
+      const it = pend[0];
+      if(it.tipo==='imagen' && !CADENA.some(c => c.activo)){ it.estado = 'error'; it.error = 'No hay proveedores de imagen activos'; log(`${it.nombre}: no hay proveedores de imagen activos`, 'error'); pintar(); continue; }
+      Q.ultimoInicio = ahora; procesar(it);
+    }
+    resumen(); pintarSalud(); await sleep(200);
+  }
+  Q.activo = false; $('esperaGlobal').hidden = true; botones(); resumen();
+  log(Q.cancelado ? 'Cola cancelada' : 'Cola terminada');
+}
+function resumen(){
+  const tot = COLA.length, listos = COLA.filter(i => i.estado==='listo'), err = COLA.filter(i => i.estado==='error').length;
+  const prom = listos.length ? listos.reduce((a,i) => a+i.t, 0)/listos.length : null;
+  const pend = COLA.filter(i => ['pendiente','encurso','espera'].includes(i.estado)).length;
+  $('eListo').textContent = listos.length; $('eTotal').textContent = tot; $('eError').textContent = err; $('eCurso').textContent = Q.enCurso;
+  $('eProm').textContent = prom ? prom.toFixed(1) + ' s' : '–';
+  $('eTrans').textContent = Q.inicio ? reloj((performance.now()-Q.inicio)/1000) : '0:00';
+  $('eEta').textContent = prom && pend ? reloj(pend * Math.max(prom / (+$('conc').value), +$('intervalo').value || 0)) : '–';
+  $('barra').style.width = tot ? ((listos.length + err) / tot * 100) + '%' : '0';
+}
+function pintar(){
+  $('cola').innerHTML = COLA.map((it,i) => {
+    const vista = it.url ? (it.tipo==='imagen' ? `<img class="th" src="${it.url}" alt="${esc(it.nombre)}" data-zoom="${it.id}">` : `<audio controls src="${it.url}"></audio>`) : '';
+    const desc = it.catalogo ? `${it.ruta}${it.tipo==='imagen' ? ` · ${it.ancho}×${it.alto}${it.quitarFondo ? ' · transparente' : ''}` : (it.duracion ? ` · ${it.duracion} s${it.bucle ? ' · bucle' : ''}` : '')}` : it.tipo==='audio' ? [it.params.clase==='efecto' || it.params.efecto ? 'efecto ' + (it.params.efecto || '') : 'música', it.params.faccion, it.params.ambiente].filter(Boolean).join(' · ') : it.prompt;
+    const estadoTxt = { pendiente:'Pendiente', encurso:'En curso', listo:'Lista', error:'Error', cancelado:'Cancelada', espera:'En espera', externa:'Externa', omitido:'Omitida' }[it.estado];
+    return `<tr><td>${i+1}</td><td>${esc(it.nombre)}</td><td>${it.tipo==='imagen' ? 'Imagen' : 'Audio'}<br><span class="sub">${esc(it.modeloNombre || it.modelo || (it.tipo==='imagen' ? 'Cadena de proveedores' : $('modeloAud').selectedOptions[0]?.text || ''))}</span></td>
+      <td class="prompt">${esc(desc).slice(0,160)}</td><td><span class="b ${it.estado}" title="${esc(it.error || '')}">${estadoTxt}</span>${it.error && it.estado==='error' ? `<br><span class="sub">${esc(it.error).slice(0,90)}</span>` : ''}</td>
+      <td>${it.intentos}${it.estado==='externa' ? `<br><button data-copiar="${it.id}" style="padding:2px 6px;font-size:12px">Copiar prompt</button>` : ''}</td><td>${it.t!=null ? it.t.toFixed(1)+' s' : it.estado==='encurso' ? '…' : ''}</td><td>${vista}${it.url ? `<a class="sub" download="${esc(it.nombre)}.${it.tipo==='audio'?'wav':(it.url.includes('png')?'png':'jpg')}" href="${it.url}">Descargar</a>` : ''}</td></tr>`;
+  }).join('') || '<tr><td colspan="8" class="sub">La cola está vacía. Cargue un archivo o pegue indicaciones.</td></tr>';
+  resumen(); botones();
+}
+function botones(){
+  $('btnIniciar').disabled = Q.activo || !COLA.some(i => i.estado==='pendiente');
+  $('btnPausa').disabled = !Q.activo; $('btnPausa').textContent = Q.pausa ? 'Reanudar' : 'Pausar';
+  $('btnCancelar').disabled = !Q.activo;
+  $('btnReintentar').disabled = Q.activo || !COLA.some(i => i.estado==='error' || i.estado==='cancelado');
+  $('btnLimpiar').disabled = Q.activo;
+}
+$('btnIniciar').addEventListener('click', () => { Q.pausa = false; Q.inicio = 0; bucle(); });
+$('btnPausa').addEventListener('click', () => { Q.pausa = !Q.pausa; log(Q.pausa ? 'Cola en pausa (las solicitudes en curso terminan)' : 'Cola reanudada'); botones(); });
+$('btnCancelar').addEventListener('click', () => { Q.cancelado = true; COLA.forEach(i => { if(i.estado==='pendiente') i.estado = 'cancelado'; }); pintar(); });
+$('btnReintentar').addEventListener('click', () => { COLA.forEach(i => { if(i.estado==='error' || i.estado==='cancelado'){ i.estado = 'pendiente'; i.intentos = 0; i.error = null; } }); pintar(); });
+$('btnDiag').addEventListener('click', async () => {
+  $('btnDiag').disabled = true; log('Diagnóstico: verificando cada clave (sin generar imágenes ni consumir créditos)…');
+  try { const r = await fetch('/api/diagnostico', { method:'POST' }); const j = await r.json(); (j.resultados || []).forEach(x => log(`Diagnóstico ${x.proveedor}: ${x.ok ? 'correcto' : 'falló'} · ${x.detalle}`, x.ok ? '' : 'error')); }
+  catch(e){ log('Diagnóstico: sin conexión con el servidor local', 'error'); }
+  $('btnDiag').disabled = false;
+});
+$('btnLimpiar').addEventListener('click', () => { COLA.length = 0; Q.inicio = 0; pintar(); log('Cola vaciada'); });
+$('cola').addEventListener('click', e => { const cp = e.target.closest('[data-copiar]'); if(cp){ const it = COLA.find(i => i.id===+cp.dataset.copiar); navigator.clipboard.writeText(it.prompt).then(() => log(`Prompt copiado: ${it.nombre}`)); return; } const im = e.target.closest('[data-zoom]'); if(im){ $('zoom').querySelector('img').src = im.src; $('zoom').hidden = false; } });
+$('zoom').addEventListener('click', () => { $('zoom').hidden = true; });
+addEventListener('beforeunload', e => { if(Q.activo){ e.preventDefault(); e.returnValue = ''; } });
+estado(); pintar(); setInterval(pintarSalud, 1000);
+</script>
+</body>
+</html>

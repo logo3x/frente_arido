@@ -49,12 +49,18 @@
       <section>
         <h2>Salas abiertas</h2>
         <table>
-          <thead><tr><th>Sala</th><th>Anfitrión</th><th>Creada</th><th></th></tr></thead>
-          <tbody id="abiertas"><tr><td colspan="4" class="empty">Cargando…</td></tr></tbody>
+          <thead><tr><th>Sala</th><th>Anfitrión</th><th>Jugadores</th><th>Creada</th><th></th></tr></thead>
+          <tbody id="abiertas"><tr><td colspan="5" class="empty">Cargando…</td></tr></tbody>
         </table>
         <div style="margin-top:12px">
           <form method="POST" action="{{ route('lobby.store') }}">
             @csrf
+            <label>Jugadores
+              <select name="plazas">@foreach (\App\Models\Partida::PLAZAS as $n)<option value="{{ $n }}">{{ $n }}{{ $n > 2 ? ' (mapa continental)' : '' }}</option>@endforeach</select>
+            </label>
+            <label>Modo
+              <select name="modo"><option value="todos">Todos contra todos</option><option value="equipos">Dos equipos</option></select>
+            </label>
             <button class="primary">Crear sala</button>
           </form>
           <a class="btn" href="{{ route('lobby.campania') }}">Jugar campaña</a>
@@ -67,8 +73,8 @@
           @if ($loop->first)<table><thead><tr><th>Sala</th><th>Jugadores</th><th>Estado</th><th></th></tr></thead><tbody>@endif
             <tr>
               <td>{{ $p->codigo }}</td>
-              <td>{{ $p->anfitrion->name }} vs {{ $p->rival?->name ?? '—' }}</td>
-              <td>{{ $p->estado === 'esperando' ? 'Esperando rival' : 'Lista' }}</td>
+              <td>{{ $p->nombresJugadores() }}</td>
+              <td>{{ $p->estado === 'esperando' ? ($p->esMultijugador() ? 'Esperando jugadores' : 'Esperando rival') : 'Lista' }}</td>
               <td>
                 <a class="btn primary" href="{{ route('lobby.jugar', $p) }}">Entrar</a>
                 @if ($p->estado === 'esperando' && $p->anfitrion_id == auth()->id())
@@ -88,13 +94,15 @@
           @if ($loop->first)<table><thead><tr><th>Sala</th><th>Jugadores</th><th>Resultado</th><th></th></tr></thead><tbody>@endif
             <tr>
               <td>{{ $p->codigo }}</td>
-              <td>{{ $p->anfitrion->name }} vs {{ $p->rival?->name ?? '—' }}</td>
+              <td>{{ $p->nombresJugadores() }}</td>
               <td>
-                @if ($p->ganador_id === null) Sin ganador ({{ $p->motivo }})
-                @elseif ($p->ganador_id == auth()->id()) Victoria{{ $p->motivo === 'abandono' ? ' por abandono' : '' }}
+                @php $res = $p->resultadoPara(auth()->user()); @endphp
+                @if ($res === 'sin_resultado') Sin ganador ({{ $p->motivo }})
+                @elseif ($res === 'victoria') Victoria{{ $p->motivo === 'abandono' ? ' por abandono' : '' }}
                 @else Derrota{{ $p->motivo === 'abandono' ? ' por abandono' : '' }}
                 @endif
-                @if ($p->elo_cambio) <span class="empty">(±{{ $p->elo_cambio }} Elo)</span> @endif
+                @php $elo = $p->eloPara(auth()->user()); @endphp
+                @if ($elo) <span class="empty">({{ $elo > 0 ? '+' : '' }}{{ $elo }} Elo)</span> @endif
               </td>
               <td>@if ($p->repeticion)<a class="btn" href="{{ route('lobby.ver', $p) }}">Ver repetición</a>@endif</td>
             </tr>
@@ -112,7 +120,7 @@
       <table><thead><tr><th>Facción</th><th>Misiones</th><th>Estrellas</th></tr></thead><tbody>
         @foreach ($nombres as $clave => $nombre)
           @php $filas = $campania[$clave] ?? collect(); @endphp
-          <tr><td>{{ $nombre }}</td><td>{{ $filas->count() }} / 3</td><td>{{ $filas->sum('estrellas') }} / 9</td></tr>
+          <tr><td>{{ $nombre }}</td><td>{{ $filas->count() }} / {{ count(config("game.misiones.$clave")) }}</td><td>{{ $filas->sum('estrellas') }} / {{ 3 * count(config("game.misiones.$clave")) }}</td></tr>
         @endforeach
       </tbody></table>
       <h2 style="margin-top:12px">Partidas recientes</h2>
@@ -148,7 +156,7 @@
       if (!res.ok) throw new Error(res.status);
       const salas = await res.json();
       document.getElementById('abiertas').innerHTML = salas.length
-        ? salas.map(s => `<tr><td>${esc(s.codigo)}</td><td>${esc(s.anfitrion)}</td><td>${esc(s.creada)}</td>
+        ? salas.map(s => `<tr><td>${esc(s.codigo)}</td><td>${esc(s.anfitrion)}</td><td>${Number(s.ocupadas)}/${Number(s.plazas)}${s.modo === 'equipos' ? ' · equipos' : ''}</td><td>${esc(s.creada)}</td>
             <td><form method="POST" action="${esc(s.unirse_url)}"><input type="hidden" name="_token" value="${token}"><button class="primary">Unirse</button></form></td></tr>`).join('')
         : '<tr><td colspan="4" class="empty">No hay salas abiertas. Cree una y comparta el código.</td></tr>';
     } catch (e) {

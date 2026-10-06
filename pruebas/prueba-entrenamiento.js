@@ -1,0 +1,21 @@
+// Prueba del entrenamiento: se completa con órdenes como las de un jugador (mover, construir, producir, capturar, atacar)
+'use strict';
+const fs=require('fs'), vm=require('vm'), path=require('path');
+const js=fs.readFileSync(require('./rutas').JUEGO_JS,'utf8');
+const cut=(a,b)=>js.split(a)[1].split(b)[0];
+const sim=cut('// ======================= SIM-START =======================','// ======================= SIM-END =======================');
+const camp=cut('// ======================= CAMPAIGN-START =======================','// ======================= CAMPAIGN-END =======================');
+const c={}; vm.createContext(c); vm.runInContext(sim+camp+'\nglobalThis.api={S,newGame,simTick,missionDef,MISSIONS,queueCmd,findSpot,cellCenter,UT};',c); const a=c.api, S=a.S;
+const def=a.missionDef('tutorial','facil','guerrilla'); a.newGame(def.semilla,[],['guerrilla','hierro'],null,def);
+const cmd=o=>{ o.p=0; a.queueCmd(o); }; const mine=t=>S.ents.filter(e=>e.owner===0&&e.type===t&&!e.dead);
+const run=n=>{ for(let i=0;i<n&&!S.over;i++) a.simTick(); };
+run(15);
+cmd({t:'move', ids:mine('infanteria').map(u=>u.id), x:22*2+1, z:40*2+1}); run(15*25);
+const b=mine('constructor')[0], sp=a.findSpot(0,'torre',b.x+6,b.z-6); cmd({t:'place', ids:[b.id], type:'torre', cx:sp[0], cz:sp[1]}); run(15*20);
+const cu=mine('cuartel')[0]; for(let i=0;i<3;i++) cmd({t:'build', id:cu.id, type:'infanteria'}); run(15*20);
+const well=S.ents.filter(e=>e.type==='pozo').sort((p,q)=>Math.hypot(p.x-cu.x,p.z-cu.z)-Math.hypot(q.x-cu.x,q.z-cu.z))[0];
+cmd({t:'capture', ids:mine('infanteria').slice(0,2).map(u=>u.id), target:well.id}); run(15*40);
+const ec=S.ents.find(e=>e.owner===1&&e.type==='cuartel'); const army=S.ents.filter(e=>e.owner===0&&e.kind==='unit'&&a.UT(0,e.type).weapon).map(u=>u.id);
+cmd({t:'attack', ids:army, target:ec.id}); run(15*240);
+console.log(S.mission.result==='ok' ? 'CORRECTO: entrenamiento completado con órdenes guiadas ·' : 'FALLO: entrenamiento no completado ·', S.mission.state.join(','), 'resultado', S.mission.result, 'tiempo', (S.tick/15|0)+' s');
+process.exit(S.mission.result==='ok'?0:1);
