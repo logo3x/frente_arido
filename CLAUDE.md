@@ -6,7 +6,7 @@ Contexto del proyecto para Claude Code. Se carga automáticamente al abrir esta 
 
 - RTS para navegador: three.js r128 (cliente), Node.js con `ws` (servidor de partidas) y Laravel 11/12 (lobby, progreso, Elo).
 - Autor y responsable: Mg. Luis Guillermo Oviedo Ochoa, profesor de Ingeniería Informática (UNIPAZ), desarrollador Laravel.
-- Versión actual: **0.9.5** (`SIM_VERSION`). Grilla fina de 0,5 unidades (`SUBC = 4`); datos de diseño (mapas, misiones, bases) en celdas de 2 unidades convertidas con `L2F`. Próxima: 1.0 (ajustes del piloto con estudiantes).
+- Versión actual: **0.9.6** (`SIM_VERSION`). Grilla fina de 0,5 unidades (`SUBC = 4`); datos de diseño (mapas, misiones, bases) en celdas de 2 unidades convertidas con `L2F`. Próxima: 1.0 (ajustes del piloto con estudiantes).
 - Historial de versiones y decisiones: @docs/DECISIONES.md
 
 ## Convenciones obligatorias
@@ -31,7 +31,7 @@ Contexto del proyecto para Claude Code. Se carga automáticamente al abrir esta 
 | `app/`, `routes/`, `database/` | Lobby, `ProgresoController`, `ResultadoPartidaController`, `GameToken`, `PerfilToken` |
 | `pruebas/` | Pruebas automáticas (ver comandos) |
 | `arte/imagenes/` | Archivo de imágenes por lotes (activos y anteriores), originales y referencias. Ver su `LEEME.md` |
-| `despliegue/` | Docker, Nginx, systemd y lista de despliegue |
+| `despliegue/iis/` | Despliegue en IIS: guía, `publicar.ps1` e `instalar-servicio-juego.ps1` (el `web.config` está en `public/`) |
 
 ## Arquitectura de `juego.js`
 

@@ -1,0 +1,14 @@
+{
+  "name": "Frente Árido",
+  "short_name": "Frente Árido",
+  "description": "Estrategia en tiempo real en el navegador",
+  "lang": "es",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1d2220",
+  "theme_color": "#1d2220",
+  "icons": [
+    { "src": "/icono-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icono-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

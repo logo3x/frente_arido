@@ -13,8 +13,7 @@
 <meta name="theme-color" content="#1d2220">
 <link rel="stylesheet" href="{{ asset('css/sitio.css') }}">
 <link rel="preload" as="image" href="{{ asset('img/portada.webp') }}">
-<link rel="icon" type="image/png" href="{{ asset('img/icono-app.png') }}">
-<link rel="apple-touch-icon" href="{{ asset('img/icono-app.png') }}">
+<x-favicons />
 {{-- Vista previa al compartir el enlace --}}
 <meta property="og:type" content="website">
 <meta property="og:title" content="Frente Árido · Estrategia en tiempo real">

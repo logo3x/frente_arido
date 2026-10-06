@@ -8,8 +8,7 @@
 <title>{{ $titulo ? $titulo.' · ' : '' }}Frente Árido</title>
 <meta name="theme-color" content="#1d2220">
 <link rel="stylesheet" href="{{ asset('css/sitio.css') }}">
-<link rel="icon" type="image/png" href="{{ asset('img/icono-app.png') }}">
-<link rel="apple-touch-icon" href="{{ asset('img/icono-app.png') }}">
+<x-favicons />
 {{ $cabeza }}
 </head>
 <body class="app">

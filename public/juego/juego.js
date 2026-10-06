@@ -10,7 +10,7 @@ const LC = 2, SUBC = 4, CELL = LC / SUBC;
 let LG = 64, GRID = LG * SUBC, WORLD = LG * LC, NCELLS = GRID * GRID;
 const L2F = v => v * SUBC;   // celda de diseño → celda fina
 const AIR_Y = 6;
-const SIM_VERSION = '0.9.5';
+const SIM_VERSION = '0.9.6';
 let LOCAL = 0;   // jugador de este cliente (0 o 1)
 const hyp = (x,y) => Math.sqrt(x*x + y*y);   // sqrt es exacta en IEEE 754; Math.hypot puede variar entre navegadores
 let hooks = { income(){}, upgraded(){}, spawn(){}, death(){}, remove(){}, shot(){}, built(){}, power(){}, impact(){}, captured(){}, rankUp(){}, crate(){}, tunnel(){}, superFire(){}, heroDown(){}, mission(){} };
@@ -55,6 +55,10 @@ const BUILD_TYPES = {
   pozo:     { nombre:'Pozo petrolero', hp:600, size:2, produce:[], power:0, cost:0, time:0, buildable:false, sight:5, income:20 },
   astillero:{ nombre:'Astillero', hp:1400, size:3, produce:['lancha','fragata'], power:-3, cost:900, time:18, buildable:true, sight:9, naval:true },
   tunel:    { nombre:'Red de túneles', hp:900, size:1, produce:[], power:0, cost:600, time:10, buildable:true, sight:9, weapon:'rifle', range:8, dmg:10, cd:0.8, tunnel:true },
+  // Refugios neutrales (edificaciones abandonadas): la infantería de cualquier bando entra y los ocupa para su jugador;
+  // vacíos vuelven a ser neutrales. No se construyen ni cuentan para la victoria.
+  refugioCasa:{ nombre:'Casa abandonada', hp:1400, size:2, produce:[], power:0, cost:0, time:1, sight:9, garrison:4, range:8, cd:0.8, resist:0.7, refugio:true },
+  refugioGas: { nombre:'Gasolinera abandonada', hp:1800, size:3, fw:6, fh:4, produce:[], power:0, cost:0, time:1, sight:9, garrison:6, range:8, cd:0.8, resist:0.8, refugio:true },
   superarma:{ nombre:'Superarma', hp:2600, size:3, produce:[], power:-8, cost:4000, time:45, buildable:true, sight:10, superCd:300, minRank:3, superR:11, superDmg:1800, superKind:'particulas' }
 };
 const FACTIONS = {
@@ -95,12 +99,26 @@ const MEJORAS = Object.assign(Object.create(null), {
   instruccion:  { nombre:'Instrucción avanzada', edificio:'cuartel', cost:700, time:22, rango:2, fx:{ hpArmor:{ inf:0.2 } }, desc:'+20 % de vida para la infantería' },
   montaje:      { nombre:'Línea de montaje', edificio:'fabrica', cost:900, time:25, rango:2, inv:true, fx:{ prod:0.2 }, desc:'+20 % de velocidad de producción' },
   fortificacion:{ nombre:'Fortificación', edificio:'centro', cost:800, time:25, rango:2, inv:true, fx:{ bhp:0.25 }, desc:'+25 % de vida para los edificios' },
-  blindaje:     { nombre:'Blindaje compuesto', edificio:'investigacion', cost:1200, time:30, rango:2, fx:{ hpArmor:{ veh:0.15 } }, desc:'+15 % de vida para los vehículos' },
-  optica:       { nombre:'Óptica avanzada', edificio:'investigacion', cost:1000, time:25, rango:2, fx:{ sight:2, range:1 }, desc:'+1 de alcance y +2 de visión' },
-  municion:     { nombre:'Munición perforante', edificio:'investigacion', cost:1200, time:30, rango:3, fx:{ dmg:{ inf:0.1, veh:0.1, air:0.1, nav:0.1, bld:0.1 } }, desc:'+10 % de daño' },
+  // Centro de investigación: cuatro tecnologías propias por facción, acordes a su estilo de juego
+  // Coalición Atlas: tecnología, aviación y defensa enlazada
   enlace:       { nombre:'Enlace de datos ampliado', edificio:'investigacion', faccion:'atlas', cost:1100, time:28, rango:3, fx:{ link:4 }, desc:'Baterías enlazadas a mayor distancia' },
+  misilesGuiados:{ nombre:'Misiles guiados', edificio:'investigacion', faccion:'atlas', cost:1200, time:30, rango:2, fx:{ udmg:{ avion:0.25, antiaereo:0.25 }, bdmg:{ bateria:0.15 } }, desc:'+25 % de daño de aviones y antiaéreos; +15 % de las baterías' },
+  aleacion:     { nombre:'Aleación ligera', edificio:'investigacion', faccion:'atlas', cost:1000, time:26, rango:2, fx:{ uhp:{ avion:0.25, recolector:0.2 }, uspeed:{ avion:0.15 } }, desc:'Aviones con +25 % de vida y +15 % de velocidad' },
+  sensores:     { nombre:'Sensores de largo alcance', edificio:'investigacion', faccion:'atlas', cost:1000, time:25, rango:2, fx:{ sight:2, range:1 }, desc:'+2 de visión y +1 de alcance para las unidades armadas' },
+  // Frente Hierro: masa, blindaje y potencia de fuego
   doblecanon:   { nombre:'Minigun de doble cañón', edificio:'investigacion', faccion:'hierro', cost:1100, time:28, rango:3, fx:{ bdmg:{ minigun:0.4 } }, desc:'+40 % de daño de las miniguns' },
-  camuflaje:    { nombre:'Camuflaje de trincheras', edificio:'investigacion', faccion:'guerrilla', cost:900, time:25, rango:3, fx:{ resist:{ trinchera:-0.2 } }, desc:'Trincheras más resistentes' }
+  blindaje:     { nombre:'Blindaje compuesto', edificio:'investigacion', faccion:'hierro', cost:1200, time:30, rango:2, fx:{ hpArmor:{ veh:0.2 } }, desc:'+20 % de vida para los vehículos' },
+  perforantes:  { nombre:'Proyectiles perforantes', edificio:'investigacion', faccion:'hierro', cost:1200, time:30, rango:2, fx:{ udmg:{ tanque:0.2, pesado:0.2 }, bdmg:{ torre:0.2 } }, desc:'+20 % de daño de tanques y torres' },
+  diesel:       { nombre:'Motores diésel reforzados', edificio:'investigacion', faccion:'hierro', cost:900, time:24, rango:2, fx:{ uspeed:{ tanque:0.15, pesado:0.2, recolector:0.15 } }, desc:'Tanques y camiones mineros más rápidos' },
+  // Red Guerrillera: emboscada, movilidad y armas improvisadas
+  camuflaje:    { nombre:'Camuflaje de trincheras', edificio:'investigacion', faccion:'guerrilla', cost:900, time:25, rango:3, fx:{ resist:{ trinchera:-0.2 } }, desc:'Trincheras más resistentes' },
+  emboscada:    { nombre:'Tácticas de emboscada', edificio:'investigacion', faccion:'guerrilla', cost:1000, time:26, rango:2, fx:{ udmg:{ infanteria:0.2, antitanque:0.15 } }, desc:'+20 % de daño de los rebeldes y +15 % de los antitanques' },
+  trucados:     { nombre:'Motores trucados', edificio:'investigacion', faccion:'guerrilla', cost:800, time:22, rango:2, fx:{ uspeed:{ tecnico:0.25, artilleria:0.2, lancha:0.15 } }, desc:'Técnicos, artillería y lanchas más rápidos' },
+  cohetes:      { nombre:'Cohetes mejorados', edificio:'investigacion', faccion:'guerrilla', cost:1100, time:28, rango:2, fx:{ udmg:{ artilleria:0.25 }, urange:{ artilleria:1 } }, desc:'Artillería con +25 % de daño y +1 de alcance' },
+  // Unidad especial (héroe): una mejora por facción en el cuartel
+  exoesqueleto: { nombre:'Exoesqueleto de combate', edificio:'cuartel', faccion:'atlas', cost:1200, time:30, rango:4, fx:{ uhp:{ heroe:0.3 }, udmg:{ heroe:0.2 } }, desc:'Comando Atlas con +30 % de vida y +20 % de daño' },
+  estandarte:   { nombre:'Estandarte del mariscal', edificio:'cuartel', faccion:'hierro', cost:1200, time:30, rango:4, fx:{ uhp:{ heroe:0.3 }, udmg:{ heroe:0.2 } }, desc:'Mariscal con +30 % de vida y +20 % de daño' },
+  veterania:    { nombre:'Jefe veterano', edificio:'cuartel', faccion:'guerrilla', cost:1200, time:30, rango:4, fx:{ uhp:{ heroe:0.3 }, udmg:{ heroe:0.2 } }, desc:'Jefe rebelde con +30 % de vida y +20 % de daño' }
 });
 const hasBuilt = (p, type) => S.ents.some(e => !e.dead && e.kind==='bld' && e.owner===p && e.type===type && e.built);
 // ¿Puede el jugador p comprar la mejora 'key' en el edificio b? (sin efectos: también lo consulta la interfaz)
@@ -123,6 +141,12 @@ function applyUpFx(p, fx){
   if(fx.link && tab.b.bateria) tab.b.bateria.linkR += fx.link;
   if(fx.bdmg) for(const k in fx.bdmg) if(tab.b[k]) tab.b[k].dmg = tab.b[k].dmg*(1+fx.bdmg[k]);
   if(fx.resist) for(const k in fx.resist) if(tab.b[k]) tab.b[k].resist += fx.resist[k];
+  // Por tipo de unidad: daño, vida (también las que ya están en el campo), velocidad y alcance
+  if(fx.udmg) for(const k in fx.udmg) if(tab.u[k] && tab.u[k].dmg) tab.u[k].dmg = tab.u[k].dmg*(1+fx.udmg[k]);
+  if(fx.uhp) for(const k in fx.uhp) if(tab.u[k]){ const inc = fx.uhp[k]; tab.u[k].hp = Math.round(tab.u[k].hp*(1+inc));
+    for(const e of S.ents) if(e.kind==='unit' && e.owner===p && e.type===k && !e.dead){ const nm = Math.round(e.maxhp*(1+inc)); e.hp = e.hp*nm/e.maxhp; e.maxhp = nm; } }
+  if(fx.uspeed) for(const k in fx.uspeed) if(tab.u[k]) tab.u[k].speed = tab.u[k].speed*(1+fx.uspeed[k]);
+  if(fx.urange) for(const k in fx.urange) if(tab.u[k] && tab.u[k].weapon) tab.u[k].range += fx.urange[k];
 }
 const POWERS = {
   radar:     { nombre:'Barrido de radar', cd:60, r:14, desc:'Revela una zona durante 12 s' },
@@ -234,13 +258,17 @@ function markArea(cx,cz,w,h,v){ for(let z=cz; z<cz+h; z++) for(let x=cx; x<cx+w;
 // Huella de un edificio en celdas finas: fw × fh (en unidades del mundo) si la define; si no, su tamaño de diseño × SUBC (cuadrada)
 const footW = t => t.fw ? Math.round(t.fw/CELL) : t.size*SUBC, footH = t => t.fh ? Math.round(t.fh/CELL) : t.size*SUBC;
 
-function addBuilding(type, owner, cx, cz, built=true){
+function addBuilding(type, owner, cx, cz, built=true, extra){
   const t = BT(owner,type), w = footW(t), h = footH(t), n = Math.max(w, h);
   const e = { id:S.nextId++, kind:'bld', type, owner, cx, cz, n, w, h, x:(cx+w/2)*CELL, z:(cz+h/2)*CELL,
               hp:built ? t.hp : Math.max(1, Math.round(t.hp*0.1)), maxhp:t.hp, built, bprog:built?1:0,
               queue:[], prog:0, rally:null, radius:n*CELL/2, cd:0, target:null, seen:0 };
+  if(extra) Object.assign(e, extra);   // datos propios (por ejemplo, el modelo y la orientación de un refugio) antes de crear el modelo
   e.px = e.x; e.pz = e.z; markArea(cx,cz,w,h,1); register(e); return e;
 }
+// Refugio neutral en la celda de diseño (x, z): t = 0 casa, 1 gasolinera; r = orientación en cuartos de vuelta
+function refugio(x, z, t, r){ return addBuilding(t===0 ? 'refugioCasa' : 'refugioGas', -1, L2F(x), L2F(z), true, { ruinT:t, rot:r }); }
+const esRefugio = e => !!(e && e.kind==='bld' && BUILD_TYPES[e.type] && BUILD_TYPES[e.type].refugio);
 function addDepot(cx, cz, amount){
   const n = 2*SUBC;
   const e = { id:S.nextId++, kind:'depot', type:'deposito', owner:-1, cx, cz, n, w:n, h:n, x:(cx+n/2)*CELL, z:(cz+n/2)*CELL,
@@ -529,6 +557,7 @@ function addXp(p, v){
 // Destrucción: los pozos no se destruyen, vuelven a ser neutrales
 function onDestroyed(tg, by){
   if(tg.type==='pozo'){ tg.owner=-1; tg.hp=tg.maxhp; tg.target=null; hooks.captured(tg); return false; }
+  if(esRefugio(tg)){ tg.hp = tg.maxhp; if(tg.gar && tg.gar.length) ejectGarrison(tg); else if(tg.owner>=0){ const was = tg.owner; tg.owner = -1; tg.target = null; hooks.captured(tg, was); } if(by>=0) S.players[by].kills++; return false; }
   kill(tg);
   if(tg.kind==='unit' && UT(tg.owner,tg.type).hero) hooks.heroDown(tg);
   if(tg.kind==='unit' && !tg.air && UT(tg.owner,tg.type).armor==='veh' && S.players.some(pl => FACTIONS[pl.faction].salvage)) addCrate(tg.x, tg.z);
@@ -582,7 +611,7 @@ function splash(u, tg, t, mult){
   }
 }
 function capturable(u, b){
-  if(!b || b.dead || b.kind!=='bld' || b.owner===u.owner || (b.owner>=0 && !isEnemy(u.owner, b.owner))) return false;   // no se capturan edificios aliados
+  if(!b || b.dead || b.kind!=='bld' || b.owner===u.owner || esRefugio(b) || (b.owner>=0 && !isEnemy(u.owner, b.owner))) return false;   // no se capturan edificios aliados ni refugios
   const ut = UT(u.owner,u.type);
   if(b.type==='pozo') return !!(ut.capture || ut.engineer);
   return !!ut.engineer && b.owner>=0 && b.type!=='centro' && b.built;
@@ -616,9 +645,10 @@ function engineerTick(u, t){
 function enterTick(u, t){
   const b = S.byId.get(u.order.id), pl = S.players[u.owner];
   const cap = b ? (b.type==='tunel' ? 8 - pl.tunnel.length : (BT(b.owner,b.type).garrison||0) - (b.gar ? b.gar.length : 0)) : 0;
-  if(!b || b.dead || b.owner!==u.owner || !b.built || cap <= 0){ u.order=null; u.path=null; return; }
+  if(!b || b.dead || (b.owner!==u.owner && !(b.owner<0 && esRefugio(b))) || !b.built || cap <= 0){ u.order=null; u.path=null; return; }
   if(rectDist(u,b) <= LC*1.05){
     u.order=null; u.path=null; u.target=null; u.mode=null; u.tunneled=true;
+    if(b.owner<0 && esRefugio(b)){ b.owner = u.owner; b.target = null; hooks.captured(b, -1); }   // primer ocupante: el refugio pasa a su jugador
     if(b.type==='tunel') pl.tunnel.push(u); else (b.gar = b.gar || []).push(u);
     hooks.tunnel(u, b, 'in'); return;
   }
@@ -632,6 +662,7 @@ function ejectGarrison(b){
   const cells = goalCells(b.x, b.z, list.length);
   list.forEach((u,i) => { const g = cells[i] || { x:b.x, z:b.z+LC }; u.tunneled = false; u.x = u.px = g.x; u.z = u.pz = g.z; u.order = null; u.path = null; u.target = null; u.mode = null; u.lastD = undefined; u.stuck = 0; register(u); });
   hooks.tunnel(null, b, 'out');
+  if(esRefugio(b) && b.owner>=0){ const was = b.owner; b.owner = -1; b.target = null; hooks.captured(b, was); }
 }
 function exitTunnel(p, b){
   const pl = S.players[p]; if(!pl.tunnel.length) return;
@@ -953,7 +984,7 @@ function applyCmd(c){
         .forEach(u => { u.order={ type:'capture', id:b.id }; u.path=null; u.target=null; u.mode=null; u.capT=0; });
       break; }
     case 'enter': {
-      const b = own(c.target); if(!b || !b.built) break;
+      const b = own(c.target) || (() => { const r = S.byId.get(c.target); return r && !r.dead && esRefugio(r) && r.owner<0 ? r : null; })(); if(!b || !b.built) break;
       const gar = BT(c.p, b.type).garrison;
       if(b.type!=='tunel' && !gar) break;
       c.ids.map(own).filter(e => e && e.kind==='unit' && !e.air && !UT(e.owner,e.type).naval && (b.type==='tunel' || UT(e.owner,e.type).armor==='inf')).forEach(u => { u.order={ type:'enter', id:b.id }; u.path=null; u.target=null; u.mode=null; });
@@ -1137,7 +1168,7 @@ function aiTick(p){
     const foeVeh = S.ents.filter(e => !e.dead && e.kind==='unit' && isEnemy(p, e.owner) && UT(e.owner,e.type).armor==='veh').length;
     // Mejoras: cada 15 s compra la primera disponible de la lista si sobra dinero
     if((S.tick + p*97) % (15*TICK_HZ) < TICK_HZ/2){
-      for(const key of ['reactor','carga','instruccion','blindaje','montaje','optica','municion','enlace','doblecanon','camuflaje','fortificacion']){
+      for(const key of ['reactor','carga','instruccion','blindaje','perforantes','misilesGuiados','emboscada','sensores','aleacion','diesel','trucados','cohetes','montaje','enlace','doblecanon','camuflaje','fortificacion','exoesqueleto','estandarte','veterania']){
         const U = MEJORAS[key], b = blds.find(x => x.type===U.edificio && x.built && !x.upq);
         if(b && upgradeOk(p, b, key) && me.credits >= U.cost + 600){ applyCmd({ t:'upgrade', p, id:b.id, type:key }); break; }
       }
@@ -1314,7 +1345,7 @@ function crateTick(c){
   }
 }
 // Objetivos y eventos de misión. Se evalúan una vez por segundo dentro de la simulación (deterministas).
-const ownBld = (p, type) => S.ents.filter(e => !e.dead && e.kind==='bld' && e.owner===p && (!type || e.type===type) && e.type!=='pozo');
+const ownBld = (p, type) => S.ents.filter(e => !e.dead && e.kind==='bld' && e.owner===p && (!type || e.type===type) && e.type!=='pozo' && !esRefugio(e));
 function nearBase(p){ const c = ownBld(p,'centro')[0] || ownBld(p)[0]; return c || { x:WORLD/2, z:WORLD/2 }; }
 function evalObjective(o, sec){
   const enemy = 1;
@@ -1377,7 +1408,7 @@ function missionTick(){
 }
 function checkVictory(){
   if(S.over) return;
-  const has = p => S.ents.some(e => !e.dead && e.kind==='bld' && e.owner===p && e.type!=='pozo');
+  const has = p => S.ents.some(e => !e.dead && e.kind==='bld' && e.owner===p && e.type!=='pozo' && !esRefugio(e));
   const alive = []; for(let p=0; p<S.players.length; p++) if(has(p) && !alive.includes(S.players[p].team)) alive.push(S.players[p].team);
   const a = has(0);
   if(alive.length <= 1){
@@ -1461,7 +1492,7 @@ function newGame(seed, aiPlayers=[1], factions=['atlas','hierro'], map=null, mis
   const tapar = (x, z, agua, s=0.7+S.rng()*0.6, r=S.rng()*6.28) => { const fx = L2F(x), fz = L2F(z);
     for(let dz=0; dz<SUBC; dz++) for(let dx=0; dx<SUBC; dx++){ const k = idx(fx+dx, fz+dz); S.blocked[k] = 1; if(agua) S.water[k] = 1; else S.rockGrid[k] = 1; }
     if(!agua) S.rocks.push({ cx:fx, cz:fz, s, r }); };
-  const ruina = (x, z, w, h, t, r) => { for(let dz=0; dz<h*SUBC; dz++) for(let dx=0; dx<w*SUBC; dx++) S.blocked[idx(L2F(x)+dx, L2F(z)+dz)] = 1; S.ruins.push({ cx:L2F(x), cz:L2F(z), w:w*SUBC, h:h*SUBC, t, r }); };
+  const ruina = (x, z, w, h, t, r) => { if(t < 2){ refugio(x, z, t, r); return; } for(let dz=0; dz<h*SUBC; dz++) for(let dx=0; dx<w*SUBC; dx++) S.blocked[idx(L2F(x)+dx, L2F(z)+dz)] = 1; S.ruins.push({ cx:L2F(x), cz:L2F(z), w:w*SUBC, h:h*SUBC, t, r }); };
   const libreL = (x, z) => { for(let dz=0; dz<SUBC; dz++) for(let dx=0; dx<SUBC; dx++) if(S.blocked[idx(L2F(x)+dx, L2F(z)+dz)]) return false; return true; };
   // La guerrilla no usa energía: inicia con una red de túneles en lugar de la planta
   const startType = (t, p) => t==='planta' && FACTIONS[factions[p]].noPower ? 'tunel' : t;
@@ -1574,7 +1605,7 @@ function mapaGrande(N, startType){
       for(let dz=-1; dz<=h && ok; dz++) for(let dx=-1; dx<=w && ok; dx++){ const xx = x+dx, zz = z+dz; if(!libre(xx, zz) || xx<1 || zz<1 || xx>=LG-1 || zz>=LG-1) ok = false; else for(let a=0; a<SUBC && ok; a++) for(let b=0; b<SUBC && ok; b++) if(S.blocked[idx(L2F(xx)+a, L2F(zz)+b)]) ok = false; }
       pos.push([x, z]); }
     if(!ok) continue;
-    pos.forEach(([x, z], p) => { for(let dz=0; dz<h*SUBC; dz++) for(let dx=0; dx<w*SUBC; dx++) S.blocked[idx(L2F(x)+dx, L2F(z)+dz)] = 1; S.ruins.push({ cx:L2F(x), cz:L2F(z), w:w*SUBC, h:h*SUBC, t, r:p }); });
+    pos.forEach(([x, z], p) => { if(t < 2){ refugio(x, z, t, p); return; } for(let dz=0; dz<h*SUBC; dz++) for(let dx=0; dx<w*SUBC; dx++) S.blocked[idx(L2F(x)+dx, L2F(z)+dz)] = 1; S.ruins.push({ cx:L2F(x), cz:L2F(z), w:w*SUBC, h:h*SUBC, t, r:p }); });
     puestas++;
   }
 }
@@ -2093,8 +2124,12 @@ function tilt(m, rx=0, ry=0, rz=0){ m.rotation.set(rx,ry,rz); return m; }
 function named(g, name){ g.name = name; return g; }
 // Cabina con capó y parabrisas inclinado: perfil lateral extruido a lo ancho, más el vidrio inclinado
 function cab(body, w, h, d, color, glass, y, z){
-  body.add(profileZ([[-d/2,0],[d/2,0],[d/2,h*0.42],[d*0.12,h*0.5],[-d*0.18,h],[-d/2,h]], w, color, 0, y, z));
-  body.add(tilt(box(w*0.86, h*0.5, 0.04, glass, 0, y+h*0.5, z-d*0.03), -0.6));
+  body.add(profileZ([[-d/2,0],[d/2,0],[d/2,h*0.36],[d*0.42,h*0.44],[d*0.2,h*0.5],[d*0.04,h*0.86],[-d*0.08,h*0.97],[-d*0.3,h],[-d/2+0.02,h*0.98],[-d/2,h*0.92]], w, color, 0, y, z, 0.04));
+  body.add(tilt(box(w*0.84, h*0.44, 0.03, glass, 0, y+h*0.5, z+d*0.1), -0.62));                  // parabrisas
+  for(const sx of [-1, 1]){
+    body.add(box(0.03, h*0.3, d*0.36, glass, sx*(w/2 + 0.005), y+h*0.58, z-d*0.18));          // ventanas laterales
+    body.add(box(0.12, 0.08, 0.03, 0x2a2a28, sx*(w/2 + 0.07), y+h*0.56, z+d*0.18));           // espejos
+  }
 }
 // Eje con sus ruedas: grupo con pivote en el centro de la rueda, que el render gira según la distancia recorrida.
 // Los rayos del rin hacen visible el giro.
@@ -2112,7 +2147,8 @@ function wheels(body, r, w, xs, zs, hubColor){ for(const z of zs) body.add(axle(
 // Orugas: banda con tacos, ruedas de rodaje animadas y guardabarros
 function tracks(body, len, w, h, gap, color, fender){
   for(const sx of [-1,1]){
-    body.add(box(w, h, len, RUBBER, sx*gap, 0, 0));
+    { const r = h/2, pts = []; for(let i=0; i<=6; i++){ const a = -Math.PI/2 + i*Math.PI/6; pts.push([len/2 - r + Math.cos(a)*r, r + Math.sin(a)*r]); } for(let i=0; i<=6; i++){ const a = Math.PI/2 + i*Math.PI/6; pts.push([-len/2 + r + Math.cos(a)*r, r + Math.sin(a)*r]); }
+      body.add(profileZ(pts, w, RUBBER, sx*gap, 0, 0, 0.02)); }   // banda con extremos redondeados
     for(let z=-len/2+0.12; z<len/2; z+=0.24) body.add(box(w+0.02, 0.05, 0.08, 0x343230, sx*gap, h-0.02, z));   // tacos superiores
     if(fender) body.add(box(w+0.08, 0.07, len+0.1, color, sx*gap, h, 0));
   }
@@ -2256,7 +2292,8 @@ function unitModel(e, o, body){
     case 'recolector':
       if(f==='atlas'){            // Helicóptero de carga: fuselaje alargado, cabina de vidrio y contenedor colgante
         body.add(ball(0.55,P.hull,0,-0.1,0.15,1,0.82,1.9), ball(0.36,P.glass,0,0.0,0.95,1,0.78,1.1));
-        body.add(box(0.98,0.14,0.7,tc,0,-0.05,0.0), box(0.2,0.2,1.8,P.hull,0,-0.05,-1.55), box(0.06,0.55,0.42,tc,0,0.0,-2.4));
+        { const cola = cyl(0.06, 2.6, P.hull, 0, 0, 0, 10, 0.15); cola.rotation.x = Math.PI/2; cola.position.set(0, -0.02, -1.25); body.add(cola); }   // cola cónica
+        body.add(box(0.98,0.12,0.7,tc,0,-0.05,0.0), profileZ([[-2.62,0],[-2.18,0],[-2.36,0.52],[-2.6,0.56]], 0.05, tc, 0, -0.02, 0, 0.01));   // deriva en flecha
         body.add(box(0.5,0.05,0.22,P.dark,0,0.1,-2.3), lamp(0.08,0.08,0.08,P.glow,0,0.48,-2.45));
         { const tr = named(new THREE.Group(), 'rotor2'); tr.position.set(0.07,0.25,-2.4); tr.add(box(0.03,0.62,0.07,P.metal,0,-0.31,0), box(0.03,0.07,0.62,P.metal,0,-0.035,0)); body.add(tr); }
         for(const sx of [-1,1]) body.add(box(0.07,0.07,1.6,P.metal,sx*0.48,-0.72,0.1), box(0.05,0.3,0.05,P.metal,sx*0.42,-0.68,0.45), box(0.05,0.3,0.05,P.metal,sx*0.42,-0.68,-0.25));
@@ -2266,11 +2303,11 @@ function unitModel(e, o, body){
         const cable = named(new THREE.Group(), 'cable'); cable.add(box(0.035,1,0.035,P.metal,0,-1,0)); winch.add(cable);
         const hook = named(new THREE.Group(), 'hook'); hook.position.y = -1; winch.add(hook);
         hook.add(box(0.5,0.08,0.5,P.dark,0,-0.08,0), tilt(box(0.03,0.38,0.03,P.metal,-0.22,-0.42,0),0,0,0.45), tilt(box(0.03,0.38,0.03,P.metal,0.22,-0.42,0),0,0,-0.45));
-        const cargo = named(new THREE.Group(), 'cargo'); cargo.add(box(0.85,0.5,0.9,ORE,0,-0.98,0), box(0.9,0.06,0.95,P.dark,0,-0.5,0)); hook.add(cargo);
+        const cargo = named(new THREE.Group(), 'cargo'); { const bolsa = ball(0.48, ORE, 0, -0.95, 0, 1, 0.75, 1); cargo.add(bolsa, cyl(0.42, 0.06, P.dark, 0, -0.56, 0, 14)); } hook.add(cargo);   // red de carga redondeada
         const rotor = named(new THREE.Group(), 'rotor'); rotor.position.set(0,0.55,0.1); rotor.add(box(4.2,0.04,0.22,P.metal), box(0.22,0.04,4.2,P.metal), cyl(0.14,0.1,P.dark,0,-0.02,0,10)); body.add(rotor);
       } else if(f==='hierro'){    // Camión minero de seis ruedas con tolva
         wheels(body, 0.3, 0.26, [-0.62,0.62], [0.85,-0.25,-0.85]);
-        body.add(box(1.3,0.28,2.7,P.dark,0,0.35,-0.1));
+        body.add(profileZ([[-1.45,0],[1.3,0],[1.38,0.14],[1.3,0.28],[-1.45,0.28]], 1.3, P.dark, 0, 0.35, -0.1, 0.03));
         cab(body, 1.24, 0.82, 0.86, P.hull, P.glass, 0.6, 0.85); body.add(box(1.26,0.1,0.42,tc,0,1.42,0.66));
         body.add(box(1.36,0.18,0.12,P.metal,0,0.4,1.33), box(0.9,0.3,0.06,0x1e1e1c,0,0.62,1.31));
         body.add(cyl(0.07,0.75,P.metal,0.55,1.1,0.45,8), cyl(0.09,0.06,P.trim,0.55,1.82,0.45,8));
@@ -2286,13 +2323,13 @@ function unitModel(e, o, body){
     case 'constructor':
       if(f==='atlas'){            // Plataforma de ingeniería con brazo robótico
         wheels(body, 0.26, 0.22, [-0.6,0.6], [0.65,-0.65], P.trim);
-        body.add(box(1.25,0.42,1.9,P.hull,0,0.3,0), box(1.27,0.1,1.2,tc,0,0.72,-0.2), box(0.9,0.42,0.6,P.glass,0,0.72,0.55));
+        body.add(profileZ([[-0.95,0],[0.8,0],[1.0,0.18],[0.82,0.42],[-0.92,0.42]], 1.25, P.hull, 0, 0.3, 0, 0.04), box(1.27,0.08,1.2,tc,0,0.72,-0.2), ball(0.42, P.glass, 0, 0.72, 0.5, 1.05, 0.7, 0.8));
         body.add(lamp(1.0,0.05,0.05,P.glow,0,0.5,0.96), cyl(0.18,0.2,P.dark,0,0.82,-0.5,10));
         { const t = named(new THREE.Group(), 'tool'); t.position.set(0,0.92,-0.5); body.add(t);   // brazo robótico con soldador
           t.add(cyl(0.13,0.16,P.dark,0,-0.06,0,12), tilt(box(0.14,0.14,1.2,P.trim,0,0.0,0.42),-0.6), ball(0.1,P.dark,0,0.62,0.78), tilt(box(0.12,0.12,0.8,P.trim,0,0.56,1.08),0.5), lamp(0.12,0.08,0.18,P.glow,0,0.2,1.42)); }
       } else if(f==='hierro'){    // Topadora de orugas con pala frontal
         tracks(body, 2.0, 0.4, 0.5, 0.62, P.dark, true);
-        body.add(box(1.0,0.55,1.5,P.hull,0,0.35,-0.15), box(0.8,0.6,0.6,tc,0,0.9,-0.3), box(0.62,0.24,0.04,P.glass,0,1.18,0.0));
+        body.add(profileZ([[-0.9,0],[0.6,0],[0.75,0.3],[0.6,0.55],[-0.9,0.55]], 1.0, P.hull, 0, 0.35, -0.15, 0.04), profileZ([[-0.62,0],[0.0,0],[-0.08,0.58],[-0.58,0.62]], 0.8, tc, 0, 0.9, 0, 0.03), tilt(box(0.66,0.32,0.03,P.glass,0,1.12,0.02),-0.14), box(0.86,0.05,0.7,P.dark,0,1.52,-0.3));
         { const t = named(new THREE.Group(), 'tool'); t.position.set(0,0.45,0.55); body.add(t);   // pala que sube y baja
           t.add(profileZ([[0.5,-0.42],[0.66,-0.42],[0.7,0.2],[0.6,0.24],[0.56,-0.1]], 1.75, P.metal, 0, 0, 0), box(0.1,0.1,0.6,P.dark,-0.4,-0.1,0.25), box(0.1,0.1,0.6,P.dark,0.4,-0.1,0.25), box(1.6,0.05,0.06,0x9a958a,0,-0.42,0.66)); }
         body.add(cyl(0.08,0.7,P.metal,0.35,0.9,-0.75,8), cyl(0.1,0.05,P.trim,0.35,1.6,-0.75,8));
@@ -2331,33 +2368,35 @@ function unitModel(e, o, body){
         for(const ox of (k>1 ? [-0.17,0.17] : [0])){ const b = barrel(1.9*k,0.075,P.metal); b.position.set(ox,0.18,1.05*k); t.add(b); const m = barrel(0.25,0.11,P.dark); m.position.set(ox,0.18,1.95*k); t.add(m); }
       } else if(f==='hierro'){    // Casco alto en placas, faldones laterales, torre cuadrada remachada
         tracks(body, 2.3*k, 0.46*k, 0.55, 0.72*k, P.dark, false);
-        for(const sx of [-1,1]) body.add(box(0.1,0.42,2.2*k,P.hull,sx*(0.98*k),0.22,0));
+        for(const sx of [-1,1]) body.add(profileZ([[-1.12*k,0],[1.0*k,0],[1.14*k,0.22],[1.0*k,0.42],[-1.12*k,0.42]], 0.1, P.hull, sx*(0.98*k), 0.22, 0, 0.02));
         body.add(profileZ([[-1.05*k,0],[0.9*k,0],[1.12*k,0.28],[0.85*k,0.62],[-0.95*k,0.62],[-1.1*k,0.38]], 1.35*k, P.hull, 0, 0.28, 0), box(1.37*k,0.1,0.6,tc,0,0.9,-0.55));
         for(let i=0; i<6; i++) body.add(ball(0.035,P.metal,-0.55*k+i*0.22*k,0.88,0.82*k));   // remaches del glacis
         body.add(cyl(0.09,0.5,P.metal,-0.45*k,0.85,-0.95*k,8), cyl(0.09,0.5,P.metal,0.45*k,0.85,-0.95*k,8));
-        const t = turret(0.9); t.add(profileZ([[-0.7*k,0],[0.56*k,0],[0.42*k,0.5*k],[-0.64*k,0.52*k]], 1.05*k, P.hull, 0, 0, -0.1), box(1.0*k,0.08,0.45,tc,0,0.5*k,-0.42));
-        for(const sx of [-1,1]) for(const sz of [-1,1]) t.add(ball(0.04,P.metal,sx*0.45*k,0.4*k,sz*0.45*k-0.1));
+        const t = turret(0.9); { const dom = lathe([[0.62*k,0],[0.6*k,0.16*k],[0.52*k,0.34*k],[0.36*k,0.46*k],[0.12*k,0.52*k],[0,0.53*k]], P.hull, 0, 0, -0.05, 20); dom.scale.set(1, 1, 1.18); t.add(dom); }   // torre fundida
+        t.add(cyl(0.2*k, 0.34*k, P.dark, 0, 0.08*k, 0.62*k, 12), box(1.0*k,0.06,0.3,tc,0,0.44*k,-0.42)); t.children[t.children.length-2].rotation.x = Math.PI/2;   // mantelete
+        for(const sx of [-1,1]) t.add(ball(0.05,P.metal,sx*0.5*k,0.2*k,-0.1));
         t.add(cyl(0.1,0.18,P.dark,0.25,0.5*k,-0.2,8), box(0.05,0.05,0.4,GUN,0.25,0.62*k,0.0));
         for(const ox of (k>1 ? [-0.2,0.2] : [0])){ const b = barrel(1.4*k,0.11,P.metal); b.position.set(ox,0.25*k,0.95*k); t.add(b); const m = barrel(0.3,0.16,P.dark); m.position.set(ox,0.25*k,1.65*k); t.add(m); }
       } else {                    // Variante improvisada: casco recuperado con sacos y lonas
         tracks(body, 2.2*k, 0.42*k, 0.5, 0.7*k, P.dark, true);
         body.add(profileZ([[-0.95*k,0],[0.85*k,0],[1.02*k,0.3],[0.8*k,0.55],[-0.95*k,0.55]], 1.2*k, P.hull, 0, 0.3, 0), prism([[-0.5*k,0],[0.5*k,0],[0,0.3]], 0.7, CLOTH, 0, 0.85, -0.55), box(1.22*k,0.1,0.5,tc,0,0.85,0.35));
-        const t = turret(0.85); t.add(box(0.95*k,0.42*k,1.0*k,P.trim,0,0,-0.1), box(0.5,0.14,0.3,0x9a8a5c,-0.35,0.42*k,-0.4));
+        const t = turret(0.85); t.add(profileZ([[-0.6*k,0],[0.5*k,0],[0.62*k,0.16*k],[0.38*k,0.42*k],[-0.5*k,0.42*k],[-0.62*k,0.2*k]], 0.95*k, P.trim, 0, 0, -0.1, 0.03), box(0.5,0.14,0.3,0x9a8a5c,-0.35,0.42*k,-0.4));
+        for(const sx of [-1,1]) t.add(tilt(box(0.06,0.32*k,0.7*k,0x6b6152,sx*0.5*k,0.04,0.05), 0, 0, sx*0.18));   // placas soldadas a los lados
         const b = barrel(1.4*k,0.09,GUN); b.position.set(0,0.22*k,0.9*k); t.add(b);
       }
       break; }
     case 'antiaereo':
       if(f==='atlas'){            // 6x6 con radar y lanzador de misiles
         wheels(body, 0.26, 0.22, [-0.6,0.6], [0.7,0,-0.7], P.trim);
-        body.add(box(1.2,0.45,2.1,P.hull,0,0.3,0), box(1.0,0.4,0.6,P.glass,0,0.75,0.7), box(1.22,0.08,0.8,tc,0,0.75,-0.3));
-        const t = turret(0.8,-0.3); t.add(box(0.9,0.14,0.9,P.dark), tilt(box(0.8,0.5,0.7,P.hull,0,0.2,0),-0.5));
+        body.add(profileZ([[-1.05,0],[0.85,0],[1.1,0.2],[0.9,0.45],[-1.0,0.45]], 1.2, P.hull, 0, 0.3, 0, 0.04), ball(0.5, P.glass, 0, 0.72, 0.62, 0.95, 0.55, 0.62), box(1.22,0.08,0.8,tc,0,0.75,-0.3));
+        const t = turret(0.8,-0.3); t.add(cyl(0.45,0.14,P.dark,0,0,0,16), tilt(profileZ([[-0.35,0],[0.35,0],[0.3,0.5],[-0.3,0.5]], 0.8, P.hull, 0, 0.14, 0, 0.03),-0.5));
         for(const sx of [-0.2,0.2]) for(const sy of [0.35,0.55]) t.add(lamp(0.12,0.12,0.04,P.glow,sx,sy,0.27));
         t.add(cyl(0.03,0.5,P.metal,-0.45,0.1,-0.3,6));
         { const sp = named(new THREE.Group(), 'spin'); sp.position.set(-0.45,0.62,-0.3); sp.add(tilt(cyl(0.3,0.04,P.trim,0,0,0,16),0.6), lamp(0.05,0.05,0.05,P.glow,0,0.05,0.1)); t.add(sp); }
       } else if(f==='hierro'){    // Orugas con cuatro cañones automáticos
         tracks(body, 2.0, 0.4, 0.5, 0.65, P.dark, true);
-        body.add(box(1.15,0.55,1.9,P.hull,0,0.3,0), box(1.17,0.1,0.6,tc,0,0.85,0.5));
-        const t = turret(0.85,-0.2); t.add(box(0.95,0.45,0.85,P.hull), box(0.5,0.25,0.3,P.glass,0,0.2,0.3));
+        body.add(profileZ([[-0.95,0],[0.8,0],[1.0,0.28],[0.75,0.55],[-0.95,0.55]], 1.15, P.hull, 0, 0.3, 0, 0.04), box(1.17,0.1,0.6,tc,0,0.85,0.5));
+        const t = turret(0.85,-0.2); t.add(profileZ([[-0.42,0],[0.38,0],[0.45,0.18],[0.3,0.45],[-0.42,0.45]], 0.95, P.hull, 0, 0, 0, 0.03), ball(0.16, P.glass, 0, 0.3, 0.32, 1.4, 0.8, 1));
         for(const sx of [-0.32,0.32]) for(const sy of [0.12,0.32]){ const b = barrel(1.1,0.045,GUN); b.rotation.x = Math.PI/2-0.6; b.position.set(sx,sy+0.3,0.35); t.add(b); }
       } else {                    // Camioneta con ametralladora antiaérea doble
         wheels(body, 0.27, 0.22, [-0.55,0.55], [0.7,-0.7]);
@@ -2375,7 +2414,7 @@ function unitModel(e, o, body){
       const can = prism([[-0.15,-1.25],[0.15,-1.25],[0.75,-0.85],[0.75,-0.7],[-0.75,-0.7],[-0.75,-0.85]], 0.04, P.trim, 0, 0.06, 0, 0.01); can.rotation.x = -Math.PI/2; body.add(can);   // canards
       for(const sx of [-1,1]){
         const der = profileZ([[-1.65,0],[-0.95,0],[-1.3,0.72],[-1.62,0.78]], 0.05, tc, sx*0.3, 0.12, 0, 0.01); der.rotation.z = -sx*0.32; body.add(der);   // derivas inclinadas
-        body.add(box(0.18, 0.2, 0.7, P.dark, sx*0.36, -0.14, 0.25), box(0.6, 0.03, 0.18, tc, sx*1.0, 0.0, -0.75));  // tomas de aire y franja en el ala
+        body.add(ball(0.12, P.dark, sx*0.34, -0.12, 0.25, 0.9, 1.0, 3.2), box(0.6, 0.03, 0.18, tc, sx*1.0, 0.0, -0.75));  // tomas de aire redondeadas y franja en el ala
         const pil = box(0.04, 0.1, 0.4, P.metal, sx*1.15, -0.16, -0.25); body.add(pil);
         const m = barrel(0.75, 0.05, 0xd9dfe3); m.position.set(sx*1.15, -0.2, -0.2); body.add(m);
         body.add(lathe([[0.05,0],[0.03,0.1],[0,0.16]], 0x8a3a2a, sx*1.15, -0.2, 0.17), box(0.12, 0.012, 0.1, P.metal, sx*1.15, -0.2, -0.55));   // misil con aletas
@@ -2385,9 +2424,14 @@ function unitModel(e, o, body){
       break; }
     case 'helicoptero': {         // Helicóptero de ataque en tándem con alas cortas y lanzacohetes
       body.add(ball(0.5,P.hull,0,-0.1,0.25,0.85,0.95,1.9), ball(0.28,P.glass,0,0.15,0.9,0.9,0.8,1.2), ball(0.24,P.glass,0,0.25,0.35,0.9,0.8,1.1));
-      body.add(box(0.2,0.2,1.9,P.hull,0,-0.05,-1.6), box(0.06,0.6,0.45,tc,0,0.05,-2.5), box(0.6,0.06,0.25,P.dark,0,0.15,-2.3));
+      { const cola = cyl(0.06, 3.0, P.hull, 0, 0, 0, 10, 0.17); cola.rotation.x = Math.PI/2; cola.position.set(0, 0.0, -1.05); body.add(cola); }   // cola cónica
+      body.add(profileZ([[-2.75,0],[-2.25,0],[-2.45,0.62],[-2.72,0.66]], 0.05, tc, 0, -0.05, 0, 0.01), prism([[-0.35,-0.05],[0.35,-0.05],[0.3,0.12],[-0.3,0.12]], 0.04, P.dark, 0, 0.12, -2.35, 0.01));   // deriva en flecha y estabilizador
+      body.children[body.children.length-1].rotation.x = -Math.PI/2;
       { const tr = named(new THREE.Group(), 'rotor2'); tr.position.set(0.07,0.32,-2.5); tr.add(box(0.03,0.7,0.08,P.metal,0,-0.35,0), box(0.03,0.08,0.7,P.metal,0,-0.04,0)); body.add(tr); }
-      body.add(box(1.7,0.08,0.4,P.dark,0,-0.15,0.15), box(0.92,0.12,0.6,tc,0,0.25,-0.15));
+      { const ala = prism([[-0.85,-0.18],[0.85,-0.12],[0.85,0.1],[-0.85,0.18]], 0.05, P.dark, 0, -0.15, 0.15, 0.01); ala.rotation.x = -Math.PI/2; body.add(ala); }   // alas cortas finas
+      for(const sx of [-1,1]){ const nac = lathe([[0.13,0],[0.15,0.2],[0.14,0.55],[0.09,0.7],[0.07,0.72]], P.hull, sx*0.24, 0.32, 0.45, 12); nac.rotation.x = -Math.PI/2; body.add(nac); }   // toberas de los motores
+      body.add(box(0.92,0.06,0.5,tc,0,0.3,-0.15));
+      for(const sx of [-1,1]){ body.add(box(0.05,0.05,1.3,P.metal,sx*0.38,-0.62,0.25), box(0.04,0.3,0.04,P.metal,sx*0.38,-0.6,0.6), box(0.04,0.3,0.04,P.metal,sx*0.38,-0.6,-0.1)); }   // patines
       for(const sx of [-0.75,0.75]){ const m = barrel(0.55,0.13,P.metal); m.position.set(sx,-0.25,0.15); body.add(m); }   // lanzacohetes
       body.add(box(0.05,0.05,0.5,GUN,0,-0.6,0.95), cyl(0.07,0.18,P.metal,0,0.4,0.15,10));
       const rotor = named(new THREE.Group(), 'rotor'); rotor.position.set(0,0.6,0.15); rotor.add(box(4.4,0.04,0.24,P.metal), box(0.24,0.04,4.4,P.metal)); body.add(rotor);
@@ -2405,21 +2449,20 @@ function unitModel(e, o, body){
       break;
     case 'lancha':
     { const hc = f==='guerrilla' ? P.trim : P.hull;
-      const bow = new THREE.Mesh(geo('bow1',()=>new THREE.ConeGeometry(0.62,0.9,4)), mat(hc)); bow.rotation.x = Math.PI/2; bow.rotation.y = Math.PI/4; bow.scale.set(1,1,0.45); bow.position.set(0,0.17,1.5);
-      body.add(box(1.0,0.35,2.2,hc,0,0,0), bow, box(1.02,0.08,1.6,tc,0,0.3,-0.1)); }
-      if(f==='atlas') body.add(box(0.6,0.35,0.7,P.glass,0,0.35,-0.1), lamp(0.5,0.04,0.04,P.glow,0,0.72,0.2));
-      else if(f==='hierro') body.add(box(0.75,0.45,0.8,P.dark,0,0.35,-0.25), box(0.5,0.15,0.04,P.glass,0,0.6,0.16));
-      else body.add(box(0.5,0.3,0.4,CLOTH,0,0.35,-0.4), box(0.2,0.45,0.25,P.metal,0,-0.1,-1.15));
-      { const t = turret(0.4,0.6); t.add(box(0.22,0.22,0.22,P.metal)); const b = barrel(0.7,0.04,GUN); b.position.set(0,0.12,0.35); t.add(b); }
+      body.add(casco(3.0, 1.05, 0.38, hc, 0, 0.12, 0.2), casco(2.5, 0.86, 0.05, tc, 0, 0.33, 0.12));   // casco y cubierta con franja del equipo
+      body.add(casco(2.1, 0.7, 0.04, 0x8f8a7c, 0, 0.37, 0.05)); }
+      if(f==='atlas') body.add(profileZ([[-0.4,0],[0.32,0],[0.18,0.36],[-0.32,0.38]], 0.62, P.hull, 0, 0.36, -0.1, 0.03), tilt(box(0.56,0.2,0.03,P.glass,0,0.56,0.12),-0.45), lamp(0.5,0.04,0.04,P.glow,0,0.75,-0.1));
+      else if(f==='hierro') body.add(profileZ([[-0.5,0],[0.32,0],[0.22,0.46],[-0.42,0.48]], 0.75, P.dark, 0, 0.36, -0.25, 0.03), box(0.5,0.15,0.03,P.glass,0,0.62,0.04));
+      else body.add(box(0.5,0.3,0.4,CLOTH,0,0.38,-0.45), cyl(0.12,0.4,P.metal,0,0.05,-1.25,8));   // toldo y motor fuera de borda
+      { const t = turret(0.42,0.75); t.add(cyl(0.13,0.16,P.metal,0,0,0,10)); const b = barrel(0.7,0.04,GUN); b.position.set(0,0.12,0.35); t.add(b); }
       o.boat = true; break;
     case 'fragata': {
-      body.add(box(1.5,0.55,3.6,P.hull,0,0,0), box(1.52,0.1,3.0,tc,0,0.45,-0.2));
-      const bow = new THREE.Mesh(geo('bow2',()=>new THREE.ConeGeometry(0.95,1.3,4)), mat(P.hull)); bow.rotation.x = Math.PI/2; bow.rotation.y = Math.PI/4; bow.scale.set(1,1,0.45); bow.position.set(0,0.27,2.4); body.add(bow);
-      body.add(box(1.0,0.7,1.2,P.trim,0,0.55,-0.6), box(0.8,0.12,0.06,P.glass,0,1.0,0.0));
+      body.add(casco(4.8, 1.55, 0.6, P.hull, 0, 0.18, 0.35), casco(4.1, 1.32, 0.06, tc, 0, 0.5, 0.25), casco(3.6, 1.1, 0.04, 0x8a857a, 0, 0.54, 0.2));   // casco, franja y cubierta
+      body.add(profileZ([[-1.2,0],[0.25,0],[0.05,0.72],[-1.05,0.76]], 1.0, P.trim, 0, 0.55, -0.1, 0.04), tilt(box(0.82,0.14,0.04,P.glass,0,1.08,0.08),-0.3));   // superestructura con puente inclinado
       if(f==='atlas') body.add(ball(0.32,0xe6ebef,0,1.55,-0.6), cyl(0.05,0.4,P.metal,0,1.25,-0.6,6), lamp(0.5,0.12,0.5,0x2a3a44,0,0.55,1.2));
       else if(f==='hierro') body.add(box(0.6,0.7,0.6,P.dark,0,1.25,-0.6), cyl(0.15,0.5,P.metal,0,1.25,-1.2,8));
       else body.add(box(0.8,0.4,0.6,WOOD,0,0.55,-1.4), box(0.5,0.3,0.5,CLOTH,0.2,0.95,-1.4), cyl(0.05,1.6,P.metal,0,1.25,-0.6,6));
-      const t = turret(0.6,1.0); t.add(box(0.65,0.38,0.65,f==='hierro'?P.dark:P.metal)); const b = barrel(f==='hierro'?1.6:1.4,f==='hierro'?0.1:0.08,GUN); b.position.set(0,0.2,0.8); t.add(b);
+      const t = turret(0.6,1.2); t.add(cyl(0.32,0.12,P.dark,0,0,0,16), tilt(profileZ([[-0.32,0],[0.28,0],[0.2,0.3],[-0.3,0.32]], 0.6, f==='hierro'?P.dark:P.metal, 0, 0.1, 0, 0.03), 0, 0, 0)); const b = barrel(f==='hierro'?1.6:1.4,f==='hierro'?0.1:0.08,GUN); b.position.set(0,0.2,0.8); t.add(b);
       o.boat = true; break; }
     default:
       body.add(box(1.2,0.8,1.6,P.hull,0,0.2,0), box(1.22,0.12,0.6,tc,0,0.8,0));
@@ -2606,6 +2649,12 @@ function prism(pts, depth, color, x=0, y=0, z=0, bevel=0.03){
   });
   const m = new THREE.Mesh(g, mat(color)); m.position.set(x,y,z); m.castShadow = true; m.receiveShadow = true; return m;
 }
+// Casco de embarcación: planta con proa en punta (+z) y popa recta, extruida en vertical (alto h) y centrada en (x, y, z)
+function casco(len, w, h, color, x=0, y=0, z=0){
+  const a = w/2, L = len/2;   // en el plano del prisma, y = -z del mundo (la proa queda en y negativa)
+  const pts = [[-a*0.82, L], [a*0.82, L], [a, L*0.3], [a*0.97, -L*0.15], [a*0.75, -L*0.5], [a*0.4, -L*0.8], [0, -L], [-a*0.4, -L*0.8], [-a*0.75, -L*0.5], [-a*0.97, -L*0.15], [-a, L*0.3]];
+  const m = prism(pts, h, color, x, y, z, 0.04); m.rotation.x = -Math.PI/2; return m;
+}
 // Perfil lateral (z, y) extruido a lo ancho (eje X): cascos de vehículos y naves industriales
 function profileZ(pts, width, color, x=0, y=0, z=0, bevel=0.03){ const m = prism(pts, width, color, x, y, z, bevel); m.rotation.y = -Math.PI/2; return m; }
 // Pieza de revolución: lista de [radio, altura]
@@ -2784,7 +2833,7 @@ function buildingModel(e, body){
   const s = (e.type==='aerodromo' ? e.h : e.n)*CELL, h2 = s/2, W = (e.w||e.n)*CELL, D = (e.h||e.n)*CELL;
   const A = f==='atlas', H = f==='hierro', G = f==='guerrilla';
   const named2 = (name, x, y, z) => { const g = named(new THREE.Group(), name); g.position.set(x, y, z); body.add(g); return g; };
-  const small = ['torre','tunel','bunker','minigun','bateria','trinchera','aerodromo'].includes(e.type);   // el aeródromo dibuja su propia losa rectangular
+  const small = ['torre','tunel','bunker','minigun','bateria','trinchera','aerodromo','refugioCasa','refugioGas'].includes(e.type);   // el aeródromo dibuja su propia losa rectangular
   if(!small) pad(body, f, P, tc, s);
   const nLosa = body.children.length;
   switch(e.type){
@@ -3034,6 +3083,10 @@ function buildingModel(e, body){
       body.add(box(1.0,0.12,0.18,tc,0,0.8,0.7)); sandbags(body, 0, 0, 1.0, 3.6, 5.8, 0.05, 1);
       { const t = named2('turret', 0, 0.7, 0); const b = barrel(0.9,0.06,GUN); b.position.set(0,0.25,0.45); t.add(b, cyl(0.08,0.3,P.metal,0,0,0,8)); }
       break;
+    case 'refugioCasa': case 'refugioGas': {   // edificación abandonada ocupable: la misma ruina; con ocupantes, sacos en la entrada y bandera del equipo
+      const r = ruinPartes(e.ruinT || 0); r.rotation.y = (e.rot || 0)*Math.PI/2; body.add(r);
+      if(e.owner>=0){ const fx = W*0.38, fz = D*0.38; body.add(box(0.06, 2.4, 0.06, WOOD, fx, 0.1, fz), prism([[0,0],[0.8,0.12],[0.8,0.42],[0,0.55]], 0.03, tc, fx + 0.03, 1.95, fz, 0)); sandbags(body, -fx*0.6, fz*1.05, 0.7, -0.6, 0.6, 0.05, 2); }
+      break; }
     case 'pozo': {   // Bombeo de varilla: balancín animado, cabeza de caballo y contrapeso
       body.add(box(s*0.9,0.2,s*0.9,0x5f5648), cyl(0.45,1.1,0x4f4a40,0.9,0.2,0.8,16), cyl(0.5,0.08,tc,0.9,1.3,0.8,16));
       body.add(tilt(box(0.14,2.1,0.14,0x4a4740,-0.4,0.2,0.3),-0.15), tilt(box(0.14,2.1,0.14,0x4a4740,-0.4,0.2,-0.3),0.15), box(0.6,0.5,0.6,0x3a3a34,0.5,0.2,-0.9));
@@ -3048,8 +3101,10 @@ function buildingModel(e, body){
   const ups = mejorasDe(e).filter(k => MEJORAS[k].edificio===e.type);
   if(ups.length){
     const esq = (i) => [[h2-0.75, h2-0.75], [-h2+0.75, h2-0.75], [h2-0.75, -h2+0.75], [-h2+0.75, -h2+0.75]][i % 4];
-    ups.forEach((k, i) => {
-      const [x, z] = esq(i + 1);
+    // Las tecnologías por facción reutilizan las piezas visuales de las mejoras genéricas
+    const VIS = { sensores:'optica', perforantes:'municion', cohetes:'municion', misilesGuiados:'enlace', aleacion:'blindaje', diesel:'blindaje', emboscada:'camuflaje', trucados:'montaje', exoesqueleto:'instruccion', estandarte:'instruccion', veterania:'instruccion' };
+    ups.forEach((k0, i) => {
+      const k = VIS[k0] || k0, [x, z] = esq(i + 1);
       if(k==='reactor'){ body.add(lathe([[0.55,0],[0.4,0.7],[0.38,1.0],[0.44,1.5],[0.38,1.5],[0.32,1.0],[0.34,0.7],[0.48,0]], f==='hierro' ? 0xbab4a8 : 0xe6ebef, x, 0.16, z), lamp(0.5, 0.06, 0.06, P.glow, x, 0.95, z+0.42)); if(H) smokeAt(body, x, 1.9, z); }   // torre de refrigeración extra
       else if(k==='carga'){ body.add(tilt(box(0.35, 0.08, 2.2, P.metal, x, 0.6, z*0.3), 0.25), box(0.4, 0.5, 0.4, P.dark, x, 0.16, z*0.3 - 0.9)); for(let j=0; j<3; j++) body.add(box(0.28, 0.2, 0.28, 0x8a6a3e, x, 0.72 + j*0.15, z*0.3 + 0.6 - j*0.5)); }   // cinta transportadora
       else if(k==='instruccion'){ body.add(box(0.08, 1.4, 0.9, WOOD, x, 0.16, z), box(0.5, 0.06, 0.06, WOOD, x, 1.5, z), box(0.06, 2.4, 0.06, P.metal, x+0.5, 0.16, z), prism([[0,0],[0.7,0.1],[0.7,0.38],[0,0.48]], 0.03, tc, x+0.52, 2.1, z, 0), cyl(0.04, 1.2, P.metal, -x*0.3, s*0.25 + 1.2, -z*0.2, 6)); }   // muro de escalada, mástil con banderín y antena
@@ -3146,7 +3201,7 @@ const mejorasDe = e => e.owner>=0 && S.players[e.owner] ? Object.keys(MEJORAS).f
 function buildingBody(e, o){
   const f = e.owner>=0 && S.players[e.owner] ? S.players[e.owner].faction : 'neutral';
   const kind = e.type==='superarma' ? BT(e.owner,'superarma').superKind : '';
-  const key = `${e.type}|${f}|${teamColor(e.owner)}|${kind}|${mejorasDe(e).join(',')}`;
+  const key = `${e.type}|${f}|${teamColor(e.owner)}|${kind}|${mejorasDe(e).join(',')}|${e.ruinT||0}|${e.rot||0}`;
   if(!BLD_PROTO.has(key)){
     const body = new THREE.Group();
     TINT = null; buildingModel(e, body);
@@ -3213,10 +3268,14 @@ function buildTerrain(){
     h *= Math.min(1, bd/12);                                                     // bases planas
     // Terrazas: colinas amplias con escalones (tres niveles con rampas suaves entre ellos)
     const macro = 0.5 + 0.5*(0.55*Math.sin(x*0.031 + 1.3)*Math.cos(z*0.027 + 0.4) + 0.45*Math.sin((x - z)*0.022 + 2.1));
-    const lv = macro*3, frac = lv - Math.floor(lv);
+    // Bordes de terraza irregulares (erosión) en lugar de curvas de nivel perfectas
+    const eros = 0.06*Math.sin(x*0.23 + Math.sin(z*0.19)*2) + 0.04*Math.sin(z*0.31 - x*0.11 + 1.7) + 0.025*Math.sin(x*0.71 + z*0.63);
+    const lv = (macro + eros)*3, frac = lv - Math.floor(lv);
     h += (Math.floor(lv) + sst(0.93, 1, frac))/3 * 2.4 * Math.min(1, bd/16);    // escalones de 0,8 con rampas de ~2 unidades
     // Mesetas con farallones sobre las zonas de roca (ya intransitables en la simulación)
     h += 2.2 * sst(0.3, 0.72, rockAt(x, z));
+    // Ondulaciones de duna (ripples) en la arena abierta, suaves cerca de las bases
+    h += 0.045*Math.sin(x*0.9 + Math.sin(z*0.21)*3.2)*Math.min(1, bd/10) + 0.03*Math.sin((x*0.6 + z*0.8)*1.1 + Math.cos(x*0.13)*2)*Math.min(1, bd/10);
     // Orillas: el terreno baja junto al agua para que el borde se vea natural
     let wd = 9; const cx = Math.floor(x/CELL), cz = Math.floor(z/CELL);
     for(let dz=-4; dz<=4; dz++) for(let dx=-4; dx<=4; dx++){ const gx = cx+dx, gz = cz+dz; if(gx<0 || gz<0 || gx>=GRID || gz>=GRID || !S.water[idx(gx,gz)]) continue; wd = Math.min(wd, Math.hypot(Math.max(0, Math.abs(x - cellCenter(gx)) - CELL/2), Math.max(0, Math.abs(z - cellCenter(gz)) - CELL/2))); }   // distancia al borde de la celda de agua
@@ -3237,7 +3296,7 @@ function flattenHMAP(b){
   for(let z=z0; z<=z1; z++) for(let x=x0; x<=x1; x++){ const d = Math.max(Math.abs(x-b.x) - r, Math.abs(z-b.z) - r, 0), k = d <= 0 ? 1 : 1 - sst(0, m, d), i = z*HN + x; HMAP[i] = HMAP[i]*(1-k) + t*k; }
 }
 // Aplica el mapa de alturas al suelo: posiciones, normales y color de roca en las laderas empinadas
-const CLIFF = new THREE.Color(0x9a7352), CLIFF_DARK = new THREE.Color(0x7d5c42), MESA = new THREE.Color(0xdcc597);
+const CLIFF = new THREE.Color(0x9a7352), CLIFF_DARK = new THREE.Color(0x7d5c42), MESA = new THREE.Color(0xdcc597), ESTRATO_CLARO = new THREE.Color(0xc9a77a);
 function updateGround(){
   const g = scene.userData.ground.geometry, p = g.attributes.position, col = g.attributes.color, base = g.userData.baseCol, c = new THREE.Color();
   for(let i=0; i<p.count; i++) p.setY(i, terrainH(p.getX(i), p.getZ(i)));
@@ -3246,7 +3305,8 @@ function updateGround(){
   for(let i=0; i<p.count; i++){
     const steep = sst(0.02, 0.2, 1 - n.getY(i)), alto = sst(1.2, 2.6, p.getY(i));
     // Estratos: la arena aclara en los niveles altos; laderas y escalones toman color de roca
-    c.setRGB(base[i*3], base[i*3+1], base[i*3+2]).lerp(MESA, sst(0.5, 2.4, p.getY(i))*0.4).lerp(CLIFF, steep*0.85).lerp(CLIFF_DARK, steep*alto*0.4);
+    const banda = 0.5 + 0.5*Math.sin(p.getY(i)*7.5 + Math.sin(p.getX(i)*0.4)*0.6);   // estratos horizontales en las caras de roca
+    c.setRGB(base[i*3], base[i*3+1], base[i*3+2]).lerp(MESA, sst(0.5, 2.4, p.getY(i))*0.4).lerp(CLIFF, steep*0.85).lerp(CLIFF_DARK, steep*(alto*0.4 + banda*0.35)).lerp(ESTRATO_CLARO, steep*(1 - banda)*0.25);
     col.setXYZ(i, c.r, c.g, c.b);
   }
   col.needsUpdate = true;
@@ -3283,7 +3343,7 @@ function waterMat(){
 // Arbustos secos y piedras sueltas sobre las dunas, con posiciones fijas por semilla. Se quitan bajo cada edificio nuevo.
 let VEG = null;
 function buildVegetation(){
-  if(VEG){ scene.remove(VEG.shrubs, VEG.stones); if(VEG.palmas) scene.remove(VEG.palmas, VEG.secos, VEG.pasto); VEG = null; }
+  if(VEG){ for(const k of ['shrubs','stones','stones2','stones3','palmas','secos','acacias','agaves','pasto']) if(VEG[k]) scene.remove(VEG[k]); VEG = null; }
   TRACKS.data.fill(0); TRACKS.t = 0;   // sin huellas de la partida anterior
   { const d = TRACKS.d; d.scale.setScalar(0); d.updateMatrix(); for(let i=0; i<900; i++) TRACKS.m.setMatrixAt(i, d.matrix); TRACKS.m.instanceMatrix.needsUpdate = true; }
   const rnd = mulberry32((S.seed ^ 0x5eed) >>> 0), shrubs = [], stones = [];
@@ -3294,37 +3354,84 @@ function buildVegetation(){
   const cant = OPTIONS.calidad==='baja' ? 0.35 : OPTIONS.calidad==='media' ? 0.7 : 1;   // menos detalle en equipos modestos
   for(let i=0; i<2600 && shrubs.length<420*cant; i++){ const x = 2 + rnd()*(WORLD-4), z = 2 + rnd()*(WORLD-4); if(libre(x, z)) shrubs.push([x, z, 0.5 + rnd()*0.7, rnd()*6.28, rnd()]); }
   for(let i=0; i<3000 && stones.length<700*cant; i++){ const x = 1 + rnd()*(WORLD-2), z = 1 + rnd()*(WORLD-2); if(libre(x, z)) stones.push([x, z, 0.12 + rnd()*0.22, rnd()*6.28, rnd()]); }
-  // Arbusto: tres matas bajas fusionadas
-  const sg = geo('arbusto', () => { const parts = [[0,0.22,0,0.34],[0.24,0.16,0.1,0.24],[-0.18,0.14,-0.16,0.22]].map(([x,y,z,r]) => { const g = new THREE.SphereGeometry(r, 8, 6).toNonIndexed(); g.scale(1, 0.72, 1); g.translate(x, y, z); return g; });
-    const n = parts.reduce((a,g) => a + g.attributes.position.count, 0), pos = new Float32Array(n*3), nor = new Float32Array(n*3); let o = 0;
-    for(const g of parts){ pos.set(g.attributes.position.array, o*3); nor.set(g.attributes.normal.array, o*3); o += g.attributes.position.count; }
-    const out = new THREE.BufferGeometry(); out.setAttribute('position', new THREE.BufferAttribute(pos, 3)); out.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); return out; });
+  // Geometrías de las plantas (fusionadas, con color por vértice que se multiplica por el color de cada instancia)
+  const fusion = (partes) => { const n = partes.reduce((a,g) => a + g.attributes.position.count, 0), pos = new Float32Array(n*3), nor = new Float32Array(n*3), col = new Float32Array(n*3); let o = 0;
+    for(const g of partes){ const c = g.attributes.color; pos.set(g.attributes.position.array, o*3); nor.set(g.attributes.normal.array, o*3); if(c) col.set(c.array, o*3); else col.fill(1, o*3, (o + g.attributes.position.count)*3); o += g.attributes.position.count; }
+    const out = new THREE.BufferGeometry(); out.setAttribute('position', new THREE.BufferAttribute(pos, 3)); out.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); out.setAttribute('color', new THREE.BufferAttribute(col, 3)); return out; };
+  // Color uniforme o en degradado vertical (oscuro abajo, claro arriba) para una pieza
+  const tinte = (g, abajo, arriba, y0 = 0, y1 = 1) => { g = g.index ? g.toNonIndexed() : g; const p = g.attributes.position, c = new Float32Array(p.count*3), A = new THREE.Color(abajo), B = new THREE.Color(arriba ?? abajo), t = new THREE.Color();
+    for(let i=0; i<p.count; i++){ t.copy(A).lerp(B, Math.max(0, Math.min(1, (p.getY(i) - y0)/(y1 - y0 || 1)))); c[i*3] = t.r; c[i*3+1] = t.g; c[i*3+2] = t.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(c, 3)); return g; };
+  // Bulto irregular: icosaedro deformado (para matas, copas y piedras)
+  const bulto = (r, sx, sy, sz, sem, sw=8, sh=6) => { const g = new THREE.SphereGeometry(r, sw, sh), p = g.attributes.position;
+    for(let i=0; i<p.count; i++){ const x = p.getX(i), y = p.getY(i), z = p.getZ(i), nx = x/r, ny = y/r, nz = z/r, k = 1 + 0.14*Math.sin(nx*2.6 + sem)*Math.cos(nz*2.2 + sem*1.7) + 0.08*Math.sin(ny*3.1 + sem*2.3) + 0.04*Math.sin((nx + nz)*6 + sem*0.7); p.setXYZ(i, x*k*sx, y*k*sy, z*k*sz); }
+    g.computeVertexNormals(); return g.toNonIndexed(); };
+  // Arbusto del desierto: matas irregulares con ramitas secas
+  const sg = geo('arbusto2', () => { const p = [];
+    for(const [x, y, z, r, sem] of [[0,0.2,0,0.31,1],[0.22,0.15,0.12,0.23,2],[-0.2,0.14,-0.12,0.22,3],[0.05,0.13,-0.25,0.19,4],[-0.12,0.18,0.22,0.18,5]])
+      p.push(tinte(bulto(r, 1, 0.75, 1, sem, 7, 5).translate(x, y, z), 0x6b6a40, 0xa3a065, -0.1, 0.45));
+    for(let k=0; k<6; k++){ const a = k*1.05, t = new THREE.CylinderGeometry(0.008, 0.016, 0.42, 3).toNonIndexed(); t.rotateZ(0.7); t.rotateY(a); t.translate(Math.cos(a)*0.22, 0.32, -Math.sin(a)*0.22); p.push(tinte(t, 0x5a4a34)); }
+    return fusion(p); });
+  // Palmera: tronco curvo con anillos, hojas largas que caen y racimo de cocos
+  const palmaG = geo('palmera2', () => { const p = [], seg = 7;
+    for(let i=0; i<seg; i++){ const y = i*0.38, curva = (i/seg)*(i/seg)*0.45, c = new THREE.CylinderGeometry(0.075 - i*0.004, 0.09 - i*0.004, 0.4, 7).toNonIndexed(); c.rotateZ(-0.12*i/seg); c.translate(curva, y + 0.2, 0); p.push(tinte(c, 0x6e5a40, 0x8a7350, y, y + 0.4)); }
+    const tx = 0.45, ty = seg*0.38 + 0.1;
+    for(let k=0; k<9; k++){ const a = k/9*6.283 + 0.3, L = 1.3 + (k%3)*0.15, n = 5, pos = [];
+      for(let j=0; j<n; j++){ const t0 = j/n, t1 = (j+1)/n, w0 = 0.2*Math.sin(Math.PI*(t0*0.9 + 0.1)), w1 = 0.2*Math.sin(Math.PI*(t1*0.9 + 0.1));
+        const P0 = [t0*L, 0.35*t0 - 0.9*t0*t0], P1 = [t1*L, 0.35*t1 - 0.9*t1*t1];   // hoja que sube un poco y luego cae
+        pos.push(P0[0], P0[1], -w0, P1[0], P1[1], -w1, P1[0], P1[1] + 0.02, w1,  P0[0], P0[1], -w0, P1[0], P1[1] + 0.02, w1, P0[0], P0[1] + 0.02, w0); }
+      const h = new THREE.BufferGeometry(); h.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); h.computeVertexNormals(); h.rotateY(a); h.translate(tx, ty, 0);
+      p.push(tinte(h, 0x4f6a2e, 0x7d9a45, ty - 1, ty + 0.3)); }
+    for(let k=0; k<4; k++){ const c = new THREE.SphereGeometry(0.07, 6, 4).toNonIndexed(); c.translate(tx + Math.cos(k*1.6)*0.1, ty - 0.12, Math.sin(k*1.6)*0.1); p.push(tinte(c, 0x6b5030)); }
+    const out = fusion(p); out.computeVertexNormals(); return out; });
+  // Árbol seco: tronco con ramas que se bifurcan
+  const secoG = geo('arbolSeco2', () => { const p = [tinte(new THREE.CylinderGeometry(0.05, 0.1, 1.2, 6).toNonIndexed().translate(0, 0.6, 0), 0x4e4232)];
+    const rama = (x, y, z, a, inc, l, r, nivel) => { const c = new THREE.CylinderGeometry(r*0.6, r, l, 4).toNonIndexed(); c.translate(0, l/2, 0); c.rotateZ(inc); c.rotateY(a); c.translate(x, y, z); p.push(tinte(c, 0x5a4a36));
+      if(nivel < 2){ const ex = x + Math.sin(inc)*Math.cos(a)*l*-1, ey = y + Math.cos(inc)*l, ez = z + Math.sin(inc)*Math.sin(a)*l; rama(ex, ey, ez, a + 0.6, inc*0.8 + 0.15, l*0.6, r*0.6, nivel + 1); rama(ex, ey, ez, a - 0.7, inc*0.9, l*0.55, r*0.55, nivel + 1); } };
+    for(const [a, inc, y] of [[0.4, 0.7, 1.0], [2.5, 0.8, 0.85], [4.4, 0.6, 1.15]]) rama(0, y, 0, a, inc, 0.55, 0.045, 0);
+    return fusion(p); });
+  // Acacia: tronco inclinado que se abre y copa plana en forma de sombrilla
+  const acaciaG = geo('acacia', () => { const p = [tinte(new THREE.CylinderGeometry(0.06, 0.1, 1.3, 6).toNonIndexed().translate(0, 0.65, 0), 0x5a4a36)];
+    for(const [a, inc] of [[0.3, 0.55], [2.4, 0.6], [4.3, 0.5]]){ const c = new THREE.CylinderGeometry(0.035, 0.055, 0.9, 5).toNonIndexed(); c.translate(0, 0.45, 0); c.rotateZ(inc); c.rotateY(a); c.translate(0, 1.2, 0); p.push(tinte(c, 0x5a4a36)); }
+    for(const [x, z, r, sem] of [[0,0,0.75,1],[0.55,0.25,0.5,2],[-0.5,0.2,0.5,3],[0.15,-0.5,0.5,4],[-0.2,0.55,0.45,5]])
+      p.push(tinte(bulto(r, 1.25, 0.28, 1.25, sem).translate(x, 1.85, z), 0x55642f, 0x7f8c45, 1.7, 2.0));
+    return fusion(p); });
+  // Pasto: hojas finas y curvas
+  const pastoG = geo('pasto2', () => { const p = [];
+    for(let k=0; k<9; k++){ const a = k*0.7 + (k%2)*0.3, l = 0.28 + (k%3)*0.08, pos = [0,0,-0.012, 0,0,0.012, l*0.35,l,0];
+      const h = new THREE.BufferGeometry(); h.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); h.computeVertexNormals(); h.rotateY(a); h.translate(Math.cos(a)*0.05, 0, -Math.sin(a)*0.05);
+      p.push(tinte(h, 0x8a7a48, 0xc9b878, 0, l)); }
+    return fusion(p); });
+  // Agave: roseta de hojas carnosas y puntiagudas
+  const agaveG = geo('agave', () => { const p = [];
+    for(let k=0; k<9; k++){ const a = k*2.4, inc = 0.35 + (k%3)*0.3, l = 0.5 - (k%3)*0.08, c = new THREE.ConeGeometry(0.035, l, 4).toNonIndexed(); c.scale(1, 1, 0.35); c.translate(0, l/2, 0); c.rotateZ(inc); c.rotateY(a); p.push(tinte(c, 0x4f6658, 0x8aa39a, 0, 0.45)); }
+    return fusion(p); });
+  // Piedras sueltas: tres formas (redonda, alargada y laja plana)
+  const piedraG = [1, 2, 3].map(v => geo('piedra' + v, () => fusion([tinte(bulto(1, v===2 ? 1.5 : 1, v===3 ? 0.35 : 0.7, v===2 ? 0.8 : 1, v*3.1, 6, 4), 0x8a7a64, 0xb5a588, -0.5, 0.6)])));
   const mk = (g, color, list, cast) => {
-    const m = new THREE.InstancedMesh(g, addFog(new THREE.MeshLambertMaterial({ color })), list.length), d = new THREE.Object3D(), c = new THREE.Color();
-    list.forEach(([x, z, sc, r, t], i) => { d.position.set(x, terrainH(x, z), z); d.rotation.set(0, r, 0); d.scale.setScalar(sc); d.updateMatrix(); m.setMatrixAt(i, d.matrix); m.setColorAt(i, c.setHSL(0.1 + t*0.06, 0.25 + t*0.15, 0.32 + t*0.12)); });
+    const m = new THREE.InstancedMesh(g, addFog(new THREE.MeshLambertMaterial({ color, vertexColors: !!g.attributes.color, side: g === palmaG || g === pastoG ? THREE.DoubleSide : THREE.FrontSide })), Math.max(1, list.length)), d = new THREE.Object3D(), c = new THREE.Color();
+    list.forEach(([x, z, sc, r, t], i) => { d.position.set(x, terrainH(x, z), z); d.rotation.set(0, r, 0); d.scale.setScalar(sc); d.updateMatrix(); m.setMatrixAt(i, d.matrix); m.setColorAt(i, c.setHSL(0.1, 0.05, 0.85 + t*0.15)); });
+    if(!list.length){ d.scale.setScalar(0); d.updateMatrix(); m.setMatrixAt(0, d.matrix); }
     m.castShadow = cast; m.receiveShadow = true; scene.add(m); return m;
   };
-  // Palmeras en la orilla, árboles secos dispersos y matas de pasto
-  const cercaAgua = (x, z) => { const cx = toCell(x), cz = toCell(z); for(let dz=-4; dz<=4; dz++) for(let dx=-4; dx<=4; dx++){ const gx = cx+dx, gz = cz+dz; if(gx>=0 && gz>=0 && gx<GRID && gz<GRID && S.water[idx(gx,gz)]) return true; } return false; };
+  // Palmeras en la orilla, acacias y árboles secos dispersos, agaves, matas de pasto y piedras
+  const cercaAgua = (x, z) => { const cx = toCell(x), cz = toCell(z); for(let dz=-8; dz<=8; dz+=2) for(let dx=-8; dx<=8; dx+=2){ const gx = cx+dx, gz = cz+dz; if(gx>=0 && gz>=0 && gx<GRID && gz<GRID && S.water[idx(gx,gz)]) return true; } return false; };
   const libreSeco = (x, z) => { const cx = toCell(x), cz = toCell(z); return !enBase(x, z) && !S.blocked[idx(cx,cz)] && lejosDe(x, z); };
-  const palmas = [], secos = [], pasto = [];
+  const area = (WORLD/128)*(WORLD/128), palmas = [], secos = [], acacias = [], pasto = [], agaves = [], piedras = [[], [], []];
   for(let i=0; i<4000 && palmas.length<60*cant; i++){ const x = 2 + rnd()*(WORLD-4), z = 2 + rnd()*(WORLD-4); if(cercaAgua(x, z) && libre(x, z)) palmas.push([x, z, 0.8 + rnd()*0.5, rnd()*6.28, rnd()]); }
-  for(let i=0; i<2000 && secos.length<(WORLD/128)*(WORLD/128)*30*cant; i++){ const x = 2 + rnd()*(WORLD-4), z = 2 + rnd()*(WORLD-4); if(libreSeco(x, z)) secos.push([x, z, 0.7 + rnd()*0.6, rnd()*6.28, rnd()]); }
-  for(let i=0; i<3000 && pasto.length<(WORLD/128)*(WORLD/128)*260*cant; i++){ const x = 2 + rnd()*(WORLD-4), z = 2 + rnd()*(WORLD-4); if(libre(x, z)) pasto.push([x, z, 0.5 + rnd()*0.6, rnd()*6.28, rnd()]); }
-  const fusion = (partes) => { const n = partes.reduce((a,g) => a + g.attributes.position.count, 0), pos = new Float32Array(n*3), nor = new Float32Array(n*3); let o = 0;
-    for(const g of partes){ pos.set(g.attributes.position.array, o*3); nor.set(g.attributes.normal.array, o*3); o += g.attributes.position.count; }
-    const out = new THREE.BufferGeometry(); out.setAttribute('position', new THREE.BufferAttribute(pos, 3)); out.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); return out; };
-  const palmaG = geo('palmera', () => { const p = [new THREE.CylinderGeometry(0.07, 0.11, 2.6, 6).toNonIndexed().translate(0.12, 1.3, 0)];
-    for(let k=0; k<7; k++){ const h = new THREE.ConeGeometry(0.16, 1.4, 4).toNonIndexed(); h.rotateZ(Math.PI/2 + 0.5); h.rotateY(k/7*6.283); h.translate(0.25 + Math.cos(k/7*6.283)*0.5, 2.45, Math.sin(k/7*6.283)*0.5); p.push(h); }
-    return fusion(p); });
-  const secoG = geo('arbolSeco', () => { const p = [new THREE.CylinderGeometry(0.06, 0.1, 1.4, 5).toNonIndexed().translate(0, 0.7, 0)];
-    for(const [a, y, l] of [[0.6, 1.0, 0.7],[2.4, 1.2, 0.6],[4.2, 0.85, 0.55],[5.4, 1.3, 0.45]]){ const r = new THREE.CylinderGeometry(0.02, 0.04, l, 4).toNonIndexed(); r.rotateZ(0.9); r.rotateY(a); r.translate(Math.cos(a)*l*0.35, y, -Math.sin(a)*l*0.35); p.push(r); }
-    return fusion(p); });
-  const pastoG = geo('pasto', () => fusion([0, 1.3, 2.6, 3.9, 5.2].map(a => { const c = new THREE.ConeGeometry(0.035, 0.42, 3).toNonIndexed(); c.rotateZ(0.25); c.rotateY(a); c.translate(Math.cos(a)*0.06, 0.2, Math.sin(a)*0.06); return c; })));
-  VEG = { shrubs: mk(sg, 0xffffff, shrubs, OPTIONS.calidad==='alta'), stones: mk(smoothRockGeo(3, 1), 0xffffff, stones, false), sl: shrubs, tl: stones,
-    palmas: mk(palmaG, 0xffffff, palmas, OPTIONS.calidad!=='baja'), secos: mk(secoG, 0x6b5a44, secos, OPTIONS.calidad==='alta'), pasto: mk(pastoG, 0xffffff, pasto, false) };
-  for(const [m, k] of [[VEG.palmas, 'p'], [VEG.pasto, 'g']]){ const c = new THREE.Color(); (k==='p' ? palmas : pasto).forEach(([,, , , t], i) => m.setColorAt(i, k==='p' ? c.setHSL(0.24 + t*0.05, 0.35, 0.3 + t*0.08) : c.setHSL(0.13 + t*0.05, 0.3, 0.45 + t*0.1))); if(m.instanceColor) m.instanceColor.needsUpdate = true; }
-  for(const [m, l] of [[VEG.secos, secos]]){ const c = new THREE.Color(); l.forEach((_, i) => m.setColorAt(i, c.setHSL(0.08, 0.22, 0.28 + (i%5)*0.03))); if(m.instanceColor) m.instanceColor.needsUpdate = true; }
+  for(let i=0; i<2000 && secos.length<area*16*cant; i++){ const x = 2 + rnd()*(WORLD-4), z = 2 + rnd()*(WORLD-4); if(libreSeco(x, z)) secos.push([x, z, 0.7 + rnd()*0.6, rnd()*6.28, rnd()]); }
+  for(let i=0; i<2000 && acacias.length<area*18*cant; i++){ const x = 2 + rnd()*(WORLD-4), z = 2 + rnd()*(WORLD-4); if(libre(x, z)) acacias.push([x, z, 0.75 + rnd()*0.5, rnd()*6.28, rnd()]); }
+  for(let i=0; i<3000 && agaves.length<area*35*cant; i++){ const x = 2 + rnd()*(WORLD-4), z = 2 + rnd()*(WORLD-4); if(libre(x, z)) agaves.push([x, z, 0.6 + rnd()*0.7, rnd()*6.28, rnd()]); }
+  for(let i=0; i<3000 && pasto.length<area*300*cant; i++){ const x = 2 + rnd()*(WORLD-4), z = 2 + rnd()*(WORLD-4); if(libre(x, z)) pasto.push([x, z, 0.6 + rnd()*0.7, rnd()*6.28, rnd()]); }
+  stones.forEach((s2, i) => piedras[i % 3].push(s2));
+  // Piedras sueltas al pie de las laderas empinadas (escombro de los farallones)
+  for(let i=0; i<6000 && piedras[0].length + piedras[1].length + piedras[2].length < stones.length + 500*cant; i++){
+    const x = 2 + rnd()*(WORLD-4), z = 2 + rnd()*(WORLD-4), h = terrainH(x, z), pend = Math.abs(terrainH(x + 0.8, z) - h) + Math.abs(terrainH(x, z + 0.8) - h);
+    if(pend > 0.25 && pend < 1.2 && libreSeco(x, z)) piedras[i % 3].push([x, z, 0.1 + rnd()*0.28, rnd()*6.28, rnd()]); }
+  VEG = { shrubs: mk(sg, 0xffffff, shrubs, OPTIONS.calidad==='alta'), stones: mk(piedraG[0], 0xffffff, piedras[0], false), stones2: mk(piedraG[1], 0xffffff, piedras[1], false), stones3: mk(piedraG[2], 0xffffff, piedras[2], false),
+    sl: shrubs, tl: piedras[0], tl2: piedras[1], tl3: piedras[2],
+    palmas: mk(palmaG, 0xffffff, palmas, OPTIONS.calidad!=='baja'), secos: mk(secoG, 0xffffff, secos, OPTIONS.calidad==='alta'), acacias: mk(acaciaG, 0xffffff, acacias, OPTIONS.calidad!=='baja'),
+    agaves: mk(agaveG, 0xffffff, agaves, false), pasto: mk(pastoG, 0xffffff, pasto, false), al: acacias, gl: agaves };
 }
 // Huellas: dos franjas por marca, 900 marcas en un búfer circular; se encogen al envejecer (12 s)
 const TRACKS = (() => {
@@ -3349,7 +3456,7 @@ function updateTracks(dt){
 // Un edificio nuevo aplasta la vegetación de su terreno
 function clearVegetation(b){
   if(!VEG) return; const r = b.n*CELL*0.75, m4 = new THREE.Matrix4().makeScale(0, 0, 0);
-  for(const [mesh, list] of [[VEG.shrubs, VEG.sl], [VEG.stones, VEG.tl]]){ let ch = false; list.forEach(([x, z], i) => { if(Math.abs(x-b.x) < r && Math.abs(z-b.z) < r){ mesh.setMatrixAt(i, m4); ch = true; } }); if(ch) mesh.instanceMatrix.needsUpdate = true; }
+  for(const [mesh, list] of [[VEG.shrubs, VEG.sl], [VEG.stones, VEG.tl], [VEG.stones2, VEG.tl2], [VEG.stones3, VEG.tl3], [VEG.acacias, VEG.al], [VEG.agaves, VEG.gl]]){ if(!mesh || !list) continue; let ch = false; list.forEach(([x, z], i) => { if(Math.abs(x-b.x) < r && Math.abs(z-b.z) < r){ mesh.setMatrixAt(i, m4); ch = true; } }); if(ch) mesh.instanceMatrix.needsUpdate = true; }
 }
 function buildWater(){
   buildTerrain();
@@ -3366,7 +3473,7 @@ function smoothRockGeo(v, detail){
     const uv = [];
     for(let i=0; i<verts.length; i+=3){
       const x = verts[i], z = verts[i+2]; let y = verts[i+1];
-      const k = 1 + 0.2*Math.sin(x*3.1 + y*2.3 + v*1.7) + 0.12*Math.sin(z*5.3 - x*2.1 + v) + 0.06*Math.sin(y*9.7 + z*7.1 + v*3.3);
+      const k = 1 + 0.2*Math.sin(x*3.1 + y*2.3 + v*1.7) + 0.12*Math.sin(z*5.3 - x*2.1 + v) + 0.06*Math.sin(y*9.7 + z*7.1 + v*3.3) + 0.045*Math.abs(Math.sin(y*11 + v));   // estratos: escalones horizontales
       if(y < 0) y *= 0.5; else if(y > 0.6) y = 0.6 + (y - 0.6)*0.55;                 // base plana y cima algo achatada
       verts[i] = x*k; verts[i+1] = y*k; verts[i+2] = z*k; uv.push((x + z*0.7)*0.6, y*0.6);
     }
@@ -3396,6 +3503,10 @@ let RUINAS = [];
 const RUIN_PROTO = new Map();
 function ruinBody(t){
   if(RUIN_PROTO.has(t)) return RUIN_PROTO.get(t).clone();
+  const g = ruinPartes(t); mergeGroup(g, { polvo:0.5 }); RUIN_PROTO.set(t, g); return g.clone();
+}
+// Piezas sin fusionar de cada ruina (los refugios las agregan a su propio modelo antes de fusionarlo)
+function ruinPartes(t){
   const g = new THREE.Group(); TINT = null; const PARED = 0xb8a78a, OSC = 0x6b5e4c, OXI = 0x7a4a2a;
   if(t===0){   // casa de adobe en ruinas: muros incompletos, techo caído y escombros
     g.add(box(3.4, 0.1, 3.2, 0x9a8a6c, 0, 0, 0));
@@ -3404,9 +3515,10 @@ function ruinBody(t){
     g.add(tilt(box(2.4, 0.12, 1.8, OSC, -0.2, 0.5, -0.3), 0.35, 0, 0.18), tilt(box(0.12, 0.12, 2.6, 0x5a4026, 0.4, 0.9, -0.2), 0.3, 0, 0.2));   // losa y viga caídas
     for(const [x, z, r] of [[0.8,-0.4,0.35],[-0.9,0.8,0.3],[0.2,0.9,0.25],[1.3,0.4,0.22]]) g.add(chunk(r, 0x9a8a6c, x, 0.15, z, (x*7|0)&3));
   } else if(t===1){   // gasolinera abandonada: marquesina, surtidores oxidados y letrero
-    g.add(box(5.6, 0.08, 3.4, 0x5a5650, 0, 0, 0));
-    for(const [x, z] of [[-2,-1],[2,-1],[-2,0.9],[2,0.9]]) g.add(box(0.16, 2.2, 0.16, 0x8a8478, x, 0.08, z));
-    g.add(tilt(box(4.8, 0.18, 2.6, 0xc9c2b0, 0, 2.28, 0), 0, 0, 0.06), box(4.8, 0.2, 0.06, 0x8a3a2a, 0, 2.18, 1.3));
+    g.add(box(5.6, 0.14, 3.6, 0x77736a, 0, 0, 0));   // losa de concreto
+    for(const [x, z] of [[-1.6,-0.2],[1.6,-0.2],[-1.6,1.2],[1.6,1.2]]) g.add(box(0.18, 2.2, 0.18, 0x8a8478, x, 0.14, z));
+    g.add(tilt(box(4.2, 0.16, 2.2, 0x5f5b54, 0.1, 2.34, 0.5), 0, 0, 0.06), box(4.2, 0.26, 0.08, 0x8a3a2a, 0.1, 2.22, 1.62), box(1.6, 0.04, 1.0, 0x7a4a2a, -0.9, 2.44, 0.2));   // marquesina de chapa con óxido
+    g.add(box(2.2, 1.5, 1.2, PARED, 1.4, 0.14, -1.1), box(2.3, 0.12, 1.3, OSC, 1.4, 1.64, -1.1), box(0.7, 0.5, 0.05, 0x2a2622, 1.2, 0.7, -0.48), box(0.45, 0.95, 0.05, 0x2a2622, 2.1, 0.14, -0.48));   // tienda con ventana y puerta
     for(const x of [-0.8, 0.8]) g.add(box(0.4, 1.0, 0.3, OXI, x, 0.08, 0), box(0.3, 0.2, 0.32, 0xd8cfb0, x, 0.75, 0));
     g.add(box(1.4, 1.1, 1.2, PARED, -2.0, 0.08, -1.0), box(0.12, 2.6, 0.12, 0x6b6a62, 2.4, 0.08, 1.4), tilt(box(1.0, 0.6, 0.06, 0xd9a23a, 2.4, 2.4, 1.4), 0, 0.3, 0.12));
     drums(g, 1.6, -1.2, 2, OXI);
@@ -3421,7 +3533,7 @@ function ruinBody(t){
     for(const [x, z] of [[-0.1,-0.6],[0.9,-0.4],[0.1,0.9],[1.2,1.1]]){ const r = new THREE.Mesh(geo('neumRuina', () => new THREE.TorusGeometry(0.28, 0.1, 6, 12)), mat(0x1e1c1a)); r.rotation.set(Math.PI/2, 0, 0); r.position.set(x, 0.12, z); g.add(r); }
     sandbags(g, -0.6, 0, 1.3, 1.6, 4.6, 0.05, 2);
   }
-  mergeGroup(g, { polvo:0.5 }); RUIN_PROTO.set(t, g); return g.clone();
+  return g;
 }
 function buildRuins(){
   for(const m of RUINAS) scene.remove(m); RUINAS = [];
@@ -4309,7 +4421,7 @@ function commandAt(sx, sy, forceAMove){
   if(!units.length){ if(blds.length && g){ blds.forEach(b => issue({ t:'rally', id:b.id, x:g.x, z:g.z })); orderMarker(g.x, g.z, 0xe8a33d); } return; }
   const ids = units.map(u => u.id), others = list => units.filter(u => !list.includes(u));
   const moveIds = list => { if(list.length && g) issue({ t:'move', ids:list.map(u=>u.id), x:g.x, z:g.z }); };
-  const garB = tgt && tgt.kind==='bld' && tgt.owner===LOCAL && tgt.built && BT(LOCAL, tgt.type).garrison;
+  const garB = tgt && tgt.kind==='bld' && tgt.built && ((tgt.owner===LOCAL && BT(LOCAL, tgt.type).garrison) || (tgt.owner<0 && esRefugio(tgt)));
   if(garB){
     const inf = units.filter(u => UT(LOCAL,u.type).armor==='inf');
     if(inf.length){ issue({ t:'enter', ids:inf.map(u=>u.id), target:tgt.id }); orderMarker(tgt.x, tgt.z, 0xe8a33d); moveIds(others(inf)); return; }
@@ -4660,6 +4772,8 @@ function renderPanel(){
     } else if(own && b.built && t.income && b.type!=='pozo'){
       const low = S.power[LOCAL].low && t.power < 0;
       h += `<div class="sub" style="margin-top:6px">Genera ${Math.round(t.income*(low ? 0.5 : 1))} créditos cada 3 s${low ? ' <span class="warn">(mitad por energía insuficiente)</span>' : ''}.</div>`;
+    } else if(esRefugio(b) && !own){
+      h += `<div class="tags"><span>Plazas ${b.gar ? b.gar.length : 0} / ${t.garrison}</span><span>Alcance ${t.range}</span><span>Daño recibido ${Math.round(t.resist*100)} %</span></div><div class="sub" style="margin-top:6px">${b.owner<0 ? 'Desocupado. Seleccione infantería y haga clic derecho aquí para ocuparlo.' : 'Ocupado por el enemigo. Al destruirlo, sus ocupantes salen y queda libre.'}</div>`;
     } else if(own && b.built && t.garrison){
       const g = b.gar || [], cnt = Object.create(null); g.forEach(u => { const n = UT(u.owner,u.type).nombre; cnt[n] = (cnt[n]||0) + 1; });
       h += `<div class="tags"><span>Plazas ${g.length} / ${t.garrison}</span><span>Alcance ${t.range}</span>${t.resist ? `<span>Daño recibido ${Math.round(t.resist*100)} %</span>` : ''}${t.stealthBld ? `<span${stealthed(b)?' class="hot"':''}>${stealthed(b) ? 'Oculta' : 'Visible 3 s tras disparar'}</span>` : ''}</div>`;
@@ -5298,6 +5412,7 @@ function startGame(seed, mode, factions, aiList, map, mission, aiLevel, creditos
   buildWater();
   REC = { names: mode==='online' ? NET.names.slice() : ['Jugador', 'IA'], local:LOCAL };
   buildRocks(); buildRuins(); buildVegetation(); updateFog(0, true);
+  for(const e of S.ents){ const o = meshes.get(e.id); if(o && e.kind==='bld') o.g.position.y = terrainH(e.x, e.z); }   // los modelos se crearon antes que el relieve de esta partida
   btnPause.hidden = mode!=='solo' && mode!=='mision'; $('pingChip').hidden = mode!=='online'; powersEl.hidden = mode==='replay';
   applyTheme(S.players[LOCAL].faction);
   $('tree').hidden = true; $('transmission').hidden = true; renderObjectives();
