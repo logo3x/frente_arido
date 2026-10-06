@@ -1,5 +1,6 @@
 @php
     $facciones = config('game.facciones');
+    $arsenal = config('game.arsenal');
     $rangos = [[1, 0, 'Inicio de la partida'], [2, 2500, '+1 punto de comandante'], [3, 6000, 'Habilita la superarma'], [4, 11000, 'Habilita el héroe'], [5, 18000, '+1 punto · rango máximo']];
 @endphp
 <!DOCTYPE html>
@@ -8,14 +9,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Frente Árido · Estrategia en tiempo real en el navegador</title>
-<meta name="description" content="Frente Árido es un juego de estrategia en tiempo real para navegador: tres facciones, campaña de 12 misiones, partidas en línea con Elo y editor de mapas.">
+<meta name="description" content="Frente Árido es un juego de estrategia en tiempo real para navegador: tres facciones, campaña de 12 misiones, escaramuzas y partidas en línea de 2 a 8 jugadores con Elo, guerra naval y editor de mapas.">
 <meta name="theme-color" content="#1d2220">
 <link rel="stylesheet" href="{{ asset('css/sitio.css') }}">
 <link rel="preload" as="image" href="{{ asset('img/portada.webp') }}">
+<link rel="icon" type="image/png" href="{{ asset('img/icono-app.png') }}">
+<link rel="apple-touch-icon" href="{{ asset('img/icono-app.png') }}">
 {{-- Vista previa al compartir el enlace --}}
 <meta property="og:type" content="website">
 <meta property="og:title" content="Frente Árido · Estrategia en tiempo real">
-<meta property="og:description" content="Tres facciones, campaña de 12 misiones y partidas en línea con Elo. Se juega en el navegador.">
+<meta property="og:description" content="Tres facciones, campaña de 12 misiones y partidas de 2 a 8 jugadores con Elo. Se juega en el navegador.">
 <meta property="og:image" content="{{ asset('img/og.jpg') }}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -29,10 +32,11 @@
     <div class="contenedor">
         <a class="marca" href="{{ url('/') }}">
             <x-emblema faccion="general" />
-            Frente Árido <small>v0.9.1</small>
+            Frente Árido <small>v{{ config('game.version') }}</small>
         </a>
         <nav aria-label="Secciones">
             <a href="#facciones">Facciones</a>
+            <a href="#arsenal">Arsenal</a>
             <a href="#modos">Modos de juego</a>
             <a href="#perfil">Perfil</a>
         </nav>
@@ -55,7 +59,7 @@
             <div>
                 <span class="etiqueta">Estrategia en tiempo real · Navegador</span>
                 <h1>Controle el <span>desierto</span>.<br>Domine el frente.</h1>
-                <p class="intro">Recolecte recursos, levante su base y dirija ejércitos de tierra, aire y mar. Tres facciones con estilos de juego distintos, sin instalar nada.</p>
+                <p class="intro">Recolecte recursos, levante su base y dirija ejércitos de tierra, aire y mar. Tres facciones con estilos de juego distintos, partidas de hasta 8 jugadores y sin instalar nada.</p>
                 <div class="cta">
                     @auth
                         <a class="btn primario grande" href="{{ route('dashboard') }}">Ir al panel</a>
@@ -147,21 +151,56 @@
         </div>
     </section>
 
-    <section class="seccion alterna" id="modos">
+    <section class="seccion alterna" id="arsenal">
+        <div class="contenedor arsenal">
+            <span class="etiqueta">Arsenal</span>
+            <h2>Unidades de cada bando</h2>
+            <p class="bajada">Infantería, blindados, aviación y flota. Cada facción tiene diseños y nombres propios.</p>
+            @foreach ($arsenal as $clave => $lista)
+                <input type="radio" name="arsenal" id="ars-{{ $clave }}" @checked($loop->first)>
+            @endforeach
+            <div class="arsenal-tabs" role="presentation">
+                @foreach ($arsenal as $clave => $lista)
+                    <label for="ars-{{ $clave }}">{{ $facciones[$clave]['nombre'] ?? ucfirst($clave) }}</label>
+                @endforeach
+            </div>
+            @foreach ($arsenal as $clave => $lista)
+                <div class="galeria {{ $clave }}">
+                    @foreach ($lista as [$archivo, $nombre])
+                        @if (file_exists(public_path("img/ficha-$archivo-$clave.webp")))
+                            <figure class="unidad">
+                                <img src="{{ asset("img/ficha-$archivo-$clave.webp") }}" alt="{{ $nombre }} de {{ $facciones[$clave]['nombre'] ?? $clave }}" width="1200" height="900" loading="lazy">
+                                <figcaption>{{ $nombre }}</figcaption>
+                            </figure>
+                        @endif
+                    @endforeach
+                </div>
+            @endforeach
+        </div>
+    </section>
+
+    <section class="seccion" id="modos">
         <div class="contenedor">
             <span class="etiqueta">Modos de juego</span>
             <h2>Del entrenamiento a la competencia</h2>
             <p class="bajada">Aprenda los controles con un recorrido guiado, avance en la campaña y mida su nivel contra otros jugadores.</p>
             <div class="modos">
                 <div class="modo"><span class="num">01</span><h3>Campaña</h3><p>Doce misiones, cuatro por facción, incluidas operaciones navales. Las estrellas se verifican en el servidor.</p></div>
-                <div class="modo"><span class="num">02</span><h3>Escaramuza</h3><p>Partidas contra la IA en tres niveles de dificultad, en los mapas Cruce, Lagos y Meseta.</p></div>
-                <div class="modo"><span class="num">03</span><h3>En línea</h3><p>Duelos uno contra uno con clasificación Elo, reconexión automática y repeticiones de cada partida.</p></div>
+                <div class="modo"><span class="num">02</span><h3>Escaramuza</h3><p>De 2 a 8 jugadores contra la IA, todos contra todos o en dos equipos, en tres niveles de dificultad. Mapas continentales para partidas grandes.</p></div>
+                <div class="modo"><span class="num">03</span><h3>En línea</h3><p>Salas de 2 a 8 jugadores, todos contra todos o por equipos, con Elo, reconexión automática y repetición de cada partida.</p></div>
                 <div class="modo"><span class="num">04</span><h3>Editor de mapas</h3><p>Diseñe terreno, agua, recursos y pozos petroleros, y pruebe el mapa al instante.</p></div>
+            </div>
+            <h3 class="etiqueta" style="margin-top:34px">Novedades de la versión {{ config('game.version') }}</h3>
+            <div class="novedades">
+                <div class="novedad"><h3>Guerra naval</h3><p>Mapas «Dos mares» y «Estrecho», con agua continua hasta las bases enemigas.</p></div>
+                <div class="novedad"><h3>Sonido realista</h3><p>Disparos y explosiones con eco en el desierto. Las unidades responden por radio.</p></div>
+                <div class="novedad"><h3>Misiles visibles</h3><p>Misiles y cohetes vuelan hacia su blanco y dejan estela de humo.</p></div>
+                <div class="novedad"><h3>Grilla más fina</h3><p>Cuatro veces más divisiones para ubicar la base con precisión.</p></div>
             </div>
         </div>
     </section>
 
-    <section class="seccion" id="perfil">
+    <section class="seccion alterna" id="perfil">
         <div class="contenedor carrera">
             <div>
                 <span class="etiqueta">Perfil de comandante</span>
@@ -208,7 +247,7 @@
 
 <footer class="pie">
     <div class="contenedor">
-        <p>Frente Árido v0.9.1 · Proyecto académico de Ingeniería Informática, UNIPAZ.</p>
+        <p>Frente Árido v{{ config('game.version') }} · Proyecto académico de Ingeniería Informática, UNIPAZ.</p>
         <p>Diseño, arte y sonido originales.</p>
     </div>
 </footer>

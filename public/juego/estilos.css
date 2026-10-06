@@ -1,13 +1,13 @@
 /* Frente Árido · estilos del cliente */
 :root{
-  --btn:#2c3739;--btnh:#37464a;--btnline:#4b5a5a;--accentbg:#5a3f16;--radius:3px;
-  --panel:rgba(31,39,41,.92);--line:#3f4c4c;--ink:#ece5d1;--muted:#a9a48f;
-  --amber:#e8a33d;--ok:#79c25a;--bad:#e0553d;--atlas:#2f6fd8;--hierro:#c8452f;--cyan:#6fd3e0;
+  --btn:#2f3332;--btnh:#3b403e;--btnline:#575d5a;--accentbg:#5a3f16;--radius:3px;
+  --panel:rgba(33,36,36,.92);--line:#4a4e4b;--ink:#ece5d1;--muted:#a9a48f;
+  --amber:#e8a33d;--ok:#79c25a;--bad:#e0553d;--atlas:#2f6fd8;--hierro:#c8452f;--cyan:#4f8dff;
   --font:"Bahnschrift","DIN Alternate","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
 }
 *{box-sizing:border-box}
 /* Temas por facción: colores, bordes y forma de los controles */
-body.fac-atlas{--panel:rgba(22,32,43,.93);--line:#3b5468;--ink:#e6eef5;--muted:#98acbe;--amber:#5fb4ff;--btn:#1f2e3b;--btnh:#2a3e50;--btnline:#456178;--accentbg:#173a57;--radius:2px}
+body.fac-atlas{--panel:rgba(24,30,42,.93);--line:#3d4b68;--ink:#e6ebf5;--muted:#9aa6be;--amber:#4f8dff;--btn:#1f2638;--btnh:#2a3450;--btnline:#46567c;--accentbg:#1b3566;--radius:2px}
 body.fac-hierro{--panel:rgba(35,26,23,.95);--line:#64463b;--ink:#f1e3d6;--muted:#b49c8b;--amber:#ff7a45;--btn:#3a2923;--btnh:#4b342c;--btnline:#74503f;--accentbg:#5c2513;--radius:0}
 body.fac-guerrilla{--panel:rgba(33,35,24,.93);--line:#5c5f3b;--ink:#ece8d2;--muted:#a9a787;--amber:#b8d057;--btn:#32351e;--btnh:#3f4329;--btnline:#666a40;--accentbg:#3d4a16;--radius:7px}
 body.fac-hierro .chip,body.fac-hierro #panel,body.fac-hierro .card,body.fac-hierro #powers{border-width:2px}
@@ -28,6 +28,16 @@ html,body{margin:0;height:100%;overflow:hidden;background:#1d2220;font-family:va
 #energy.low b{color:var(--bad)}
 .spacer{flex:1}
 #topbar button{pointer-events:auto}
+/* Íconos de la interfaz */
+.ic{width:1.15em;height:1.15em;flex:none;vertical-align:-0.2em;color:var(--amber)}
+.chip{align-items:center}
+.chip .ic{width:18px;height:18px;opacity:.9}
+button.icono{display:inline-flex;align-items:center;justify-content:center;width:38px;padding:6px}
+button.icono .ic{width:19px;height:19px;color:var(--ink)}
+.vh{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#panel .prod small .ic,#panel .prod em .ic,#panel .sub .ic{width:13px;height:13px;margin-right:3px}
+#panel .prod em .ic{color:var(--muted)}
+#panel .sub .ic{color:var(--muted)}
 button{font:inherit;font-size:14px;color:var(--ink);background:var(--btn);border:1px solid var(--btnline);border-radius:var(--radius);padding:6px 10px;cursor:pointer;touch-action:manipulation;transition:background .12s}
 button:hover{background:var(--btnh)}
 button:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
@@ -53,7 +63,9 @@ button:disabled{opacity:.45;cursor:default}
 .tags span{background:#263133;border:1px solid #3c494a;padding:2px 7px;border-radius:2px;font-size:13px}
 .tags span.hot{border-color:var(--amber);color:var(--amber)}
 #tools{display:flex;flex-direction:column;gap:6px;pointer-events:auto}
-#tools button{min-width:116px;text-align:left}
+#tools button{min-width:116px;text-align:left;display:flex;align-items:center;gap:8px}
+#tools button .ic{width:18px;height:18px;color:var(--ink)}
+#tools kbd{margin-left:auto;font:inherit;font-size:11px;color:var(--muted);border:1px solid var(--btnline);border-radius:3px;padding:0 4px}
 #powers{position:fixed;top:52px;right:8px;width:178px;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:7px 8px;display:flex;flex-direction:column;gap:5px}
 #powers .hdr{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
 #powers .hdr b{color:var(--ink)}

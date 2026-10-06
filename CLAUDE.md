@@ -6,7 +6,7 @@ Contexto del proyecto para Claude Code. Se carga automáticamente al abrir esta 
 
 - RTS para navegador: three.js r128 (cliente), Node.js con `ws` (servidor de partidas) y Laravel 11/12 (lobby, progreso, Elo).
 - Autor y responsable: Mg. Luis Guillermo Oviedo Ochoa, profesor de Ingeniería Informática (UNIPAZ), desarrollador Laravel.
-- Versión actual: **0.9.4** (`SIM_VERSION`). Grilla fina de 0,5 unidades (`SUBC = 4`); datos de diseño (mapas, misiones, bases) en celdas de 2 unidades convertidas con `L2F`. Próxima: 1.0 (ajustes del piloto con estudiantes).
+- Versión actual: **0.9.5** (`SIM_VERSION`). Grilla fina de 0,5 unidades (`SUBC = 4`); datos de diseño (mapas, misiones, bases) en celdas de 2 unidades convertidas con `L2F`. Próxima: 1.0 (ajustes del piloto con estudiantes).
 - Historial de versiones y decisiones: @docs/DECISIONES.md
 
 ## Convenciones obligatorias

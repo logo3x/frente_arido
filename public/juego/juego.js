@@ -10,7 +10,7 @@ const LC = 2, SUBC = 4, CELL = LC / SUBC;
 let LG = 64, GRID = LG * SUBC, WORLD = LG * LC, NCELLS = GRID * GRID;
 const L2F = v => v * SUBC;   // celda de diseño → celda fina
 const AIR_Y = 6;
-const SIM_VERSION = '0.9.4';
+const SIM_VERSION = '0.9.5';
 let LOCAL = 0;   // jugador de este cliente (0 o 1)
 const hyp = (x,y) => Math.sqrt(x*x + y*y);   // sqrt es exacta en IEEE 754; Math.hypot puede variar entre navegadores
 let hooks = { income(){}, upgraded(){}, spawn(){}, death(){}, remove(){}, shot(){}, built(){}, power(){}, impact(){}, captured(){}, rankUp(){}, crate(){}, tunnel(){}, superFire(){}, heroDown(){}, mission(){} };
@@ -445,8 +445,19 @@ function canPlace(p, type, cx, cz, margin){
   return true;
 }
 function rectDist(a, b){ const hw=(b.w||b.n)*CELL/2, hh=(b.h||b.n)*CELL/2; return hyp(Math.max(0, Math.abs(a.x-b.x)-hw), Math.max(0, Math.abs(a.z-b.z)-hh)); }
+// Reparación automática: un constructor sin órdenes repara el edificio propio dañado más cercano (a 9 o menos)
+const AUTO_REPARA = 9;
+function autoReparar(u){
+  if((S.tick + u.id) % TICK_HZ !== 0) return;
+  let best = null, bd = AUTO_REPARA;
+  for(const e of S.ents){
+    if(e.dead || e.kind!=='bld' || e.owner!==u.owner || !e.built || e.hp >= e.maxhp*0.99) continue;
+    const d = rectDist(u, e); if(d <= bd){ bd = d; best = e; }
+  }
+  if(best){ u.order = { type:'build', id:best.id, auto:true }; u.path = null; }
+}
 function builderTick(u, t){
-  const o = u.order; u.working = null; if(!o) return;
+  const o = u.order; u.working = null; if(!o){ autoReparar(u); return; }
   if(o.type==='move'){
     if(!u.path){ u.path=findPath(u.x,u.z,o.x,o.z); u.pi=0; }
     if(!u.path || stepMove(u,t.speed)) u.order=null;
@@ -494,7 +505,8 @@ function detectedBy(e, p, peek){
   return v;
 }
 const targetable = (p, e) => !stealthed(e) || detectedBy(e, p);
-function findTarget(u, radius, weapon){
+// evitaInf: suma distancia a la infantería para preferir blindados, edificios y aeronaves (búnker con antitanques)
+function findTarget(u, radius, weapon, evitaInf){
   const ut = u.kind==='unit' ? UT(u.owner,u.type) : null, minR = ut && ut.minRange ? ut.minRange : 0, vis = S.vis[u.owner];
   let best=null, bs=1e9;
   for(const e of S.ents){
@@ -502,7 +514,7 @@ function findTarget(u, radius, weapon){
     const d=distTo(u,e); if(d>radius || d<minR) continue;
     if(minR && !vis[cellOf(e)]) continue;                 // la artillería necesita visión aliada del objetivo
     if(!targetable(u.owner, e)) continue;
-    const s=d + (e.kind==='bld'?(e.type==='torre'||e.type==='tunel'||(e.owner>=0 && (BT(e.owner,e.type).weapon||BT(e.owner,e.type).garrison))?2:6):0) + (e.kind==='unit' && !UT(e.owner,e.type).weapon ? 2 : 0);
+    const s=d + (e.kind==='bld'?(e.type==='torre'||e.type==='tunel'||(e.owner>=0 && (BT(e.owner,e.type).weapon||BT(e.owner,e.type).garrison))?2:6):0) + (e.kind==='unit' && !UT(e.owner,e.type).weapon ? 2 : 0) + (evitaInf && armorOf(e)==='inf' ? 12 : 0);
     if(s<bs){ bs=s; best=e; } }
   return best;
 }
@@ -814,13 +826,16 @@ function bldTick(b){
   if(bt.garrison){   // búnker y trinchera: cada ocupante aporta su daño; los antitanque usan su arma contra blindados
     if(b.cd > 0) b.cd -= DT;
     if(!b.gar || !b.gar.length){ b.target = null; return; }
+    // Fuerza de fuego de los ocupantes: los antitanque disparan a su propia cadencia (su daño se reparte en los disparos del búnker)
+    let rf = 0, at = 0;
+    for(const u of b.gar){ const t = UT(u.owner, u.type); if(t.weapon==='antitanque') at += t.dmg*bt.cd/t.cd; else if(t.weapon) rf += t.dmg; }
+    const antiBlindaje = at > rf;   // con más antitanques que fusiles se prefieren blindados, edificios y aeronaves
     let tg = b.target!=null ? S.byId.get(b.target) : null;
-    if(!tg || tg.dead || tg.owner<0 || !isEnemy(b.owner, tg.owner) || distTo(b,tg) > bt.range || !targetable(b.owner, tg)){ tg = (S.tick+b.id)%3===0 ? findTarget(b, bt.range, 'rifle') : null; b.target = tg ? tg.id : null; }
-    if(tg && b.cd <= 0){ b.cd = bt.cd; b.lastFire = S.tick; let rf = 0, at = 0;
-      for(const u of b.gar){ const t = UT(u.owner, u.type); if(t.weapon==='antitanque') at += t.dmg; else if(t.weapon) rf += t.dmg; }
+    if(!tg || tg.dead || tg.owner<0 || !isEnemy(b.owner, tg.owner) || distTo(b,tg) > bt.range || !targetable(b.owner, tg)){ tg = (S.tick+b.id)%3===0 ? findTarget(b, bt.range, antiBlindaje ? 'antitanque' : 'rifle', antiBlindaje) : null; b.target = tg ? tg.id : null; }
+    if(tg && b.cd <= 0){ b.cd = bt.cd; b.lastFire = S.tick;
       const mult = 1 + (S.players[b.owner].mods.dmg.inf||0);
       if(rf) damage(b, tg, rf, 'rifle', mult);
-      if(at && !tg.dead && armorOf(tg)!=='inf') damage(b, tg, at, 'antitanque', mult); }
+      if(at && !tg.dead && canHit('antitanque', tg)) damage(b, tg, at, 'antitanque', mult); }
     return;
   }
   if(bt.superCd){ if(low) b.readyAt++; return; }                                   // sin energía no carga
@@ -2056,7 +2071,7 @@ function makeRing(r, color){
 // Las piezas estáticas se fusionan en una sola malla con colores por vértice y el modelo se guarda
 // como prototipo: todas las unidades iguales comparten geometría (menos llamadas de dibujo).
 const PAL = {
-  atlas:    { hull:0xc6ced4, dark:0x58636c, trim:0x8d9aa4, glass:0x86d6f2, glow:0x6fe3ff, metal:0x3c444b },
+  atlas:    { hull:0xc6ced4, dark:0x58636c, trim:0x8d9aa4, glass:0x9db4dc, glow:0x4f8dff, metal:0x3c444b },
   hierro:   { hull:0x5f5a52, dark:0x35322e, trim:0x8c5a3a, glass:0xc99a62, glow:0xff8a4a, metal:0x2a2826 },
   guerrilla:{ hull:0x7e7248, dark:0x4b4731, trim:0x9a8a5c, glass:0xa9c2b9, glow:0xe8d27a, metal:0x3b3629 }
 };
@@ -2518,7 +2533,7 @@ function mergeGroup(g, opt, y0=0){
 }
 const UNIT_PROTO = new Map();
 // Atlas en campaña: gris arena y verde grisáceo en lugar del blanco de sus edificios
-const PAL_UNIT = { atlas:{ hull:0xa6a898, dark:0x4c534e, trim:0x767d72, glass:0x86d6f2, glow:0x6fe3ff, metal:0x30353a } };
+const PAL_UNIT = { atlas:{ hull:0xa6a898, dark:0x4c534e, trim:0x767d72, glass:0x9db4dc, glow:0x4f8dff, metal:0x30353a } };
 // Nivel de detalle global de las unidades: simplificado con la cámara alejada (con margen para no alternar) o en calidad Media y Baja
 let LOD_LO = false;
 // Pasa al grupo padre las piezas de los subgrupos sin animación (y los ejes de ruedas), con su transformación aplicada
@@ -2788,7 +2803,7 @@ function buildingModel(e, body){
       } else if(H){   // ciberoperaciones: búnker con racks de servidores, pantallas y antenas parabólicas
         body.add(talud(s*0.75, s*0.6, 1.3, 0.2, P.hull, 0, 0.16, 0.05), box(s*0.62, 0.06, s*0.48, P.dark, 0, 1.46, 0.05), box(s*0.64, 0.1, 0.1, tc, 0, 1.4, s*0.3));   // techo y franja del equipo
         facade(body, f, P, s*0.65, 1.2, s*0.6, 0, 0.2, 0.05, { rows:1, door:true });
-        for(let i=0; i<4; i++) body.add(lamp(0.34, 0.2, 0.03, i%2 ? 0x6fe36f : 0x6fd3e0, -s*0.27 + i*0.36, 0.9, s*0.36 + 0.02));   // pantallas encendidas
+        for(let i=0; i<4; i++) body.add(lamp(0.34, 0.2, 0.03, i%2 ? 0x6fe36f : 0x4f8dff, -s*0.27 + i*0.36, 0.9, s*0.36 + 0.02));   // pantallas encendidas
         for(let i=0; i<3; i++){ body.add(box(0.4, 0.9, 0.4, 0x2a2826, -s*0.32 + i*0.5, 1.5, -s*0.2)); for(let k=0; k<4; k++) body.add(lamp(0.3, 0.03, 0.02, k%2 ? 0x6fe36f : 0xff8a4a, -s*0.32 + i*0.5, 1.6 + k*0.18, -s*0.2+0.21)); }   // racks
         body.add(cyl(0.06, 1.2, P.metal, s*0.3, 1.5, -s*0.2, 8)); { const sp = named2('spin', s*0.3, 2.7, -s*0.2); const d = new THREE.Mesh(geo('antena', () => new THREE.SphereGeometry(0.55, 14, 8, 0, Math.PI*2, 0, Math.PI/2.6)), mat(0xb9b4aa)); d.rotation.x = Math.PI*0.6; sp.add(d); }
         body.add(box(0.05, 1.8, 0.05, P.metal, -s*0.36, 1.5, s*0.3), box(0.6, 0.03, 0.03, P.metal, -s*0.36, 3.1, s*0.3));
@@ -2833,16 +2848,22 @@ function buildingModel(e, body){
       const t = named2('turret', 0, 0.78, 0);
       t.add(box(0.52,0.42,0.62,P.hull,0,0,-0.02), box(0.54,0.06,0.64,tc,0,0.42,-0.02), box(0.95,0.55,0.1,P.hull,0,0.02,0.34), box(0.26,0.26,0.32,0x4a4a3a,0.4,0.02,-0.08));
       t.add(box(0.12,0.1,0.06,0x141210,0,0.36,0.4), cyl(0.04,0.3,P.metal,-0.4,0.2,0.1,6));
-      const g = named(new THREE.Group(), 'gatling'); g.position.set(0,0.2,0.4); t.add(g);
-      g.add(cyl(0.11,0.1,P.dark,0,-0.05,0.05,12)); g.children[0].rotation.x = Math.PI/2;
-      for(let i=0; i<6; i++){ const a = i/6*6.283, b = barrel(0.85,0.024,GUN); b.position.set(Math.cos(a)*0.065, Math.sin(a)*0.065, 0.45); g.add(b); }
-      { const r = barrel(0.04,0.1,P.dark); r.position.set(0,0,0.78); g.add(r); }
+      // Con la mejora «doble cañón» lleva dos cañones rotativos, uno a cada lado, y cajas de munición más grandes
+      const doble = mejorasDe(e).includes('doblecanon');
+      (doble ? [['gatling', -0.17], ['gatling2', 0.17]] : [['gatling', 0]]).forEach(([nombre, gx]) => {
+        const g = named(new THREE.Group(), nombre); g.position.set(gx,0.2,0.4); t.add(g);
+        g.add(cyl(0.11,0.1,P.dark,0,-0.05,0.05,12)); g.children[0].rotation.x = Math.PI/2;
+        for(let i=0; i<6; i++){ const a = i/6*6.283, b = barrel(0.85,0.024,GUN); b.position.set(Math.cos(a)*0.065, Math.sin(a)*0.065, 0.45); g.add(b); }
+        { const r = barrel(0.04,0.1,P.dark); r.position.set(0,0,0.78); g.add(r); }
+      });
+      if(doble) t.add(box(0.26,0.26,0.32,0x4a4a3a,-0.4,0.02,-0.08), box(0.6,0.05,0.05,0xf2d16b,0,0.47,-0.02));
       break; }
     case 'bateria': {   // lanzador de misiles con radar de enlace
       body.add(prism([[-0.8,0],[0.8,0],[0.7,0.35],[-0.7,0.35]], 1.6, P.hull, 0, 0, 0, 0.04), box(1.42,0.05,1.42,tc,0,0.35,0), cyl(0.4,0.15,P.dark,0,0.38,0,18));
       for(const [x,z] of [[-0.75,-0.75],[0.75,-0.75],[-0.75,0.75],[0.75,0.75]]) body.add(box(0.18,0.08,0.18,P.metal,x,0,z));   // patas estabilizadoras
       body.add(cyl(0.04,1.4,P.metal,-0.6,0.35,-0.6,8), lamp(0.08,0.08,0.08,P.glow,-0.6,1.78,-0.6));
       { const sp = named2('spin', -0.6, 1.6, -0.6); sp.add(box(0.5,0.28,0.05,0xd9dfe3,0,0,0.04), box(0.06,0.06,0.12,P.metal,0,0,-0.03)); }   // radar del enlace de datos
+      if(mejorasDe(e).includes('enlace')) body.add(cyl(0.035,2.0,P.metal,0.62,0.35,-0.62,8), box(0.5,0.03,0.03,P.metal,0.62,2.05,-0.62), box(0.03,0.03,0.5,P.metal,0.62,2.2,-0.62), lamp(0.09,0.09,0.09,P.glow,0.62,2.38,-0.62), box(0.3,0.04,0.3,0xf2d16b,0.62,0.35,-0.62));   // enlace ampliado
       const t = named2('turret', 0, 0.53, 0);
       t.add(box(0.36,0.3,0.36,P.dark,0,0,0));
       const rack = new THREE.Group(); rack.position.set(0,0.42,0.05); rack.rotation.x = -0.45; t.add(rack);
@@ -2855,6 +2876,10 @@ function buildingModel(e, body){
       for(const x of [-0.5, 0, 0.5]) body.add(box(0.1,0.34,0.06,WOOD,x,0.02,-0.62));                       // tablones
       for(const [x,z] of [[-0.75,-0.4],[0.75,-0.4],[0,0.75]]) body.add(box(0.05,0.62,0.05,WOOD,x,0,z));
       body.add(tilt(box(1.7,0.03,1.3,0x5f6a3a,0,0.62,0.05),0.08,0,0.05), box(0.3,0.03,0.25,0x6d6b3c,0.4,0.66,-0.3), box(0.45,0.06,0.08,tc,0,0.48,0.82));   // red y distintivo
+      if(mejorasDe(e).includes('camuflaje')){   // camuflaje mejorado: red amplia con follaje y una fila más de sacos
+        body.add(tilt(box(2.1,0.03,1.8,0x55613a,0,0.72,0),0.05,0,-0.04));
+        for(const [x,z,c] of [[-0.7,-0.5,0x6b7a3e],[0.6,-0.6,0x4f5a30],[-0.3,0.5,0x6b7a3e],[0.75,0.45,0x5f6a3a],[0.1,0,0x4f5a30]]) body.add(tilt(box(0.45,0.12,0.4,c,x,0.74,z),0.2,x,0.15));
+        sandbags(body, 0, 0, 1.0, -0.4, 3.55, 0.36, 1); }
       break;
     case 'centro':
       if(A){
@@ -3020,7 +3045,7 @@ function buildingModel(e, body){
   }
   if(!small && e.type!=='pozo' && !DETAIL_LO) ambientar(body, e, f, P, tc, s, nLosa);
   // Mejoras terminadas: piezas nuevas y galones dorados en la fachada (una por mejora)
-  const ups = mejorasDe(e);
+  const ups = mejorasDe(e).filter(k => MEJORAS[k].edificio===e.type);
   if(ups.length){
     const esq = (i) => [[h2-0.75, h2-0.75], [-h2+0.75, h2-0.75], [h2-0.75, -h2+0.75], [-h2+0.75, -h2+0.75]][i % 4];
     ups.forEach((k, i) => {
@@ -3115,7 +3140,9 @@ function propBody(kind, nivel=3){
   return PROP_PROTO.get(pk).clone();
 }
 const BLD_PROTO = new Map();
-const mejorasDe = e => e.owner>=0 && S.players[e.owner] ? Object.keys(MEJORAS).filter(k => MEJORAS[k].edificio===e.type && S.players[e.owner].ups[k]===2).sort() : [];
+// Mejoras que se compran en un edificio pero cambian el aspecto de otro (las tres tecnologías de facción del centro de investigación)
+const MEJORA_APLICA = { doblecanon:'minigun', enlace:'bateria', camuflaje:'trinchera' };
+const mejorasDe = e => e.owner>=0 && S.players[e.owner] ? Object.keys(MEJORAS).filter(k => (MEJORAS[k].edificio===e.type || MEJORA_APLICA[k]===e.type) && S.players[e.owner].ups[k]===2).sort() : [];
 function buildingBody(e, o){
   const f = e.owner>=0 && S.players[e.owner] ? S.players[e.owner].faction : 'neutral';
   const kind = e.type==='superarma' ? BT(e.owner,'superarma').superKind : '';
@@ -3129,7 +3156,7 @@ function buildingBody(e, o){
   }
   const body = BLD_PROTO.get(key).clone();
   o.turret = body.getObjectByName('turret') || null; o.beam = body.getObjectByName('beam') || null;
-  o.spin = body.getObjectByName('spin') || null; o.scaffold = body.getObjectByName('scaffold') || null; o.gatling = body.getObjectByName('gatling') || null;
+  o.spin = body.getObjectByName('spin') || null; o.scaffold = body.getObjectByName('scaffold') || null; o.gatling = body.getObjectByName('gatling') || null; o.gatling2 = body.getObjectByName('gatling2') || null;
   o.smoke = body.userData.smoke || null; o.smokeT = Math.random();
   o.luces = []; o.vidrios = []; body.traverse(m => { if(!m.isMesh) return; if(m.material===VCMAT.luz) o.luces.push(m); else if(m.material===WIN_MAT[0]) o.vidrios.push(m); });
   return body;
@@ -3419,7 +3446,7 @@ const yOf = e => e.air ? AIR_Y : 0;
 
 // ======================= EMBLEMAS DE FACCIÓN (originales) =======================
 const EMBLEM = {
-  atlas: '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="#5fb4ff" stroke-width="2"/><path d="M6 19 L16 8 L26 19 L21 19 L16 13 L11 19 Z" fill="#5fb4ff"/><path d="M10 23 H22" stroke="#e6eef5" stroke-width="2"/></svg>',
+  atlas: '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="none" stroke="#4f8dff" stroke-width="2"/><path d="M6 19 L16 8 L26 19 L21 19 L16 13 L11 19 Z" fill="#4f8dff"/><path d="M10 23 H22" stroke="#e6eef5" stroke-width="2"/></svg>',
   hierro: '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M11 3 H21 L29 11 V21 L21 29 H11 L3 21 V11 Z" fill="none" stroke="#ff7a45" stroke-width="2.4"/><rect x="8" y="13" width="16" height="6" fill="#ff7a45"/><rect x="13" y="8" width="6" height="16" fill="#f1e3d6"/></svg>',
   guerrilla: '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 L19 12 L28 12 L21 18 L24 27 L16 21 L8 27 L11 18 L4 12 L13 12 Z" fill="none" stroke="#b8d057" stroke-width="2" stroke-linejoin="round"/><circle cx="16" cy="16" r="3.5" fill="#b8d057"/></svg>'
 };
@@ -3539,13 +3566,13 @@ function ambient(on){
   }
   SFX.amb.gain.setTargetAtTime(on ? 0.05 : 0, SFX.ctx.currentTime, 0.5);
 }
-function setSound(on){ SFX.on = on; ambient(on); const b = $('btnSound'); b.classList.toggle('off', !on); b.textContent = on ? 'Sonido' : 'Silencio'; }
+function setSound(on){ SFX.on = on; ambient(on); const b = $('btnSound'); b.classList.toggle('off', !on); b.querySelector('use').setAttribute('href', on ? '#i-sonido' : '#i-silencio'); b.setAttribute('aria-label', on ? 'Silenciar el sonido' : 'Activar el sonido'); }
 
 // Efectos
 const effects = [];
 const tracerMat = {
   rifle:new THREE.LineBasicMaterial({ color:0xfff0a0, transparent:true }), canon:new THREE.LineBasicMaterial({ color:0xffc061, transparent:true }),
-  torre:new THREE.LineBasicMaterial({ color:0xffd88a, transparent:true }), aa:new THREE.LineBasicMaterial({ color:0xb8f0ff, transparent:true }),
+  torre:new THREE.LineBasicMaterial({ color:0xffd88a, transparent:true }), aa:new THREE.LineBasicMaterial({ color:0xc8dbff, transparent:true }),
   misil:new THREE.LineBasicMaterial({ color:0xffffff, transparent:true }), obus:new THREE.LineBasicMaterial({ color:0xffb070, transparent:true }),
   cohete:new THREE.LineBasicMaterial({ color:0xffe0a0, transparent:true })
 };
@@ -3799,7 +3826,7 @@ hooks = {
     const mine = p===LOCAL, visible = mine || visAt(x,z);
     if(!visible) return;
     const P = POWERS[id];
-    if(id==='radar'){ groundRing(x, z, P.r, 0x6fd3e0, 1.6, 'pulse'); }
+    if(id==='radar'){ groundRing(x, z, P.r, 0x4f8dff, 1.6, 'pulse'); }
     else if(id==='reparacion'){ groundRing(x, z, P.r, 0x79c25a, 1.2, 'pulse'); }
     else groundRing(x, z, P.r, mine ? 0xe8a33d : 0xe0553d, id==='artilleria' ? 6 : id==='tropas' ? 3 : 2, 'warn');
     if(!mine){ sfx('alert'); toast(`Alerta: el enemigo usó ${P.nombre.toLowerCase()}`); }
@@ -3810,7 +3837,7 @@ hooks = {
     else sfx(kind==='shell' || kind==='rad' ? 'boom' : 'big', x, z);
     if(kind==='shell') explosion(x, z, 2.4);
     else if(kind==='big'){ explosion(x, z, 6); explosion(x+1.5, z-1, 3.5); }
-    else if(kind==='particulas'){ explosion(x, z, 14); explosion(x, z, 8, 10); groundRing(x, z, 11, 0x9fe8ff, 1.5, 'pulse'); }
+    else if(kind==='particulas'){ explosion(x, z, 14); explosion(x, z, 8, 10); groundRing(x, z, 11, 0x8fb6ff, 1.5, 'pulse'); }
     else if(kind==='nuclear'){ explosion(x, z, 20); explosion(x, z, 10, 12); groundRing(x, z, 13, 0xffe08a, 2, 'pulse'); }
     else if(kind==='rad'){ groundRing(x, z, 10, 0x9be36b, 1.2, 'pulse'); }
   },
@@ -3827,7 +3854,7 @@ hooks = {
     const o = meshes.get(b.id); if(o && visAt(b.x, b.z) && S.players[b.owner].faction==='atlas'){ o.entregas = (o.entregas||0) + 1; if(o.entregas % 4 === 1) supplyPlane(b); }
   },
   upgraded(b, key){
-    for(const e of S.ents){ if(e.dead || e.kind!=='bld' || e.owner!==b.owner || e.type!==MEJORAS[key].edificio) continue; const o = meshes.get(e.id); if(!o) continue;
+    for(const e of S.ents){ if(e.dead || e.kind!=='bld' || e.owner!==b.owner || (e.type!==MEJORAS[key].edificio && e.type!==MEJORA_APLICA[key])) continue; const o = meshes.get(e.id); if(!o) continue;
       scene.remove(o.g); const n = buildModel(e); scene.add(n.g); meshes.set(e.id, n); if(visAt(e.x, e.z)) groundRing(e.x, e.z, e.n*CELL*0.7, 0xf2d16b, 1.2, 'pulse'); } if(b.owner!==LOCAL) return; sfx('chime'); toast(`Mejora terminada: ${MEJORAS[key].nombre}`); },
   superFire(p, b, x, z){
     const P = BT(p,b.type);
@@ -3835,6 +3862,7 @@ hooks = {
     const fase = { particulas:'super-particulas-carga', nuclear:'super-nuclear-lanzamiento', cohetes:'super-cohetes-lanzamiento' }[P.superKind];
     if(SFX.motor && fase){ SFX.motor.tocar(fase, null, { vol:1 }); SFX.motor.agachar(5); SFX.motor.combate(0.6); }
     toast(p===LOCAL ? `${P.nombre} disparado` : `Alerta: ${P.nombre.toLowerCase()} enemigo disparado`);
+    if(p===LOCAL || visAt(b.x, b.z)) lanzamientoSuperarma(b, P.superKind, x, z);
   },
   mission(kind, data){
     if(kind==='mensaje') showTransmission(data);
@@ -3843,6 +3871,64 @@ hooks = {
   heroDown(u){ if(u.owner===LOCAL){ sfx('alert'); toast(`${UT(u.owner,u.type).nombre} ha caído`); } else if(visLocal(u)) toast(`Héroe enemigo abatido: ${UT(u.owner,u.type).nombre}`); },
   rankUp(p, rank){ if(p===LOCAL) sfx('rank'); if(p===LOCAL) toast(`Ascenso a rango ${rank}: punto de comandante disponible`); }
 };
+// Lanzamiento de superarmas (solo render). El impacto llega 3 s después (S.events), así que la animación dura eso.
+// Efecto 'ruta': f.ruta(k, obj, dt, f) mueve, escala o desvanece el objeto; f.delay lo retrasa.
+function rutaFx(obj, dur, ruta, extra){ addFx(obj, dur, 'ruta', Object.assign({ ruta, own:false }, extra || {})); }
+const SUPER_MAT = {};
+const superMat = (k, color) => SUPER_MAT[k] || (SUPER_MAT[k] = new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.8, depthWrite:false, blending:THREE.AdditiveBlending }));
+function brillo(color, size){ const m = new THREE.Sprite(new THREE.SpriteMaterial({ map:TEX.smoke, color, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending })); m.scale.setScalar(size); return m; }
+function lanzamientoSuperarma(b, kind, tx, tz){
+  const y0 = terrainH(b.x, b.z), q = fxQ();
+  if(kind==='particulas'){
+    // Carga: esfera de energía sobre la antena que crece, anillos que bajan y chispas; luego un rayo hacia el cielo
+    const yc = y0 + 4.4, esf = brillo(0x8fb6ff, 0.3); esf.position.set(b.x, yc, b.z);
+    rutaFx(esf, 3.0, (k, o) => { o.scale.setScalar(0.4 + 3.2*k*k + Math.sin(k*60)*0.15*k); o.material.opacity = 0.5 + 0.5*k; }, { own:true });
+    for(let i=0; i<5; i++){ const r = new THREE.Mesh(FXG.disc, new THREE.MeshBasicMaterial({ color:0x4f8dff, transparent:true, opacity:0, depthWrite:false, blending:THREE.AdditiveBlending, side:THREE.DoubleSide }));
+      r.rotation.x = -Math.PI/2; rutaFx(r, 0.8, (k, o) => { o.position.set(b.x, yc - k*3, b.z); o.scale.setScalar(2.2 - k*1.4); o.material.opacity = 0.5*(1 - k); }, { delay:i*0.5, own:true }); }
+    for(let i=0; i<Math.round(24*q); i++){ const a = Math.random()*6.28, r = 1.2 + Math.random()*1.2;
+      particle(fxSphere, FXM.spark, b.x + Math.cos(a)*r, y0 + 1.5 + Math.random()*2, b.z + Math.sin(a)*r, -Math.cos(a)*1.5, 2, -Math.sin(a)*1.5, 0.05, 0.6 + Math.random()*2); }
+    const rayo = new THREE.Mesh(geo('rayoSuper', () => new THREE.CylinderGeometry(0.35, 0.6, 80, 12, 1, true)), superMat('rayo', 0xc8dbff));
+    rutaFx(rayo, 0.9, (k, o) => { o.position.set(b.x, yc + 40, b.z); o.scale.set(1 + k*1.5, 1, 1 + k*1.5); o.material.opacity = 0.9*(1 - k); }, { delay:2.6 });
+    setTimeout(() => { flash(b.x, yc, b.z, 2.5, 0xc8dbff, 0.35); if(q >= 0.6) lightFlash(b.x, yc + 1, b.z, 4, 0x8fb6ff, 0.4); SHAKE = Math.max(SHAKE, 0.25); }, 2600);
+  } else if(kind==='nuclear'){
+    // Silo: vapor en la base, ignición y misil que sale vertical con columna de humo
+    for(let i=0; i<Math.round(10*q); i++) puff(b.x + rnd(-2, 2), y0 + 0.6, b.z + rnd(-2, 2), 1.4, 0xd8d2c6, 2.5, 0.8, 0.5);
+    const m = new THREE.Group(); m.add(cyl(0.38, 2.2, 0xe0d8c4, 0, -1.1, 0, 14), tilt(new THREE.Mesh(geo('puntaSilo', () => new THREE.ConeGeometry(0.38, 0.8, 14)), mat(0xa63a2a)), 0, 0, 0)); m.children[1].position.y = 1.5;
+    const llama = brillo(0xffb050, 1.4); llama.position.y = -1.4; m.add(llama);
+    // Trayectoria completa: asoma del silo, sube en vertical, describe un arco alto hacia el blanco y cae en picada.
+    // Sale a los 0,6 s y llega a los 3 s, cuando la simulación aplica el impacto (S.events).
+    const ty = terrainH(tx, tz), d = Math.hypot(tx - b.x, tz - b.z), cima = y0 + 14 + Math.min(20, d*0.18);
+    const p0 = [b.x, cima, b.z], p1 = [(b.x + tx)/2, cima + 6 + d*0.12, (b.z + tz)/2], p2 = [tx, ty + 0.5, tz];
+    const pos = k => {
+      if(k < 0.12) return [b.x, y0 + 0.9 + k/0.12*1.6, b.z];                                     // asoma del silo
+      if(k < 0.35){ const u = (k - 0.12)/0.23; return [b.x, y0 + 2.5 + u*u*(cima - y0 - 2.5), b.z]; }   // ascenso que acelera
+      const u = (k - 0.35)/0.65, a = (1-u)*(1-u), bb = 2*(1-u)*u, c = u*u;                       // arco hasta el blanco
+      return [a*p0[0] + bb*p1[0] + c*p2[0], a*p0[1] + bb*p1[1] + c*p2[1], a*p0[2] + bb*p1[2] + c*p2[2]];
+    };
+    let st = 0;
+    rutaFx(m, 2.4, (k, o, dt) => {
+      const [x, y, z] = pos(k), [nx, ny, nz] = pos(Math.min(1, k + 0.01));
+      o.position.set(x, y, z);
+      if(k < 0.35) o.rotation.set(0, 0, 0); else { o.up.set(0, 1, 0); o.lookAt(nx, ny, nz); o.rotateX(Math.PI/2); }   // el modelo apunta hacia +Y
+      llama.scale.setScalar(1.2 + Math.random()*0.6);
+      st -= dt; if(st <= 0){ st = 0.025/q; puff(x + rnd(-0.2, 0.2), y - (k < 0.35 ? 1.6 : 0), z + rnd(-0.2, 0.2), k < 0.12 ? 1.6 : 1.0, k < 0.12 ? 0xcfc8bb : 0x8f8a82, 3.2, k < 0.35 ? 0.4 : 0.1, 0.6, 0, 0); }
+    }, { delay:0.6 });
+    setTimeout(() => { flash(b.x, y0 + 1, b.z, 2, 0xffc070, 0.3); SHAKE = Math.max(SHAKE, 0.35); }, 900);
+  } else {
+    // Rieles de cohetes: salen escalonados hacia el blanco con llama y estela
+    const d = Math.hypot(tx - b.x, tz - b.z) || 1, ux = (tx - b.x)/d, uz = (tz - b.z)/d;
+    for(let i=0; i<14; i++){
+      const ox = ((i % 5) - 2)*0.7, oz = -0.9 + Math.floor(i/5)*0.9, x0 = b.x + ox, z0 = b.z + oz, yy = y0 + 1.5;
+      const c = misilModelo('cohete'); let st = 0;
+      rutaFx(c, 1.6, (k, o, dt) => {
+        const nx = x0 + ux*k*45, nz = z0 + uz*k*45, ny = yy + k*30 - k*k*6;
+        if(k > 0) o.lookAt(nx, ny, nz); o.position.set(nx, ny, nz); o.children[o.children.length-1].scale.setScalar(rnd(0.55, 0.85));
+        st -= dt; if(st <= 0){ st = 0.025/q; puff(nx, ny, nz, 0.45, 0x9a948a, rnd(1.4, 2.2), 0.15, 0.6, 0, 0); }
+      }, { delay:i*0.17 + Math.random()*0.05 });
+      setTimeout(() => { flash(x0, yy, z0, 0.6, 0xffc070, 0.12); puff(x0, yy, z0, 1.0, 0xb4ab9a, 1.6, 0.3, 0.55); }, (i*0.17)*1000);
+    }
+  }
+}
 const BOOM_DARK = new THREE.Color(0x7a2a10);
 function updateEffects(dt){
   const q = fxQ();
@@ -3909,6 +3995,10 @@ function updateEffects(dt){
       for(let j=0; j<nb; j++){ const t = (j + 1)/nb; puff(px + (x - px)*t, py + (y - py)*t, pz + (z - pz)*t, rnd(0.4, 0.55), f.humo, rnd(1.6, 2.4), 0.1, 0.7, 0, 0); }
       o.position.set(x, y, z); o.children[o.children.length-1].scale.setScalar(rnd(0.55, 0.85));
       if(f.life <= 0 && !f.hecho){ f.hecho = true; f.alLlegar(x, y, z); }
+    }
+    else if(f.kind==='ruta'){
+      if(f.delay > 0){ f.delay -= dt; f.life += dt; o.visible = false; continue; }
+      o.visible = true; f.ruta(Math.min(1, 1 - f.life/f.max), o, dt, f);
     }
     else if(f.kind==='timer'){ if(f.life <= 0 && f.done) f.done(); }
     else if(f.kind==='marker'){ o.scale.setScalar(1.4-k*0.8); o.material.opacity = 1-k; }
@@ -4004,7 +4094,7 @@ function syncMeshes(alpha, dt, time){
         if(busy){ o.workT = (o.workT||0) - dt;
           if(o.workT <= 0){ o.workT = 0.14/fxQ(); const px = x + Math.sin(o.yaw)*1.5, pz = z + Math.cos(o.yaw)*1.5;
             if(o.fac==='hierro') puff(px+rnd(-0.4,0.4), 0.2, pz+rnd(-0.4,0.4), 0.6, 0xc8ad7c, 0.9, 0.3, 0.4);
-            else { sparks(px, o.fac==='atlas' ? 1.0 : 0.8, pz, 2, 0.5); if(o.fac==='atlas') flash(px, 1.0, pz, 0.15, 0x9fe8ff, 0.06); } } }
+            else { sparks(px, o.fac==='atlas' ? 1.0 : 0.8, pz, 2, 0.5); if(o.fac==='atlas') flash(px, 1.0, pz, 0.15, 0x8fb6ff, 0.06); } } }
       }
       // Helicóptero de carga: desciende y baja el gancho hasta el suelo mientras carga
       if(o.cable){
@@ -4064,7 +4154,7 @@ function syncMeshes(alpha, dt, time){
       const off = e.built && e.owner>=0 && ((S.power[e.owner] && S.power[e.owner].low && BT(e.owner,e.type).power < 0) || e.offUntil > S.tick);
       if(o.off !== off && o.luces){ o.off = off; for(const m of o.luces) m.material = off ? LUZ_OFF : VCMAT.luz; for(const m of o.vidrios) m.material = WIN_MAT[off ? 1 : 0]; }
       if(o.spin && e.built && !off) o.spin.rotation.y += dt*(e.type==='astillero' ? 0.4 : 1.6);   // antenas y radares se detienen sin energía
-      if(o.gatling && e.lastFire!==undefined && S.tick - e.lastFire < 8) o.gatling.rotation.z += dt*28;
+      if(o.gatling && e.lastFire!==undefined && S.tick - e.lastFire < 8){ o.gatling.rotation.z += dt*28; if(o.gatling2) o.gatling2.rotation.z -= dt*28; }
       // Humo de chimeneas y, si el edificio está dañado, humo negro con brasas
       if(e.built && e.owner>=0 && OPTIONS.calidad!=='baja'){
         o.smokeT = (o.smokeT||0) - dt;
@@ -4230,14 +4320,14 @@ function commandAt(sx, sy, forceAMove){
   }
   if(tgt && tgt.kind==='bld' && tgt.owner>=0 && isEnemy(LOCAL, tgt.owner) && tgt.type!=='pozo'){
     const eng = units.filter(u => capturable(u, tgt));
-    if(eng.length){ issue({ t:'capture', ids:eng.map(u=>u.id), target:tgt.id }); const rest = others(eng); if(rest.length) issue({ t:'attack', ids:rest.map(u=>u.id), target:tgt.id }); orderMarker(tgt.x, tgt.z, 0x6fd3e0); return; }
+    if(eng.length){ issue({ t:'capture', ids:eng.map(u=>u.id), target:tgt.id }); const rest = others(eng); if(rest.length) issue({ t:'attack', ids:rest.map(u=>u.id), target:tgt.id }); orderMarker(tgt.x, tgt.z, 0x4f8dff); return; }
   }
   if(tgt && tgt.type==='pozo' && (tgt.owner<0 || isEnemy(LOCAL, tgt.owner))){
     const inf = units.filter(u => capturable(u, tgt));
     if(inf.length) issue({ t:'capture', ids:inf.map(u=>u.id), target:tgt.id });
     const rest = others(inf);
     if(tgt.owner>=0 && rest.length) issue({ t:'attack', ids:rest.map(u=>u.id), target:tgt.id }); else moveIds(rest);
-    orderMarker(tgt.x, tgt.z, 0x6fd3e0); return;
+    orderMarker(tgt.x, tgt.z, 0x4f8dff); return;
   }
   if(tgt && tgt.owner>=0 && isEnemy(LOCAL, tgt.owner)){
     issue({ t:'attack', ids, target:tgt.id }); hablar('atacar', units);
@@ -4411,7 +4501,7 @@ $('gmQuit').addEventListener('click', () => {
   if(!RECORDED){ RECORDED = true; recordGame({ modo:GAME_MODE, faccion:pl.faction, rival:S.players.length > 2 ? `${S.players.length - 1} rivales` : FACTIONS[S.players[1-LOCAL].faction].nombre, resultado:'derrota', duracion:s, mision:GAME_MODE==='mision' ? MISSION_UI.id : null }); }
   startGame(20261004, 'solo'); paused = true; powersEl.hidden = true; $('objectives').hidden = true; showHome();
 });
-btnPause.addEventListener('click', () => { paused = !paused; btnPause.textContent = paused ? 'Continuar' : 'Pausa'; btnPause.classList.toggle('on', paused); });
+btnPause.addEventListener('click', () => { paused = !paused; btnPause.querySelector('use').setAttribute('href', paused ? '#i-continuar' : '#i-pausa'); btnPause.setAttribute('aria-label', paused ? 'Continuar' : 'Pausar'); btnPause.title = paused ? 'Continuar' : 'Pausa'; btnPause.classList.toggle('on', paused); });
 const helpEl = $('help');
 $('btnHelp').addEventListener('click', () => { helpEl.hidden = false; });
 $('btnHelpClose').addEventListener('click', () => { helpEl.hidden = true; });
@@ -4483,7 +4573,7 @@ function drawOverlay(){
     }
     if(e.kind==='crate') continue;
     if(e.kind==='unit' && e.owner===LOCAL && stealthed(e)){
-      const c = unitScreen(e); octx.strokeStyle = 'rgba(111,211,224,.7)'; octx.setLineDash([3,3]); octx.lineWidth = 1.2;
+      const c = unitScreen(e); octx.strokeStyle = 'rgba(79,141,255,.75)'; octx.setLineDash([3,3]); octx.lineWidth = 1.2;
       octx.beginPath(); octx.arc(c.x, c.y, 12, 0, Math.PI*2); octx.stroke(); octx.setLineDash([]);
     }
     const building = e.kind==='bld' && !e.built;
@@ -4495,7 +4585,7 @@ function drawOverlay(){
     octx.fillStyle = 'rgba(18,26,28,.8)'; octx.fillRect(s.x-bw/2-1, s.y-1, bw+2, building||capturing ? 11 : 6);
     octx.fillStyle = f>0.6 ? '#79c25a' : f>0.3 ? '#e8b23d' : '#e0553d'; octx.fillRect(s.x-bw/2, s.y, bw*f, 4);
     if(building){ octx.fillStyle = '#e8a33d'; octx.fillRect(s.x-bw/2, s.y+5, bw*e.bprog, 4); }
-    if(capturing){ const ct = S.byId.get(e.order.id), den = ct ? captureTime(e, ct) : 4; octx.fillStyle = '#6fd3e0'; octx.fillRect(s.x-bw/2, s.y+5, bw*Math.min(1,e.capT/den), 4); }
+    if(capturing){ const ct = S.byId.get(e.order.id), den = ct ? captureTime(e, ct) : 4; octx.fillStyle = '#4f8dff'; octx.fillRect(s.x-bw/2, s.y+5, bw*Math.min(1,e.capT/den), 4); }
     if(e.kind==='bld' && e.offUntil > S.tick){ octx.fillStyle = '#e0553d'; octx.font = '600 12px sans-serif'; octx.textAlign = 'center'; octx.fillText('saboteado', s.x, s.y-4); }
     if(e.kind==='unit' && UT(e.owner,e.type).hero){ octx.fillStyle = '#f2d16b'; octx.font = '700 12px sans-serif'; octx.textAlign = 'center'; octx.fillText('★', s.x, s.y-8); }
     if(e.kind==='unit' && e.vet>0){ octx.fillStyle = '#f2d16b'; for(let i=0; i<e.vet; i++) octx.fillRect(s.x-bw/2+i*6, s.y-6, 4, 4); }
@@ -4515,14 +4605,16 @@ const TOUCH = matchMedia('(pointer:coarse)').matches;
 const pct = v => `${Math.max(0,Math.min(100,v*100)).toFixed(0)}%`;
 const esc = s => String(s).replace(/[<>&"]/g, ch => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[ch]));
 function hpBar(e){ return `<div class="bar"><i style="width:${pct(e.hp/e.maxhp)}"></i></div>`; }
-const powerTxt = w => w>0 ? `+${w} energía` : w<0 ? `${w} energía` : 'sin consumo';
+// Íconos de la interfaz (símbolos de index.html); el texto completo queda en title y para lectores de pantalla
+const ic = (n, titulo) => `<svg class="ic" aria-hidden="true"><use href="#i-${n}"/></svg>${titulo ? `<span class="vh">${titulo}</span>` : ''}`;
+const powerTxt = w => `<span title="Energía">${ic('energia', 'Energía')}${w>0 ? '+' + w : w}</span>`;
 const swatch = o => `<span class="sw" style="background:${o<0 ? '#8a8070' : o===0 ? 'var(--atlas)' : 'var(--hierro)'}"></span>`;
 function buildMenu(cr){
   const pl = S.players[LOCAL], noPw = myFaction().noPower;
   return `<div class="row">` + myFaction().builds.map(t => { const bt = BT(LOCAL,t);
     const rankLock = bt.minRank && pl.rank < bt.minRank, dup = (bt.superCd && S.ents.some(e => !e.dead && e.owner===LOCAL && e.type===t)) || (bt.max && S.ents.filter(e => !e.dead && e.owner===LOCAL && e.type===t).length >= bt.max);
-    const note = rankLock ? `Requiere rango ${bt.minRank}` : dup ? (bt.max ? `Máximo ${bt.max}` : 'Ya construida') : bt.naval ? 'requiere costa' : noPw ? 'sin energía' : powerTxt(bt.power);
-    return `<button class="prod" data-place="${t}" ${cr<bt.cost||rankLock||dup?'disabled':''}>${iconHtml(t)}${bt.nombre}<small>${bt.cost} créditos</small><em>${note}</em></button>`; }).join('') + `</div>`;
+    const note = rankLock ? `<span title="Requiere rango ${bt.minRank}">${ic('rango', 'Requiere rango')}${bt.minRank}</span>` : dup ? (bt.max ? `Máximo ${bt.max}` : 'Ya construida') : bt.naval ? `<span title="Requiere costa">${ic('costa', 'Requiere costa')}</span> ${powerTxt(bt.power)}` : noPw ? `<span class="warn" title="Sin energía suficiente">${ic('energia', 'Sin energía')}${bt.power}</span>` : powerTxt(bt.power);
+    return `<button class="prod" data-place="${t}" ${cr<bt.cost||rankLock||dup?'disabled':''}>${iconHtml(t)}${bt.nombre}<small title="Costo">${ic('creditos', 'Costo')}${bt.cost}</small><em>${note}</em></button>`; }).join('') + `</div>`;
 }
 const clock = sec => `${Math.floor(sec/60)}:${String(Math.max(0,sec)%60).padStart(2,'0')}`;
 // Mejoras que se compran en el edificio b (las de otra facción no se muestran)
@@ -4531,9 +4623,9 @@ function upgradeMenu(b, cr){
   if(!keys.length) return '';
   let h = `<div class="sub" style="margin-top:8px"><b>${b.type==='investigacion' ? 'Tecnologías' : 'Mejoras'}</b></div><div class="row">`;
   for(const k of keys){ const U = MEJORAS[k], st = pl.ups[k];
-    const note = st===2 ? '<em>Adquirida</em>' : st===1 ? '<em>En curso</em>' : pl.rank < U.rango ? `<em>Requiere rango ${U.rango}</em>`
+    const note = st===2 ? '<em>Adquirida</em>' : st===1 ? '<em>En curso</em>' : pl.rank < U.rango ? `<em title="Requiere rango ${U.rango}">${ic('rango', 'Requiere rango')}${U.rango}</em>`
       : U.inv && !hasBuilt(LOCAL,'investigacion') ? `<em>Requiere ${esc(BT(LOCAL,'investigacion').nombre.toLowerCase())}</em>` : `<em>${U.desc}</em>`;
-    h += `<button class="prod" data-up="${k}" title="${U.desc}" ${upgradeOk(LOCAL, b, k) ? '' : 'disabled'}>${U.nombre}<small>${st===2 ? 'Aplicada' : U.cost + ' créditos · ' + U.time + ' s'}</small>${note}</button>`; }
+    h += `<button class="prod" data-up="${k}" title="${U.desc}" ${upgradeOk(LOCAL, b, k) ? '' : 'disabled'}>${U.nombre}<small>${st===2 ? 'Aplicada' : `<span title="Costo">${ic('creditos', 'Costo')}${U.cost}</span> <span title="Tiempo">${ic('tiempo', 'Tiempo')}${U.time} s</span>`}</small>${note}</button>`; }
   h += `</div>`;
   if(b.upq){ const U = MEJORAS[b.upq.key]; h += `<div class="sub" style="margin-top:6px">Investigando: ${U.nombre}${S.power[LOCAL].low ? ' <span class="warn">(mitad de velocidad por energía)</span>' : ''}</div><div class="bar prog"><i style="width:${pct(b.upq.prog/U.time)}"></i></div>`; }
   return h;
@@ -4554,7 +4646,7 @@ function renderPanel(){
   if(!sel.length){ panel.innerHTML = `<div class="title">${esc(myFaction().nombre)}</div><div class="sub">${TOUCH ? 'Tocar una unidad o edificio para seleccionar. Con selección, tocar el mapa para ordenar.' : 'Arrastrar para seleccionar unidades. Clic en un edificio para producir. Clic derecho para dar órdenes.'}</div>`; return; }
   if(sel.length===1 && sel[0].kind==='bld'){
     const b = sel[0], t = BT(b.owner,b.type), own = b.owner===LOCAL;
-    let h = `<div class="title">${swatch(b.owner)}${t.nombre}</div><div class="sub">${Math.ceil(b.hp)} / ${b.maxhp}${own && b.type!=='pozo' ? ` · ${powerTxt(t.power)}` : ''}</div>${hpBar(b)}`;
+    let h = `<div class="title">${swatch(b.owner)}${t.nombre}</div><div class="sub"><span title="Vida">${ic('vida', 'Vida')}${Math.ceil(b.hp)} / ${b.maxhp}</span>${own && b.type!=='pozo' ? ` ${powerTxt(t.power)}` : ''}</div>${hpBar(b)}`;
     if(b.type==='pozo'){
       h += `<div class="sub" style="margin-top:6px">${b.owner<0 ? 'Neutral. La infantería lo captura en 4 s.' : own ? `Produce ${t.income} créditos cada 3 s.` : 'En poder del enemigo. La infantería puede capturarlo.'} Si se destruye, vuelve a ser neutral.</div>`;
     } else if(own && b.built && b.type==='tunel'){
@@ -4582,12 +4674,12 @@ function renderPanel(){
     } else if(own && t.produce.length){
       h += `<div class="row">` + t.produce.map(u => { const ut = UT(LOCAL,u), q = b.queue.filter(x => x===u).length;
         const heroLock = ut.hero && S.players[LOCAL].rank < ut.minRank, heroDup = ut.hero && heroCount(LOCAL) > 0, hangar = esAvion(LOCAL, u) && avionesDe(LOCAL) >= cupoAviones(LOCAL);
-        const note = heroLock ? `<em>Requiere rango ${ut.minRank}</em>` : heroDup ? '<em>En servicio</em>' : hangar ? `<em>Hangares llenos (${HANGARES} por aeródromo)</em>` : ut.hero ? `<em>${ut.rasgo || 'Único'}</em>` : '';
-        return `<button class="prod" data-build="${u}" ${cr<ut.cost||b.queue.length>=5||heroLock||heroDup||hangar?'disabled':''}>${iconHtml(u)}${ut.nombre}<small>${ut.cost} créditos</small>${note}${q?`<span class="q">${q}</span>`:''}</button>`; }).join('');
+        const note = heroLock ? `<em title="Requiere rango ${ut.minRank}">${ic('rango', 'Requiere rango')}${ut.minRank}</em>` : heroDup ? '<em>En servicio</em>' : hangar ? `<em>Hangares llenos (${HANGARES} por aeródromo)</em>` : ut.hero ? `<em>${ut.rasgo || 'Único'}</em>` : '';
+        return `<button class="prod" data-build="${u}" ${cr<ut.cost||b.queue.length>=5||heroLock||heroDup||hangar?'disabled':''}>${iconHtml(u)}${ut.nombre}<small title="Costo">${ic('creditos', 'Costo')}${ut.cost}</small>${note}${q?`<span class="q">${q}</span>`:''}</button>`; }).join('');
       if(b.queue.length) h += `<button data-cancel="1">Cancelar último</button>`;
       h += `</div>`;
       if(b.queue.length){ const ut = UT(LOCAL,b.queue[0]); h += `<div class="sub" style="margin-top:6px">Produciendo: ${ut.nombre}${S.power[LOCAL].low ? ' <span class="warn">(mitad de velocidad por energía)</span>' : ''}</div><div class="bar prog"><i style="width:${pct(b.prog/ut.time)}"></i></div>`; }
-      else h += `<div class="sub" style="margin-top:6px">${TOUCH?'Tocar':'Clic derecho en'} el mapa fija el punto de reunión.</div>`;
+      else h += `<div class="sub" style="margin-top:6px" title="${TOUCH?'Toque':'Clic derecho en'} el mapa para fijar el punto de reunión">${ic('bandera', 'Punto de reunión')} ${TOUCH?'Toque':'Clic derecho'} en el mapa</div>`;
       if(b.type==='aerodromo') h += `<div class="sub">Hangares: ${avionesDe(LOCAL)} de ${cupoAviones(LOCAL)} aviones (${HANGARES} por aeródromo). Los aviones ociosos aterrizan en la pista.</div>`;
     }
     if(own && b.built) h += upgradeMenu(b, cr);
@@ -4606,7 +4698,7 @@ function renderPanel(){
     else if(u.order && u.order.type==='enter'){ const tb = S.byId.get(u.order.id); estado = tb && tb.type!=='tunel' ? 'Hacia la posición defensiva' : 'Hacia el túnel'; }
     else if(t.engineer) estado = u.order ? 'En marcha' : 'Disponible';
     else estado = curTarget(u) ? 'En combate' : u.order ? 'En marcha' : 'En posición';
-    let h = `<div class="title">${swatch(u.owner)}${t.nombre}</div><div class="sub">${Math.ceil(u.hp)} / ${u.maxhp} · ${estado}</div>${hpBar(u)}`;
+    let h = `<div class="title">${swatch(u.owner)}${t.nombre}</div><div class="sub"><span title="Vida">${ic('vida', 'Vida')}${Math.ceil(u.hp)} / ${u.maxhp}</span> · ${estado}</div>${hpBar(u)}`;
     if(t.weapon){
       h += `<div class="tags"><span>Alcance ${t.range}</span><span>Daño ${t.dmg}</span>${u.air ? `<span>Munición ${u.ammo} / ${t.ammo}</span>` : `<span>Rango ${['recluta','veterano','élite','héroe'][u.vet]}</span>${u.vet ? `<span class="hot">Daño +${25*u.vet} % · Vida +${20*u.vet} %</span>` : ''}`}<span>Bajas ${u.kills}</span>`;
       if(u.owner===LOCAL && hordeActive(u, true)) h += `<span class="hot">Horda +25 %</span>`;
@@ -4782,7 +4874,7 @@ function renderOptions(){
     <div class="maprow"><span>Tamaño de la interfaz</span>${seg('escala',[90,100,115,130],['90 %','100 %','115 %','130 %'])}</div>
     <div class="maprow"><span>Colores de los equipos</span>${seg('paleta',['clasica','accesible'],['Azul y rojo','Azul y naranja (accesible)'])}</div>
     <div class="maprow"><span>Voces de las unidades</span>${seg('voces',[true,false],['Sí','No'])}</div>
-    <div class="maprow"><span>Música</span>${seg('musica',['adaptativa','ambiente','no'],['Adaptativa','Solo ambiente','Apagada'])}</div>
+    <div class="maprow"><span>Música</span>${seg('musica',['ambiente','adaptativa','no'],['Tema principal','Tema y combate','Apagada'])}</div>
     <label>Volumen: ${OPTIONS.volumen} %<input type="range" min="0" max="100" step="5" value="${OPTIONS.volumen}" data-range="volumen"></label>
     <label>Velocidad de la cámara: ${OPTIONS.camara.toFixed(1)}×<input type="range" min="0.5" max="2" step="0.1" value="${OPTIONS.camara}" data-range="camara"></label>
     <div class="maprow"><span>Desplazar la cámara con el mouse en los bordes</span>${seg('bordes',[true,false],['Sí','No'])}</div>
@@ -5311,7 +5403,7 @@ function updateLinks(dt){
   const bs = S.ents.filter(e => !e.dead && e.kind==='bld' && e.type==='bateria' && e.built && e.owner>=0 && seenLocal(e)), pts = [];
   for(let i=0; i<bs.length; i++) for(let j=i+1; j<bs.length; j++){ const a = bs[i], b = bs[j], R = BT(a.owner,'bateria').linkR;
     if(a.owner===b.owner && Math.hypot(a.x-b.x, a.z-b.z) <= R && !(a.offUntil > S.tick) && !(b.offUntil > S.tick)){ const ya = terrainH(a.x,a.z)+1.85, yb = terrainH(b.x,b.z)+1.85; pts.push(a.x-0.6, ya, a.z-0.6, b.x-0.6, yb, b.z-0.6); } }
-  if(!linkLines){ linkLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color:0x6fe3ff, transparent:true, opacity:0.5, depthWrite:false })); linkLines.frustumCulled = false; scene.add(linkLines); }
+  if(!linkLines){ linkLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color:0x4f8dff, transparent:true, opacity:0.5, depthWrite:false })); linkLines.frustumCulled = false; scene.add(linkLines); }
   linkLines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); linkLines.geometry.computeBoundingSphere();
   linkLines.visible = pts.length > 0;
 }

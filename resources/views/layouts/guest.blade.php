@@ -1,30 +1,35 @@
+{{-- Pantallas de acceso (inicio de sesión, registro y recuperación): arte de la portada y formulario con el estilo del sitio --}}
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="csrf-token" content="{{ csrf_token() }}">
-
-        <title>{{ config('app.name', 'Laravel') }}</title>
-
-        <!-- Fonts -->
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
-
-        <!-- Scripts -->
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
-    </head>
-    <body class="font-sans text-gray-900 antialiased">
-        <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-gray-100">
-            <div>
-                <a href="/">
-                    <x-application-logo class="w-20 h-20 fill-current text-gray-500" />
-                </a>
-            </div>
-
-            <div class="w-full sm:max-w-md mt-6 px-6 py-4 bg-white shadow-md overflow-hidden sm:rounded-lg">
-                {{ $slot }}
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>{{ isset($titulo) ? $titulo.' · ' : '' }}Frente Árido</title>
+<meta name="theme-color" content="#1d2220">
+<link rel="stylesheet" href="{{ asset('css/sitio.css') }}">
+<link rel="icon" type="image/png" href="{{ asset('img/icono-app.png') }}">
+<link rel="preload" as="image" href="{{ asset('img/portada.webp') }}">
+</head>
+<body>
+<div class="acceso">
+    <aside class="acceso-arte" aria-hidden="true">
+        <div class="texto">
+            <h2>Controle el <span>desierto</span>.<br>Domine el frente.</h2>
+            <p>Estrategia en tiempo real en el navegador. Tres facciones, campaña, escaramuzas de hasta 8 jugadores y partidas en línea con Elo.</p>
+            <div class="retratos">
+                @foreach (['atlas', 'hierro', 'guerrilla'] as $f)
+                    <img src="{{ asset('juego/img/comandante-'.$f.'.png') }}" alt="" width="52" height="52">
+                @endforeach
             </div>
         </div>
-    </body>
+    </aside>
+    <main class="acceso-panel" id="contenido">
+        <a class="marca" href="{{ url('/') }}"><x-emblema faccion="general" /> Frente Árido <small>v{{ config('game.version') }}</small></a>
+        <div class="acceso-caja">
+            {{ $slot }}
+        </div>
+    </main>
+</div>
+</body>
 </html>

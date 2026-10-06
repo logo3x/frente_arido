@@ -1,4 +1,4 @@
-@props(['titulo' => null, 'erroresGlobales' => true])
+@props(['titulo' => null, 'erroresGlobales' => true, 'cabeza' => null])
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -8,6 +8,9 @@
 <title>{{ $titulo ? $titulo.' · ' : '' }}Frente Árido</title>
 <meta name="theme-color" content="#1d2220">
 <link rel="stylesheet" href="{{ asset('css/sitio.css') }}">
+<link rel="icon" type="image/png" href="{{ asset('img/icono-app.png') }}">
+<link rel="apple-touch-icon" href="{{ asset('img/icono-app.png') }}">
+{{ $cabeza }}
 </head>
 <body class="app">
 <a class="saltar" href="#contenido">Saltar al contenido</a>
@@ -42,7 +45,7 @@
 
 <footer class="pie">
     <div class="contenedor">
-        <p>Frente Árido v0.9.1 · UNIPAZ</p>
+        <p>Frente Árido v{{ config('game.version') }} · UNIPAZ</p>
         <p><a href="{{ url('/') }}">Página de inicio</a></p>
     </div>
 </footer>

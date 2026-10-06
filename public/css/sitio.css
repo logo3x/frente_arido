@@ -309,3 +309,79 @@ details[open] summary{display:none}
 .faccion header{margin-top:4px}
 /* Panel, cuenta y lobby: plano topográfico tenue de fondo */
 body.app{background:linear-gradient(rgba(29,34,32,.9),rgba(29,34,32,.94)),url(../img/fondo-panel.webp) center top/cover fixed no-repeat,var(--bg)}
+
+/* ---------- Controles comunes: listas desplegables y tablas ---------- */
+select,.control{font:inherit;font-size:15px;color:var(--ink);background:#1b2224;border:1px solid var(--btnline);border-radius:3px;padding:8px 34px 8px 11px;
+  -webkit-appearance:none;appearance:none;cursor:pointer;max-width:100%;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23e8a33d' stroke-width='2'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 11px center}
+select:hover{border-color:#5b6a6a}
+select:focus{outline:2px solid var(--amber);outline-offset:0;border-color:transparent}
+select option{background:#1b2224;color:var(--ink)}
+.campo select{width:100%;max-width:460px}
+.tabla{width:100%;border-collapse:collapse;font-size:15px}
+.tabla th{text-align:left;color:var(--muted);font-weight:500;font-size:13px;letter-spacing:.04em;padding:6px 8px;border-bottom:1px solid var(--line2)}
+.tabla td{padding:8px;border-top:1px solid var(--line2);vertical-align:middle}
+.tabla tr:first-child td{border-top:none}
+.tabla td.num{font-variant-numeric:tabular-nums}
+.tabla td.acc{text-align:right;white-space:nowrap}
+.tabla td.acc form{display:inline;margin:0}
+.tabla-scroll{overflow-x:auto}
+.nueva-sala{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-top:14px;padding-top:14px;border-top:1px solid var(--line2)}
+.nueva-sala label{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+.nueva-sala form{display:contents}
+.estado-tr{font-size:13px;color:var(--muted)}
+.estado-tr.activo{color:var(--ok)}
+.pila{display:grid;gap:20px;align-content:start}
+.migas{display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:14px}
+.migas a{color:var(--muted);text-decoration:none}
+.migas a:hover{color:var(--ink)}
+
+/* ---------- Acceso: inicio de sesión, registro y recuperación ---------- */
+.acceso{min-height:100vh;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(360px,1fr);background:var(--bg)}
+.acceso-arte{position:relative;overflow:hidden;background:
+  linear-gradient(90deg,transparent 55%,var(--bg) 100%),
+  linear-gradient(0deg,rgba(23,27,26,.92) 0%,transparent 45%),
+  url(../img/portada.webp) center/cover no-repeat,var(--bg2)}
+.acceso-arte .texto{position:absolute;left:40px;right:40px;bottom:40px;max-width:30em}
+.acceso-arte h2{font-size:clamp(28px,3.4vw,42px);line-height:1.05;margin:0 0 10px;font-weight:700}
+.acceso-arte h2 span{color:var(--amber)}
+.acceso-arte p{margin:0;color:var(--muted)}
+.acceso-arte .retratos{display:flex;gap:8px;margin-top:18px}
+.acceso-arte .retratos img{width:52px;height:52px;border-radius:3px;border:1px solid var(--line);object-fit:cover}
+.acceso-panel{display:flex;flex-direction:column;justify-content:center;padding:40px clamp(20px,5vw,64px)}
+.acceso-panel .marca{margin-bottom:28px;align-self:flex-start}
+.acceso-caja{width:100%;max-width:420px}
+.acceso-caja h1{margin:0 0 4px;font-size:28px;font-weight:600}
+.acceso-caja .bajada{margin:0 0 22px;color:var(--muted);font-size:15px}
+.acceso-caja .formulario{gap:14px}
+.acceso-caja .campo input{max-width:none}
+.acceso-caja .linea{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px}
+.acceso-caja .linea a,.acceso-pie a{color:var(--amber);text-decoration:none}
+.acceso-caja .linea a:hover,.acceso-pie a:hover{text-decoration:underline}
+.casilla{display:inline-flex;align-items:center;gap:8px;color:var(--muted);cursor:pointer}
+.casilla input{width:16px;height:16px;accent-color:var(--amber)}
+.acceso-caja .btn.primario{width:100%;justify-content:center;text-align:center}
+.acceso-pie{margin-top:22px;padding-top:16px;border-top:1px solid var(--line2);font-size:14px;color:var(--muted)}
+.error-campo{margin:2px 0 0;font-size:13px;color:#f3a493}
+@media (max-width:860px){.acceso{grid-template-columns:1fr}.acceso-arte{min-height:200px}.acceso-arte .texto{left:20px;right:20px;bottom:18px}.acceso-arte .retratos{display:none}}
+
+/* ---------- Landing: arsenal y novedades ---------- */
+.arsenal-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 16px}
+.arsenal-tabs label{cursor:pointer;padding:7px 14px;border:1px solid var(--line);border-radius:3px;color:var(--muted);background:var(--panel)}
+.arsenal-tabs label:hover{color:var(--ink)}
+.arsenal input[type=radio]{position:absolute;opacity:0;pointer-events:none}
+.arsenal .galeria{display:none;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+#ars-atlas:checked~.galeria.atlas,#ars-hierro:checked~.galeria.hierro,#ars-guerrilla:checked~.galeria.guerrilla{display:grid}
+#ars-atlas:checked~.arsenal-tabs label[for=ars-atlas],#ars-hierro:checked~.arsenal-tabs label[for=ars-hierro],#ars-guerrilla:checked~.arsenal-tabs label[for=ars-guerrilla]{color:var(--ink);background:var(--accentbg);border-color:var(--amber)}
+#ars-atlas:focus-visible~.arsenal-tabs label[for=ars-atlas],#ars-hierro:focus-visible~.arsenal-tabs label[for=ars-hierro],#ars-guerrilla:focus-visible~.arsenal-tabs label[for=ars-guerrilla]{outline:2px solid var(--amber)}
+.unidad{margin:0;background:var(--panel);border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.unidad img{display:block;width:100%;height:auto;aspect-ratio:4/3;object-fit:cover}
+.unidad figcaption{padding:8px 10px;font-size:14px}
+.novedades{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line2);border:1px solid var(--line2);margin-top:22px}
+.novedad{background:var(--bg);padding:18px 18px 20px}
+.seccion.alterna .novedad{background:var(--bg2)}
+.novedad h3{margin:0 0 6px;font-size:17px;font-weight:600}
+.novedad p{margin:0;color:var(--muted);font-size:15px}
+@media (max-width:900px){.novedades{grid-template-columns:1fr 1fr}}
+@media (max-width:520px){.novedades{grid-template-columns:1fr}}

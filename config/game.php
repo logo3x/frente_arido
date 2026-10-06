@@ -24,7 +24,52 @@ return [
     'validator_url' => env('GAME_VALIDATOR_URL', 'http://127.0.0.1:8080/validar-mision'),
     // true: si el validador no responde, no se registra la misión. false: se registra como no verificada.
     'validar_campania' => (bool) env('GAME_VALIDAR_CAMPANIA', true),
-    'sim_version' => env('GAME_SIM_VERSION', '0.9.2'),
+    'sim_version' => env('GAME_SIM_VERSION', '0.9.5'),
+    'version' => '0.9.5',   // versión que muestra el sitio
+    // Fichas de unidades y edificios que muestra la landing (public/img/ficha-<clave>-<facción>.webp)
+    'arsenal' => [
+        'atlas' => [
+            ['infanteria', 'Infantería'],
+            ['ingeniero', 'Ingeniero'],
+            ['tanque', 'Tanque'],
+            ['antiaereo', 'Antiaéreo'],
+            ['avion', 'Avión de ataque'],
+            ['helicoptero-carga', 'Helicóptero de carga'],
+            ['plataforma-ingenieria', 'Plataforma de ingeniería'],
+            ['lancha', 'Lancha patrullera'],
+            ['fragata', 'Fragata lanzamisiles'],
+            ['comando-atlas', 'Comando Atlas'],
+            ['centro-mando', 'Centro de mando'],
+            ['planta-energia', 'Planta de energía'],
+            ['plataforma-carga', 'Plataforma de carga'],
+        ],
+        'hierro' => [
+            ['infanteria', 'Infantería'],
+            ['ingeniero', 'Ingeniero'],
+            ['tanque', 'Tanque'],
+            ['tanque-pesado', 'Tanque pesado'],
+            ['antiaereo', 'Antiaéreo'],
+            ['helicoptero-ataque', 'Helicóptero de ataque'],
+            ['camion-minero', 'Camión minero'],
+            ['topadora', 'Topadora'],
+            ['lancha', 'Lancha patrullera'],
+            ['monitor-fluvial', 'Monitor fluvial'],
+            ['mariscal-hierro', 'Mariscal de Hierro'],
+        ],
+        'guerrilla' => [
+            ['rebelde', 'Rebelde'],
+            ['ingeniero', 'Ingeniero'],
+            ['tecnico', 'Técnico'],
+            ['artilleria', 'Artillería ligera'],
+            ['antiaereo', 'Antiaéreo'],
+            ['trabajador', 'Trabajador'],
+            ['camion-grua', 'Camión grúa'],
+            ['lancha-rapida', 'Lancha rápida'],
+            ['fragata', 'Fragata'],
+            ['jefe-rebelde', 'Jefe rebelde'],
+        ],
+    ],
+
 
     // Presentación de las facciones en el sitio (resumen de FACTIONS del cliente).
     'facciones' => [

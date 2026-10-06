@@ -180,8 +180,8 @@ function sintetizador(ctx, salida, grande){
     },
     // Radio de campaña: apertura o cierre de canal (chasquido y soplo de estática en banda telefónica)
     canal({ t=0, vol=0.2, f=2000, cierre=false }){
-      S.ruido({ t, dur:0.008, filtro:'highpass', f0:2500, vol:vol*1.4, ataque:0.0005, curva:3, rev:0 });
-      S.ruido({ t:t + 0.006, dur:cierre ? 0.14 : 0.07, filtro:'bandpass', f0:f, q:0.9, vol:vol*0.6, ataque:0.003, curva:cierre ? 2 : 4, rev:0.05 });
+      S.ruido({ t, dur:0.006, filtro:'bandpass', f0:1200, q:1.5, vol:vol*0.35, ataque:0.001, curva:3, rev:0 });   // clic suave
+      S.ruido({ t:t + 0.004, dur:cierre ? 0.12 : 0.06, filtro:'bandpass', f0:f*0.7, q:0.9, vol:vol*0.4, ataque:0.006, curva:cierre ? 2.5 : 4, rev:0.05 });
     }
   };
   return S;
@@ -331,10 +331,11 @@ const SUPER = {
 const UI = {
   click(S, R, f){
     if(f==='atlas'){ S.ruido({ dur:0.006, filtro:'bandpass', f0:4200, q:3, vol:0.5, ataque:0.0004, curva:3, rev:0.05 }); S.ruido({ t:0.012, dur:0.01, filtro:'bandpass', f0:2400, q:4, vol:0.25, ataque:0.0005, curva:3, rev:0.05 }); }   // tecla de consola
-    else if(f==='hierro'){ S.ruido({ dur:0.01, filtro:'bandpass', f0:1700, q:2, vol:0.6, ataque:0.0005, curva:3, rev:0.05 }); S.metal({ base:1300, parciales:[1, 2.3], dur:0.04, vol:0.06, rev:0.05 }); }   // relé
+    else if(f==='hierro'){ S.ruido({ dur:0.008, filtro:'bandpass', f0:950, q:2.5, vol:0.45, ataque:0.0005, curva:3, rev:0 }); S.ruido({ t:0.004, dur:0.012, tipo:'marron', filtro:'lowpass', f0:500, vol:0.3, ataque:0.0005, curva:3, rev:0 }); }   // interruptor de baquelita: toc corto y apagado
     else { S.ruido({ dur:0.008, filtro:'bandpass', f0:1400, q:3, vol:0.55, ataque:0.0005, curva:3, rev:0.05 }); S.ruido({ t:0.03, dur:0.008, filtro:'bandpass', f0:1100, q:3, vol:0.35, ataque:0.0005, curva:3, rev:0.05 }); }   // perilla de radio
   },
-  ack(S, R, f){ S.canal({ vol:0.18, f: f==='atlas' ? 2600 : f==='hierro' ? 1700 : 2100 }); },
+  // Confirmación de orden: un «tum» corto y apagado (sin clic agudo), con un leve matiz por facción
+  ack(S, R, f){ S.ruido({ dur:0.07, tipo:'marron', filtro:'lowpass', f0: f==='atlas' ? 900 : f==='hierro' ? 600 : 750, vol:0.5, ataque:0.004, curva:3.5, rev:0.05 }); S.tono({ dur:0.06, onda:'sine', f0: f==='atlas' ? 520 : f==='hierro' ? 330 : 420, vol:0.08, ataque:0.004, curva:3, rev:0.05 }); },
   ready(S, R, f){
     if(f==='atlas'){ S.canal({ vol:0.16, f:2600 }); S.tono({ t:0.06, dur:0.09, onda:'triangle', f0:1240, vol:0.07, lp:3000, rev:0.15 }); S.tono({ t:0.16, dur:0.12, onda:'triangle', f0:1240, vol:0.06, lp:3000, rev:0.15 }); }
     else if(f==='hierro'){ S.ruido({ dur:0.015, filtro:'bandpass', f0:1500, q:2, vol:0.5, ataque:0.0005, curva:3 }); S.metal({ t:0.01, base:240, parciales:[1, 2.4, 3.9], dur:0.35, vol:0.12, rev:0.3, onda:'triangle' }); }
@@ -377,13 +378,45 @@ const INSTR = {
   'm-impacto'(S, R){ S.grave({ f0:70, f1:24, dur:1.6, vol:1, k:4, rev:0.7 }); S.ruido({ dur:2.2, tipo:'marron', filtro:'lowpass', f0:1600, f1:100, vol:0.7, rev:0.9 }); S.metal({ base:180, parciales:[1, 2.3, 3.8], dur:1.4, vol:0.12, rev:0.8 }); },
   'm-subida'(S){ S.ruido({ dur:2.2, tipo:'blanco', filtro:'bandpass', f0:300, f1:6000, q:2, vol:0.35, ataque:2, curva:0.5, rev:0.6 }); S.tono({ dur:2.2, onda:'sawtooth', f0:110, f1:440, vol:0.06, voces:3, des:20, ataque:2, curva:0.5, rev:0.5 }); }
 };
+// Tema principal (menú y partida): marcha militar sobria en re menor, 84 pulsos por minuto, 16 compases en bucle.
+// Notas fijas (sin deslizamientos): cuerdas de fondo, bajo, timbales con redobles, caja militar y melodía de cornos.
+const TEMA_BPM = 84, TEMA_COMPASES = 16, TEMA_PULSO = 60/TEMA_BPM, TEMA_DUR = TEMA_COMPASES*4*TEMA_PULSO;
+const SEMI = { C:-9, 'C#':-8, D:-7, Eb:-6, E:-5, F:-4, 'F#':-3, G:-2, Ab:-1, A:0, Bb:1, B:2 };
+const NOTA = (n, o) => 440*Math.pow(2, (SEMI[n] + (o - 4)*12)/12);
+INSTR['m-tema'] = (S) => {
+  const P = TEMA_PULSO, C = 4*P;
+  // Acordes de dos compases: primera mitad Dm Bb F C; segunda mitad Dm Bb Gm A (cadencia que vuelve a re)
+  const acordes = [
+    [['D',3],['F',3],['A',3]], [['Bb',2],['D',3],['F',3]], [['F',3],['A',3],['C',4]], [['C',3],['E',3],['G',3]],
+    [['D',3],['F',3],['A',3]], [['Bb',2],['D',3],['F',3]], [['G',2],['Bb',2],['D',3]], [['A',2],['C#',3],['E',3]]
+  ];
+  acordes.forEach((ac, i) => {
+    const t = i*2*C, raiz = ac[0];
+    for(const [n, o] of ac) S.tono({ t, dur:2*C + 0.4, onda:'sawtooth', f0:NOTA(n, o), vol:0.05, voces:3, des:7, ataque:0.7, curva:1.1, lp:1100, rev:0.6 });   // cuerdas
+    S.tono({ t, dur:2*C, onda:'sine', f0:NOTA(raiz[0], raiz[1] - 1), vol:0.22, ataque:0.06, curva:1.4, rev:0.15 });                                      // bajo
+    S.tono({ t, dur:2*C, onda:'triangle', f0:NOTA(raiz[0], raiz[1] - 1), vol:0.06, ataque:0.06, curva:1.6, lp:400, rev:0.1 });
+    // timbal en el primer pulso de cada acorde y en el tercero del segundo compás
+    for(const tt of [t, t + C + 2*P]) { S.grave({ t:tt, f0:NOTA(raiz[0], 2), f1:NOTA(raiz[0], 2)*0.97, dur:1.3, vol:0.45, k:1.4, rev:0.5 }); S.ruido({ t:tt, dur:0.25, tipo:'marron', filtro:'lowpass', f0:500, vol:0.25, ataque:0.002, curva:4, rev:0.4 }); }
+  });
+  // Redobles de timbal antes de la segunda mitad y antes de volver al inicio
+  for(const fin of [8*C, 16*C]) for(let k=0; k<8; k++){ const tt = fin - P*2 + k*P/4; S.grave({ t:tt, f0:NOTA('A', 2), f1:NOTA('A', 2)*0.97, dur:0.5, vol:0.12 + k*0.03, k:1.3, rev:0.5 }); }
+  // Caja militar suave en la segunda mitad: pulsos 1 a 3 y un floreo en el 4
+  for(let bar=8; bar<16; bar++) for(const [b, v] of [[0, 0.07], [1, 0.05], [2, 0.06], [3, 0.05], [3.5, 0.04], [3.75, 0.05]]) {
+    const tt = bar*C + b*P; S.ruido({ t:tt, dur:0.12, filtro:'bandpass', f0:2300, q:0.8, vol:v, ataque:0.001, curva:4, rev:0.35 }); S.tono({ t:tt, dur:0.06, f0:210, vol:v*0.8, curva:3, rev:0.2 });
+  }
+  // Melodía de cornos (compases 5 a 8 y 13 a 16): [nota, octava, pulsos]; null es silencio
+  const corno = (inicio, frase) => { let t = inicio*C; for(const [n, o, d] of frase){ if(n) S.bronce({ t, dur:d*P*0.95, f:NOTA(n, o), vol:0.11, voces:3, des:6, rev:0.6 }); t += d*P; } };
+  corno(4, [['A',4,1],['D',5,1],['C',5,1],['A',4,1], ['Bb',4,2],['A',4,1],['F',4,1], ['A',4,2],['G',4,1],['F',4,1], ['E',4,3],[null,0,1]]);
+  corno(12, [['A',4,1],['D',5,1],['E',5,1],['F',5,1], ['D',5,2],['Bb',4,2], ['G',4,1],['Bb',4,1],['D',5,1],['C',5,1], ['C#',5,3],[null,0,1]]);
+};
 const DUR = { rifle:1.6, heroe:1.8, ametralla:2.0, aa:2.2, canon:3.0, torre:3.0, canonaval:4.0, obus:4.0, misil:2.0, cohete:2.0, misilsam:2.2, antitanque:2.2, minigun:2.4,
   boom:3.0, big:4.5, edificio:5.5, caida:4.4, hundimiento:4.5, squelch:0.25, 'squelch-fin':0.35,
   'super-particulas-carga':5, 'super-particulas-impacto':8, 'super-nuclear-lanzamiento':6.5, 'super-nuclear-impacto':11, 'super-cohetes-lanzamiento':4.5, 'super-cohetes-impacto':4,
   click:0.2, ack:0.4, ready:0.8, place:0.6, chime:1.6, alert:1.1, capture:1.6, rank:2.2, obj:0.8, radio:0.4, win:3.8, lose:4.2,
-  'm-bombo':0.6, 'm-tambor':0.8, 'm-taiko':1.4, 'm-caja':0.4, 'm-plato':0.2, 'm-yunque':1.4, 'm-dum':0.5, 'm-tek':0.3, 'm-campana':3, 'm-metal':1.8, 'm-pulsada':1.6, 'm-bajo':0.7, 'm-impacto':2.8, 'm-subida':2.6 };
+  'm-bombo':0.6, 'm-tambor':0.8, 'm-taiko':1.4, 'm-caja':0.4, 'm-plato':0.2, 'm-yunque':1.4, 'm-dum':0.5, 'm-tek':0.3, 'm-campana':3, 'm-metal':1.8, 'm-pulsada':1.6, 'm-bajo':0.7, 'm-impacto':2.8, 'm-subida':2.6, 'm-tema':TEMA_DUR + 1.5 };
 // Volumen final de cada familia tras normalizar (interfaz más baja que las armas; explosiones al máximo)
-const NIVEL = k => /^m-/.test(k) ? 0.8 : /^super/.test(k) ? 1 : UI[base(k)] ? 0.42 : EXPLOS[k] ? 0.95 : 0.8;
+// Los clics de la interfaz son los más frecuentes: van más bajos que el resto (el de Hierro, un poco más)
+const NIVEL = k => /^m-/.test(k) ? 0.8 : /^super/.test(k) ? 1 : k==='click-hierro' ? 0.2 : base(k)==='click' ? 0.26 : base(k)==='ack' ? 0.22 : /^squelch/.test(base(k)) ? 0.2 : UI[base(k)] ? 0.42 : EXPLOS[k] ? 0.95 : 0.8;
 const base = k => k.replace(/-(atlas|hierro|guerrilla)$/, '');
 const faccionDe = k => (k.match(/-(atlas|hierro|guerrilla)$/) || [])[1] || 'atlas';
 function receta(k){
@@ -448,6 +481,7 @@ class Motor {
     this.comp = ctx.createDynamicsCompressor(); this.comp.threshold.value = -14; this.comp.ratio.value = 6; this.comp.attack.value = 0.003; this.comp.release.value = 0.25; this.comp.connect(destino);
     this.efectos = ctx.createGain(); this.efectos.connect(this.comp);
     this.musica = ctx.createGain(); this.musica.gain.value = 0.32; this.musica.connect(this.comp);
+    this.temaG = ctx.createGain(); this.temaG.gain.value = 0; this.temaG.connect(this.musica);   // tema principal en bucle
     this.amb = ctx.createGain(); this.amb.gain.value = 0; this.amb.connect(this.comp);
     this.rev = ctx.createConvolver(); this.rev.buffer = recursos(ctx).irCorta; this.rev.connect(this.efectos);
     this.cola = []; this.trabajando = false;
@@ -510,8 +544,14 @@ class Motor {
 
   // --- Música ---
   modoMusica(modo){
-    this.musicaModo = modo; if(!this.activa) return; const t = this.ctx.currentTime, mus = modo==='adaptativa';
-    this.pad.gain.setTargetAtTime(mus ? 0.1 : 0, t, 1.5); this.subG.gain.setTargetAtTime(mus ? 0.09 : 0, t, 1.5); this.amb.gain.setTargetAtTime(modo==='no' ? 0 : 0.22, t, 1.5);
+    this.musicaModo = modo; if(!this.activa) return; const t = this.ctx.currentTime;
+    this.temaG.gain.setTargetAtTime(modo==='no' ? 0 : 0.85, t, 1.2);   // sin viento ni colchón grave: solo el tema
+  }
+  _arrancarTema(buf){
+    if(this.temaSrc || !this.activa) return;
+    const s = this.ctx.createBufferSource(); s.buffer = buf; s.loop = true; s.loopStart = 0; s.loopEnd = Math.min(buf.duration, TEMA_DUR);
+    s.connect(this.temaG); s.start(); this.temaSrc = s;
+    this.temaG.gain.setTargetAtTime(this.musicaModo==='no' ? 0 : 0.85, this.ctx.currentTime, 1.5);
   }
   iniciarMusica(f){
     this.faccion = MUS[f] ? f : 'atlas';
@@ -527,13 +567,16 @@ class Motor {
     this.sub = c.createOscillator(); this.sub.type = 'sine'; this.subG = c.createGain(); this.subG.gain.value = 0.0; this.sub.connect(this.subG); this.subG.connect(this.musica); this.sub.start();
     const vs = c.createBufferSource(), vf = c.createBiquadFilter(), vl = c.createOscillator(), vlg = c.createGain();
     vs.buffer = recursos(c).rosa; vs.loop = true; vf.type = 'lowpass'; vf.frequency.value = 650; vf.Q.value = 0.3; vl.frequency.value = 0.03; vlg.gain.value = 90; vl.connect(vlg); vlg.connect(vf.frequency);
-    vs.connect(vf); vf.connect(this.amb); vs.start(); vl.start(); this.amb.gain.setTargetAtTime(this.musicaModo==='no' ? 0 : 0.22, c.currentTime, 2);
+    vs.connect(vf); vf.connect(this.amb); vs.start(); vl.start(); this.amb.gain.value = 0;   // el viento ya no suena (era un zumbido continuo)
+    this.preparar('m-tema', 1, true);
+    clearInterval(this.temaEspera); this.temaEspera = setInterval(() => { const l = this.buf.get('m-tema'); if(!l || !this.activa) return; clearInterval(this.temaEspera); this._arrancarTema(l[0]); }, 300);
     this.acorde(0, c.currentTime);
-    if(this.musicaModo==='adaptativa'){ this.pad.gain.setTargetAtTime(0.1, c.currentTime, 4); this.subG.gain.setTargetAtTime(0.09, c.currentTime, 4); }
+
     this.sig = c.currentTime + 0.2; this.paso = 0; this.compas = 0;
     this.timer = setInterval(() => this._programar(), 40);
   }
-  detenerMusica(){ if(!this.activa) return; this.activa = false; clearInterval(this.timer); const t = this.ctx.currentTime; this.pad.gain.setTargetAtTime(0, t, 0.6); this.subG.gain.setTargetAtTime(0, t, 0.6); this.amb.gain.setTargetAtTime(0, t, 0.6);
+  detenerMusica(){ if(!this.activa) return; this.activa = false; clearInterval(this.timer); clearInterval(this.temaEspera); const t = this.ctx.currentTime;
+    if(this.temaSrc){ const s = this.temaSrc; this.temaSrc = null; this.temaG.gain.setTargetAtTime(0, t, 0.6); setTimeout(() => { try { s.stop(); } catch(e){} }, 3000); } this.pad.gain.setTargetAtTime(0, t, 0.6); this.subG.gain.setTargetAtTime(0, t, 0.6); this.amb.gain.setTargetAtTime(0, t, 0.6);
     const os = this.osc.concat([this.sub]); setTimeout(() => os.forEach(o => { try { o.stop(); } catch(e){} }), 3000); }
   acorde(i, t){
     const M = MUS[this.faccion], raiz = M.acordes[i % M.acordes.length][0], ivs = [0, 7];
@@ -558,10 +601,9 @@ class Motor {
         if(this.modo==='calma' && this.c > 0.45) this.modo = 'combate';
         else if(this.modo==='combate' && this.c < 0.1) this.modo = 'calma';
         if(antes !== this.modo){
-          if(this.modo==='combate'){ this._uno('m-impacto', t, 0.6); this.padF.frequency.setTargetAtTime(650, t, 2); this.pad.gain.setTargetAtTime(0.13, t, 2); }
-          else { this.padF.frequency.setTargetAtTime(420, t, 4); this.pad.gain.setTargetAtTime(0.1, t, 4); }
+          if(this.modo==='combate') this._uno('m-impacto', t, 0.6);
         }
-        if(this.compas % 8 === 0){ const g = this.pad.gain; g.setTargetAtTime(0.0001, t - 0.25, 0.08); this.acorde(this.compas/8, t); g.setTargetAtTime(this.modo==='combate' ? 0.13 : 0.1, t + 0.05, 0.6); }
+
         if(this.modo==='combate' && this.compas % 8 === 4) this._uno('m-impacto', t, 0.35);
         this.compas++;
       }
@@ -575,8 +617,7 @@ class Motor {
         if(P.bajo[p]==='1'){ const s = M.acordes[Math.floor((this.compas-1)/8) % M.acordes.length][0]; this._uno('m-bajo', t, 0.42, M.raiz/55*Math.pow(2, s/12)); }
       } else {
         // Concentración: pulso grave como un latido y un tambor lejano cada cuatro compases; sin melodía
-        if(p === 0 || p === 3) this._uno('m-tambor', t, p ? 0.1 : 0.16, 0.75);
-        if(p === 0 && this.compas % 4 === 1) this._uno('m-taiko', t, 0.18, 0.85);
+
       }
       this.sig += dt; this.paso++;
     }
