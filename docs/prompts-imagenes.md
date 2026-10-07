@@ -1219,9 +1219,27 @@ Archivo: `public/juego/img/fondo-menu.webp` · 1920 × 1080
 Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Desierto al atardecer visto desde una loma: dunas en primer plano, un río a media distancia y, en el horizonte, siluetas de tres bases distintas con humo y luces. Composición tranquila y amplia, apta para poner un menú encima. Formato 16:9.
 ```
 
+## 10. Ampliación 0.9.8
+
+Unidad nueva del aeródromo de la Coalición Atlas. Adjunte la lámina de la facción.
+
+### 168 · Bombardero de ala volante · ícono
+Archivo: `public/juego/img/icono-bombardero-atlas.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Mantenga el estilo de la lámina de referencia adjunta. Bombardero de ala volante en flecha con el borde de salida quebrado, lomo central con cabina de vidrio, dos motores sobre el ala con toberas de brillo azul, aletas cortas inclinadas en las puntas y una sola bomba grande bajo el fuselaje. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
+### 169 · Bombardero de ala volante · ficha
+Archivo: `public/img/ficha-bombardero-atlas.webp` · 1200 × 900
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Mantenga el estilo de la lámina de referencia adjunta. Bombardero de ala volante en flecha con el borde de salida quebrado, lomo central con cabina de vidrio, dos motores sobre el ala con toberas de brillo azul, aletas cortas inclinadas en las puntas y una sola bomba grande bajo el fuselaje. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Ilustración 4:3: el bombardero en vuelo bajo sobre el desierto, polvo en el aire, cielo despejado.
+```
+
 ## Lista de control
 
-Total: 167 imágenes.
+Total: 169 imágenes.
 
 - [x] 001 · Portada de la landing
 - [x] 002 · Imagen para redes sociales
@@ -1302,91 +1320,93 @@ Total: 167 imágenes.
 - [x] 077 · Planta de energía · ícono
 - [x] 078 · Planta de energía · ficha
 - [x] 079 · Cuartel · ícono
-- [ ] 080 · Cuartel · ficha
-- [ ] 081 · Fábrica · ícono
-- [ ] 082 · Fábrica · ficha
-- [ ] 083 · Torre de defensa · ícono
-- [ ] 084 · Torre de defensa · ficha
-- [ ] 085 · Aeródromo · ícono
-- [ ] 086 · Aeródromo · ficha
-- [ ] 087 · Astillero · ícono
-- [ ] 088 · Astillero · ficha
-- [ ] 089 · Cañón de partículas (superarma) · ícono
-- [ ] 090 · Cañón de partículas (superarma) · ficha
-- [ ] 091 · Centro de mando · ícono
-- [ ] 092 · Centro de mando · ficha
-- [ ] 093 · Depósito minero (recolección) · ícono
-- [ ] 094 · Depósito minero (recolección) · ficha
-- [ ] 095 · Planta de energía · ícono
-- [ ] 096 · Planta de energía · ficha
-- [ ] 097 · Cuartel · ícono
-- [ ] 098 · Cuartel · ficha
-- [ ] 099 · Fábrica · ícono
-- [ ] 100 · Fábrica · ficha
-- [ ] 101 · Torre de defensa · ícono
-- [ ] 102 · Torre de defensa · ficha
-- [ ] 103 · Astillero · ícono
-- [ ] 104 · Astillero · ficha
-- [ ] 105 · Silo nuclear (superarma) · ícono
-- [ ] 106 · Silo nuclear (superarma) · ficha
-- [ ] 107 · Campamento (centro de mando) · ícono
-- [ ] 108 · Campamento (centro de mando) · ficha
-- [ ] 109 · Acopio de recursos (recolección) · ícono
-- [ ] 110 · Acopio de recursos (recolección) · ficha
-- [ ] 111 · Cuartel · ícono
-- [ ] 112 · Cuartel · ficha
-- [ ] 113 · Taller (fábrica) · ícono
-- [ ] 114 · Taller (fábrica) · ficha
-- [ ] 115 · Torre de vigilancia · ícono
-- [ ] 116 · Torre de vigilancia · ficha
-- [ ] 117 · Red de túneles · ícono
-- [ ] 118 · Red de túneles · ficha
-- [ ] 119 · Astillero · ícono
-- [ ] 120 · Astillero · ficha
-- [ ] 121 · Tormenta de cohetes (superarma) · ícono
-- [ ] 122 · Tormenta de cohetes (superarma) · ficha
-- [ ] 123 · Depósito de mineral · ícono
-- [ ] 124 · Pozo petrolero · ícono
-- [ ] 125 · Chatarra · ícono
-- [ ] 126 · Créditos
-- [ ] 127 · Energía
-- [ ] 128 · Unidades
-- [ ] 129 · Tiempo
-- [ ] 130 · Barrido de radar
-- [ ] 131 · Reparación de campo
-- [ ] 132 · Lanzamiento de tropas
-- [ ] 133 · Bombardeo de artillería
-- [ ] 134 · Ataque de precisión
-- [ ] 135 · Sabotaje
-- [ ] 136 · Superarma lista
-- [ ] 137 · Ascenso de rango
-- [ ] 138 · Selección por área
-- [ ] 139 · Atacar-mover
-- [ ] 140 · Detener
-- [ ] 141 · Repetición
-- [ ] 142 · Grado 1 · Recluta
-- [ ] 143 · Grado 2 · Soldado
-- [ ] 144 · Grado 3 · Cabo
-- [ ] 145 · Grado 4 · Sargento
-- [ ] 146 · Grado 5 · Teniente
-- [ ] 147 · Grado 6 · Capitán
-- [ ] 148 · Grado 7 · Mayor
-- [ ] 149 · Grado 8 · Coronel
-- [ ] 150 · Grado 9 · General
-- [ ] 151 · Cabeza de playa (Coalición Atlas)
-- [ ] 152 · Cielo abierto (Coalición Atlas)
-- [ ] 153 · Tormenta de acero (Coalición Atlas)
-- [ ] 154 · Dominio del canal (Coalición Atlas)
-- [ ] 155 · La leva (Frente Hierro)
-- [ ] 156 · Muro de acero (Frente Hierro)
-- [ ] 157 · Ocaso nuclear (Frente Hierro)
-- [ ] 158 · Bloqueo fluvial (Frente Hierro)
-- [ ] 159 · Arena y pozos (Red Guerrillera)
-- [ ] 160 · Sabotaje (Red Guerrillera)
-- [ ] 161 · La gran rebelión (Red Guerrillera)
-- [ ] 162 · Piratas del canal (Red Guerrillera)
-- [ ] 163 · Entrenamiento básico
-- [ ] 164 · Pantalla de carga · Coalición Atlas
-- [ ] 165 · Pantalla de carga · Frente Hierro
-- [ ] 166 · Pantalla de carga · Red Guerrillera
-- [ ] 167 · Fondo del menú principal del juego
+- [x] 080 · Cuartel · ficha
+- [x] 081 · Fábrica · ícono
+- [x] 082 · Fábrica · ficha
+- [x] 083 · Torre de defensa · ícono
+- [x] 084 · Torre de defensa · ficha
+- [x] 085 · Aeródromo · ícono
+- [x] 086 · Aeródromo · ficha
+- [x] 087 · Astillero · ícono
+- [x] 088 · Astillero · ficha
+- [x] 089 · Cañón de partículas (superarma) · ícono
+- [x] 090 · Cañón de partículas (superarma) · ficha
+- [x] 091 · Centro de mando · ícono
+- [x] 092 · Centro de mando · ficha
+- [x] 093 · Depósito minero (recolección) · ícono
+- [x] 094 · Depósito minero (recolección) · ficha
+- [x] 095 · Planta de energía · ícono
+- [x] 096 · Planta de energía · ficha
+- [x] 097 · Cuartel · ícono
+- [x] 098 · Cuartel · ficha
+- [x] 099 · Fábrica · ícono
+- [x] 100 · Fábrica · ficha
+- [x] 101 · Torre de defensa · ícono
+- [x] 102 · Torre de defensa · ficha
+- [x] 103 · Astillero · ícono
+- [x] 104 · Astillero · ficha
+- [x] 105 · Silo nuclear (superarma) · ícono
+- [x] 106 · Silo nuclear (superarma) · ficha
+- [x] 107 · Campamento (centro de mando) · ícono
+- [x] 108 · Campamento (centro de mando) · ficha
+- [x] 109 · Acopio de recursos (recolección) · ícono
+- [x] 110 · Acopio de recursos (recolección) · ficha
+- [x] 111 · Cuartel · ícono
+- [x] 112 · Cuartel · ficha
+- [x] 113 · Taller (fábrica) · ícono
+- [x] 114 · Taller (fábrica) · ficha
+- [x] 115 · Torre de vigilancia · ícono
+- [x] 116 · Torre de vigilancia · ficha
+- [x] 117 · Red de túneles · ícono
+- [x] 118 · Red de túneles · ficha
+- [x] 119 · Astillero · ícono
+- [x] 120 · Astillero · ficha
+- [x] 121 · Tormenta de cohetes (superarma) · ícono
+- [x] 122 · Tormenta de cohetes (superarma) · ficha
+- [x] 123 · Depósito de mineral · ícono
+- [x] 124 · Pozo petrolero · ícono
+- [x] 125 · Chatarra · ícono
+- [x] 126 · Créditos
+- [x] 127 · Energía
+- [x] 128 · Unidades
+- [x] 129 · Tiempo
+- [x] 130 · Barrido de radar
+- [x] 131 · Reparación de campo
+- [x] 132 · Lanzamiento de tropas
+- [x] 133 · Bombardeo de artillería
+- [x] 134 · Ataque de precisión
+- [x] 135 · Sabotaje
+- [x] 136 · Superarma lista
+- [x] 137 · Ascenso de rango
+- [x] 138 · Selección por área
+- [x] 139 · Atacar-mover
+- [x] 140 · Detener
+- [x] 141 · Repetición
+- [x] 142 · Grado 1 · Recluta
+- [x] 143 · Grado 2 · Soldado
+- [x] 144 · Grado 3 · Cabo
+- [x] 145 · Grado 4 · Sargento
+- [x] 146 · Grado 5 · Teniente
+- [x] 147 · Grado 6 · Capitán
+- [x] 148 · Grado 7 · Mayor
+- [x] 149 · Grado 8 · Coronel
+- [x] 150 · Grado 9 · General
+- [x] 151 · Cabeza de playa (Coalición Atlas)
+- [x] 152 · Cielo abierto (Coalición Atlas)
+- [x] 153 · Tormenta de acero (Coalición Atlas)
+- [x] 154 · Dominio del canal (Coalición Atlas)
+- [x] 155 · La leva (Frente Hierro)
+- [x] 156 · Muro de acero (Frente Hierro)
+- [x] 157 · Ocaso nuclear (Frente Hierro)
+- [x] 158 · Bloqueo fluvial (Frente Hierro)
+- [x] 159 · Arena y pozos (Red Guerrillera)
+- [x] 160 · Sabotaje (Red Guerrillera)
+- [x] 161 · La gran rebelión (Red Guerrillera)
+- [x] 162 · Piratas del canal (Red Guerrillera)
+- [x] 163 · Entrenamiento básico
+- [x] 164 · Pantalla de carga · Coalición Atlas
+- [x] 165 · Pantalla de carga · Frente Hierro
+- [x] 166 · Pantalla de carga · Red Guerrillera
+- [x] 167 · Fondo del menú principal del juego
+- [ ] 168 · Bombardero de ala volante · ícono
+- [ ] 169 · Bombardero de ala volante · ficha

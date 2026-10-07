@@ -186,7 +186,21 @@ body.replay #tools,body.replay #powers{display:none}
 #gamemenu{z-index:8}
 
 /* Imágenes del catálogo: fondo de las pantallas de menú, arte de facción y retratos de comandante */
-#menu,#skirmish,#campStart,#campaign,#room{background:linear-gradient(rgba(16,20,20,.62),rgba(16,20,20,.82)),url(../img/portada.webp) center/cover no-repeat}
+#menu,#skirmish,#campStart,#campaign,#room{background:linear-gradient(rgba(16,20,20,.55),rgba(16,20,20,.8)),url(img/fondo-menu.webp) center/cover no-repeat}
+/* Pantalla de carga por facción (img/carga-<facción>.webp) */
+#carga{position:fixed;inset:0;z-index:30;background:#141a1b center/cover no-repeat;display:flex;align-items:flex-end;justify-content:center;transition:opacity .5s;cursor:pointer}
+#carga[hidden]{display:none}
+#carga.fuera{opacity:0}
+#carga::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(16,20,20,0) 50%,rgba(16,20,20,.88))}
+#carga .carga-pie{position:relative;width:min(720px,90vw);margin-bottom:7vh;text-align:center;color:#efe6d2;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+#carga b{display:block;font-size:30px;letter-spacing:.04em}
+#carga .lema{display:block;font-size:14px;opacity:.85;margin-top:2px}
+#carga .consejo{display:block;font-size:14px;margin:16px 0 12px}
+#carga .barra{height:6px;background:rgba(255,255,255,.18);border-radius:3px;overflow:hidden}
+#carga .barra i{display:block;height:100%;width:0;background:var(--amber)}
+#carga.anim .barra i{animation:cargaBarra 1.5s ease-out forwards}
+@keyframes cargaBarra{from{width:8%}to{width:100%}}
+.mision-arte{height:150px;border-radius:6px;background:#2a2d2a center/cover no-repeat;margin:0 0 10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
 .faction .fac-arte{position:relative;display:block;height:92px;margin:-9px -10px 6px;background:#1b2122 center 35%/cover no-repeat;border-bottom:1px solid var(--line)}
 .faction .fac-retrato{position:absolute;left:8px;bottom:-14px;width:46px;height:46px;border:2px solid var(--line);border-radius:3px;background:#1b2122;object-fit:cover}
 .faction.on .fac-retrato{border-color:var(--amber)}
@@ -194,3 +208,19 @@ body.replay #tools,body.replay #powers{display:none}
 .retrato-mini{width:26px;height:26px;border-radius:2px;border:1px solid var(--line);object-fit:cover;margin-right:6px}
 #transmission .retrato{width:44px;height:44px;border-radius:3px;border:1px solid var(--amber);object-fit:cover;display:block}
 @media (max-width:700px){.faction .fac-arte{height:64px}}
+/* Escaramuza: vista previa del mapa y tabla de jugadores */
+.esc-grid{display:grid;grid-template-columns:320px 1fr;gap:14px;align-items:start;margin:6px 0 4px}
+.esc-mapa canvas{display:block;width:320px;height:320px;border:1px solid var(--line);border-radius:4px;cursor:pointer;image-rendering:auto}
+.esc-mapa .row{margin-top:6px}
+.card .tabla-jug{font-size:13px}
+.card .tabla-jug th{text-align:left;font-weight:600;color:var(--muted);padding:4px 5px;border-bottom:1px solid var(--line)}
+.card .tabla-jug td{padding:4px 5px;vertical-align:middle;color:var(--ink);width:auto}
+.card .tabla-jug td:first-child{color:var(--ink);white-space:nowrap;width:auto}
+.tabla-jug tr{cursor:pointer}
+.tabla-jug tr.sel td{background:rgba(232,163,61,.13)}
+.tabla-jug tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--amber)}
+.tabla-jug .sw{width:11px;height:11px;border-radius:2px;display:inline-block;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.4)}
+.tabla-jug select{font:inherit;font-size:13px;color:var(--ink);background:#1a2122;border:1px solid #4b5a5a;border-radius:3px;padding:3px 4px;max-width:150px}
+.tabla-jug select:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+@media (max-width:900px){.esc-grid{grid-template-columns:1fr}.esc-mapa canvas{width:min(320px,100%);height:auto}}
+#skirmish .card.wide{max-width:1080px !important}

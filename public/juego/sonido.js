@@ -247,6 +247,21 @@ const ARMAS = {
     S.ruido({ t:0.005, dur:0.4, tipo:'blanco', filtro:'bandpass', f0:1100, q:0.5, vol:0.32, ataque:0.003, curva:3, pan:-0.3, rev:0.3 });
     S.cohete({ t:0.06, dur:0.7, vol:0.4, f: f==='atlas' ? 2200 : 1500, crepita: f==='guerrilla' ? 0.9 : 0.35, R });
   },
+  ametralladora(S, R, f){   // ametralladora pesada sobre la torre: ráfaga corta y grave, cadencia lenta y eco
+    const n = 6; let t = 0;
+    for(let i=0; i<n; i++){ S.disparo({ t, calibre:1.25*r(R,0.95,1.05), brillo: f==='atlas' ? 1.2 : 0.85, sucio: f==='guerrilla' ? 0.6 : 0, vol:r(R,0.8,0.92), cola:0, pan:r(R,-0.05,0.05) }); t += r(R,0.105,0.125); }
+    S.ruido({ t:0.02, dur:t + 0.7, tipo:'rosa', filtro:'lowpass', f0:1800, f1:260, vol:0.26, ataque:0.05, curva:2.4, rev:0.7, eco:0.9 });
+    S.chispas({ t:0.2, dur:t, densidad:14, vol:0.03, f:3800, filtro:'bandpass', q:3, R });   // casquillos sobre el blindaje
+  },
+  sinretroceso(S, R, f){   // cañón sin retroceso: estampido seco, chorro de gases hacia atrás y polvo
+    S.disparo({ calibre:1.9, brillo:0.85, sucio: f==='guerrilla' ? 0.7 : 0.2, vol:1 });
+    S.ruido({ t:0.005, dur:0.55, tipo:'blanco', filtro:'bandpass', f0:950, q:0.5, vol:0.32, ataque:0.003, curva:3, pan:-0.25, rev:0.3 });
+    S.escombros({ t:0.05, dur:0.5, vol:0.07, R });
+  },
+  bomba(S, R, f){   // suelta: golpe del enganche y aire que corta la bomba al caer (ruido que crece, sin tonos)
+    S.metal({ base:r(R,700,900), parciales:[1, 2.6], dur:0.08, vol:0.04, rev:0.2 });
+    S.ruido({ t:0.04, dur:0.9, tipo:'rosa', filtro:'bandpass', f0:2200, f1:800, q:2.2, vol:0.2, ataque:0.75, curva:1.2, rev:0.4 });
+  },
   minigun(S, R, f){   // motor eléctrico y ráfaga continua
     S.tono({ dur:1.0, onda:'sawtooth', f0:170, f1:215, vol:0.05, ataque:0.08, curva:1.5, lp:900, rev:0.05 });
     for(let i=0; i<30; i++) S.disparo({ t:0.06 + i*0.021, calibre:0.5, brillo:1.1, vol:0.5, cola:0, pan:r(R,-0.05,0.05) });
@@ -271,6 +286,12 @@ const EXPLOS = {
     S.ruido({ t:0.02, dur:2.6, tipo:'rosa', filtro:'lowpass', f0:2200, f1:160, vol:0.6, ataque:0.02, curva:2.6, k:2.5, rev:0.8, eco:0.8 });
     S.escombros({ t:0.1, dur:2.2, vol:0.28, R }); S.retumbo({ t:0.7, n:3, vol:0.4, R });
     for(let i=0; i<3; i++) S.metal({ t:r(R,0.6,1.8), base:r(R,600,1100), parciales:[1, 2.3, 4.1], dur:0.3, vol:0.03, rev:0.4 });   // fragmentos metálicos
+  },
+  bombazo(S, R){   // bomba de aviación: estallido enorme, presión muy grave, escombros que llueven y retumbo largo
+    EXPLOS.big(S, R);
+    S.grave({ t:0.01, f0:r(R,38,44), f1:24, dur:1.8, vol:0.75, k:2.5 });
+    S.ruido({ t:0.05, dur:2.4, tipo:'marron', filtro:'lowpass', f0:90, vol:0.9, ataque:0.01, curva:2.2, k:3, rev:0.5 });
+    S.escombros({ t:0.6, dur:2.4, vol:0.3, R }); S.retumbo({ t:1.2, n:4, vol:0.38, R });
   },
   edificio(S, R){
     EXPLOS.big(S, R);
@@ -409,7 +430,7 @@ INSTR['m-tema'] = (S) => {
   corno(4, [['A',4,1],['D',5,1],['C',5,1],['A',4,1], ['Bb',4,2],['A',4,1],['F',4,1], ['A',4,2],['G',4,1],['F',4,1], ['E',4,3],[null,0,1]]);
   corno(12, [['A',4,1],['D',5,1],['E',5,1],['F',5,1], ['D',5,2],['Bb',4,2], ['G',4,1],['Bb',4,1],['D',5,1],['C',5,1], ['C#',5,3],[null,0,1]]);
 };
-const DUR = { rifle:1.6, heroe:1.8, ametralla:2.0, aa:2.2, canon:3.0, torre:3.0, canonaval:4.0, obus:4.0, misil:2.0, cohete:2.0, misilsam:2.2, antitanque:2.2, minigun:2.4,
+const DUR = { ametralladora:2.0, sinretroceso:2.6, bomba:1.2, bombazo:6.0, rifle:1.6, heroe:1.8, ametralla:2.0, aa:2.2, canon:3.0, torre:3.0, canonaval:4.0, obus:4.0, misil:2.0, cohete:2.0, misilsam:2.2, antitanque:2.2, minigun:2.4,
   boom:3.0, big:4.5, edificio:5.5, caida:4.4, hundimiento:4.5, squelch:0.25, 'squelch-fin':0.35,
   'super-particulas-carga':5, 'super-particulas-impacto':8, 'super-nuclear-lanzamiento':6.5, 'super-nuclear-impacto':11, 'super-cohetes-lanzamiento':4.5, 'super-cohetes-impacto':4,
   click:0.2, ack:0.4, ready:0.8, place:0.6, chime:1.6, alert:1.1, capture:1.6, rank:2.2, obj:0.8, radio:0.4, win:3.8, lose:4.2,

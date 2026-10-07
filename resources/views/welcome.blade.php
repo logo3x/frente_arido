@@ -191,10 +191,10 @@
             </div>
             <h3 class="etiqueta" style="margin-top:34px">Novedades de la versión {{ config('game.version') }}</h3>
             <div class="novedades">
-                <div class="novedad"><h3>Guerra naval</h3><p>Mapas «Dos mares» y «Estrecho», con agua continua hasta las bases enemigas.</p></div>
-                <div class="novedad"><h3>Sonido realista</h3><p>Disparos y explosiones con eco en el desierto. Las unidades responden por radio.</p></div>
-                <div class="novedad"><h3>Misiles visibles</h3><p>Misiles y cohetes vuelan hacia su blanco y dejan estela de humo.</p></div>
-                <div class="novedad"><h3>Grilla más fina</h3><p>Cuatro veces más divisiones para ubicar la base con precisión.</p></div>
+                <div class="novedad"><h3>Escaramuza a medida</h3><p>Vista previa del mapa y, para cada jugador, facción, equipo, color, dificultad y lugar de aparición.</p></div>
+                <div class="novedad"><h3>Bombardero</h3><p>Un ala volante de Atlas suelta una sola bomba de gran poder y vuelve a su hangar.</p></div>
+                <div class="novedad"><h3>Aeródromo con hangares</h3><p>Los aviones aterrizan por la pista, se guardan en su hangar y despegan al recibir una orden.</p></div>
+                <div class="novedad"><h3>Armas secundarias</h3><p>Ametralladoras para los tanques y cañón sin retroceso para los técnicos, con mejoras en la fábrica.</p></div>
             </div>
         </div>
     </section>
