@@ -63,7 +63,7 @@ La rama `v0.9.4` trae los cambios en desarrollo; para producción use `main`.
 | `APP_URL` | `https://juego.ejemplo.co` (con `https://`) |
 | `APP_LOCALE` y `APP_FALLBACK_LOCALE` | `es` |
 | `LOG_LEVEL` | `warning` |
-| `APP_KEY` | vacío: `publicar.ps1` la genera la primera vez |
+| `APP_KEY` | vacío la primera vez: `publicar.ps1` la genera. Después no la borre ni la cambie (cerraría las sesiones y cambiaría los códigos seudónimos del piloto) |
 | `DB_CONNECTION` | `sqlite` (crear `database\database.sqlite` vacío) o `mysql` con sus datos |
 | `SESSION_SECURE_COOKIE` | `true` (solo con el certificado HTTPS ya instalado; ver el paso 6) |
 | `QUEUE_CONNECTION` | `sync` (el proyecto no usa colas) |
@@ -97,7 +97,7 @@ Escriba cada variable sin espacios alrededor del signo `=`. Luego:
 | El juego en línea no conecta | `GAME_WS_URL` mal escrito (falta `:` en `wss://`) | `GAME_WS_URL=wss://su-dominio/ws` |
 | Las estrellas de la campaña no se verifican | `GAME_VALIDATOR_URL` apunta al dominio público | `GAME_VALIDATOR_URL=http://127.0.0.1:8080/validar-mision` |
 | «Firma inválida» al entrar a una sala | `GAME_SECRET` distinto en Laravel y en el servicio, o con espacios o comillas de más | Corrija el `.env` y vuelva a ejecutar `instalar-servicio-juego.ps1` |
-| Error 419 al iniciar sesión | `SESSION_SECURE_COOKIE=true` con el sitio en `http://` | Instale el certificado (paso 6) o use `false` mientras tanto |
+| Error 419 («Page Expired») al registrarse o iniciar sesión | El sitio se abrió por `http://`: la cookie de sesión lleva la marca `secure` y el navegador la descarta | Entre por `https://` (`public\web.config` redirige `http` a `https`). Sin certificado todavía, use `SESSION_SECURE_COOKIE=false` y vuelva a ejecutar `publicar.ps1` |
 
 ## 6. Crear el sitio en IIS
 
@@ -105,7 +105,7 @@ Escriba cada variable sin espacios alrededor del signo `=`. Luego:
    - Nombre: `FrenteArido` · Ruta física: `C:\inetpub\frente-arido\public` · Enlace: `https`, puerto 443, nombre de host `juego.ejemplo.co`.
 2. **Grupo de aplicaciones**: «Sin código administrado», canalización integrada.
 3. El archivo `public\web.config` ya trae las reglas: Laravel, el proxy `/ws` hacia el servidor de partidas, los tipos `.webp` y `.ogg`, el bloqueo de `.env` y la política de seguridad del cliente.
-4. Certificado HTTPS: con win-acme (https://www.win-acme.com) se obtiene y renueva gratis con Let's Encrypt. Agregue también un enlace `http` en el puerto 80 y una regla de redirección a HTTPS (win-acme puede crearla). Con un dominio dinámico (por ejemplo, de No-IP), el nombre debe apuntar a la IP pública del servidor y el router debe redirigir los puertos 80 y 443 al servidor; Let's Encrypt valida por el puerto 80.
+4. Certificado HTTPS: con win-acme (https://www.win-acme.com) se obtiene y renueva gratis con Let's Encrypt. Agregue también un enlace `http` en el puerto 80: `public\web.config` redirige todo a HTTPS, salvo la validación del certificado. Con un dominio dinámico (por ejemplo, de No-IP), el nombre debe apuntar a la IP pública del servidor y el router debe redirigir los puertos 80 y 443 al servidor; Let's Encrypt valida por el puerto 80.
 
 ## 7. Instalar el servidor de partidas como servicio
 
@@ -113,13 +113,21 @@ Escriba cada variable sin espacios alrededor del signo `=`. Luego:
 .\despliegue\iis\instalar-servicio-juego.ps1 -Dominio "juego.ejemplo.co"
 ```
 
-El script lee `GAME_SECRET` del `.env`, instala las dependencias de `servidor\`, crea el servicio `FrenteAridoJuego` (inicio automático), lo deja escuchando solo en `127.0.0.1:8080`, guarda las partidas en curso en `storage\app\salas` y el registro en `storage\logs\servidor-juego.log`. Al terminar comprueba `http://127.0.0.1:8080/health`.
+El script lee `GAME_SECRET` del `.env`, instala las dependencias de `servidor\`, crea el servicio `FrenteAridoJuego` (inicio automático), lo deja escuchando solo en `127.0.0.1:8080`, guarda las partidas en curso en `storage\app\salas` y el registro en `storage\logs\servidor-juego.log`. Al terminar comprueba `http://127.0.0.1:8080/health`, habilita el proxy de ARR (sección 2) y avisa si falta el «Protocolo WebSocket». Si no encuentra Node.js o NSSM se detiene antes de cambiar nada. Para instalar NSSM:
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Invoke-WebRequest https://nssm.cc/release/nssm-2.24.zip -OutFile "$env:TEMP\nssm.zip" -UseBasicParsing
+Expand-Archive "$env:TEMP\nssm.zip" "$env:TEMP\nssm" -Force
+Copy-Item "$env:TEMP\nssm\nssm-2.24\win64\nssm.exe" C:\Windows\System32\
+```
 
 ## 8. Comprobaciones
 
 | Prueba | Resultado esperado |
 |---|---|
 | `https://juego.ejemplo.co` | Landing del juego |
+| `http://juego.ejemplo.co` | Redirige a `https://` |
 | `https://juego.ejemplo.co/login` | Pantalla de acceso con el arte de la portada |
 | `https://juego.ejemplo.co/juego/index.html` | Menú del juego (escaramuza sin cuenta) |
 | `https://juego.ejemplo.co/.env` | Error 404 |
@@ -127,8 +135,15 @@ El script lee `GAME_SECRET` del `.env`, instala las dependencias de `servidor\`,
 | Crear sala en el lobby y entrar con dos cuentas | Ambos jugadores conectados (`wss://…/ws`) |
 | Cerrar la sala desde el lobby o desde la sala de espera (creador) | La sala desaparece del lobby y los demás jugadores vuelven al menú |
 | Completar una misión con cuenta | Las estrellas aparecen como verificadas en el panel |
+| En el propio servidor: `curl.exe -s -o NUL -w "%{http_code}" https://juego.ejemplo.co/` | 200. Si no responde, el router no deja que el servidor abra su propio dominio y los resultados de las partidas no llegan a Laravel: agregue `127.0.0.1 juego.ejemplo.co` a `C:\Windows\System32\drivers\etc\hosts` |
 
-Si la partida en línea no conecta: revise que el servicio esté en marcha (`Get-Service FrenteAridoJuego`), que ARR tenga el proxy habilitado, que IIS tenga el «Protocolo WebSocket» instalado y que `ALLOWED_ORIGINS` coincida con el dominio exacto (con `https://`).
+Si el juego muestra «No fue posible conectar con el servidor», revise qué responde `/ws` con `curl.exe -s -o NUL -D - https://juego.ejemplo.co/ws` (desde otro equipo si el router no permite abrir el dominio propio desde la red interna):
+
+| Respuesta de `/ws` | Causa | Corrección |
+|---|---|---|
+| 404 sin `Cache-Control: no-store` | IIS no reenvía `/ws`: ARR no está instalado o su proxy no está habilitado | Sección 2, o vuelva a ejecutar `instalar-servicio-juego.ps1` |
+| 502 | El servidor de partidas no está en marcha | `Get-Service FrenteAridoJuego` y el registro `storage\logs\servidor-juego.log` |
+| 404 con `Cache-Control: no-store` | Correcto: responde el servidor de partidas (solo acepta WebSocket) | Si aun así no conecta: instale el «Protocolo WebSocket» de IIS y revise que `ALLOWED_ORIGINS` coincida con el dominio exacto (con `https://`) |
 
 ## 9. Actualizar a una versión nueva
 

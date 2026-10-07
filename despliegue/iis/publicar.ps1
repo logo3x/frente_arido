@@ -22,7 +22,7 @@ function ValorEnv([string]$nombre) {
 composer install --no-dev --optimize-autoloader --no-interaction
 
 # Clave de Laravel: se genera solo si falta (requiere las dependencias recién instaladas)
-if (-not (ValorEnv "APP_KEY")) { php artisan key:generate --force; Write-Host "Clave de la aplicación generada." }
+if (-not (ValorEnv "APP_KEY")) { php artisan key:generate --force; Write-Host "Clave de la aplicación generada. No la borre ni la cambie: cerraría las sesiones y cambiaría los códigos seudónimos del piloto." }
 
 # Base SQLite: se crea vacía si la conexión es sqlite y el archivo no existe
 if ((ValorEnv "DB_CONNECTION") -eq "sqlite" -and -not (Test-Path "database\database.sqlite")) {
@@ -36,7 +36,8 @@ if ((ValorEnv "GAME_WS_URL") -notmatch '^wss?://[^/]+/ws$') { $avisos += "GAME_W
 if ((ValorEnv "GAME_VALIDATOR_URL") -notmatch '^http://(127\.0\.0\.1|localhost):\d+/validar-mision$') { $avisos += "GAME_VALIDATOR_URL debe ser http://127.0.0.1:8080/validar-mision (es interno; IIS lo bloquea hacia afuera)." }
 if ((ValorEnv "GAME_SECRET").Length -lt 32) { $avisos += "GAME_SECRET debe tener 32 caracteres o más." }
 if ((ValorEnv "APP_DEBUG") -eq "true") { $avisos += "APP_DEBUG debe ser false en producción." }
-if (Select-String -Path ".env" -Pattern '^\s*[A-Z_]+\s*=\s+\S' -Quiet) { $avisos += "Hay variables con un espacio después del signo =; quítelo (por ejemplo GAME_SECRET=valor)." }
+$conEspacio = @(Select-String -Path ".env" -Pattern '^\s*([A-Z0-9_]+)\s*=\s+\S' | ForEach-Object { $_.Matches[0].Groups[1].Value })
+if ($conEspacio.Count) { $avisos += "Quite el espacio después del signo = en: $($conEspacio -join ', ')." }
 foreach ($a in $avisos) { Write-Warning $a }
 
 php artisan down --retry=30 2>$null
