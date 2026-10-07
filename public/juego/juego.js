@@ -2029,7 +2029,8 @@ function lightFlash(x, y, z, peak, color, life){
 function updateFlashLights(dt){ for(const f of FLASH_LIGHTS){ if(f.life > 0){ f.life -= dt; const k = Math.max(0, f.life/f.max); f.l.intensity = f.peak*k*k; } else f.l.intensity = 0; } }
 
 // Niebla de guerra: textura 64×64 muestreada en el shader de cada material por posición de mundo
-const MUNDO_U = { value:WORLD };   // tamaño del mundo para los sombreadores (cambia con el mapa)
+const MUNDO_U = { value:WORLD };
+const NUBES_U = { value:0.18 };   // intensidad de las sombras de nubes (0 en calidad Baja)   // tamaño del mundo para los sombreadores (cambia con el mapa)
 // Niebla con un texel por unidad del mundo: basta para el sombreado y cuesta 4 veces menos que una por celda de 0,5
 let FOGN = WORLD, fogData = new Uint8Array(FOGN*FOGN*4), fogCur = new Float32Array(FOGN*FOGN);
 let fogTex = new THREE.DataTexture(fogData, FOGN, FOGN, THREE.RGBAFormat);
@@ -2037,7 +2038,7 @@ fogTex.magFilter = THREE.LinearFilter; fogTex.minFilter = THREE.LinearFilter; fo
 const fogUniform = { value:fogTex };
 function addFog(m){
   m.onBeforeCompile = sh => {
-    sh.uniforms.uFogTex = fogUniform; sh.uniforms.uMundo = MUNDO_U;
+    sh.uniforms.uFogTex = fogUniform; sh.uniforms.uMundo = MUNDO_U; sh.uniforms.uNubes = NUBES_U; sh.uniforms.uTiempoN = WATER_TIME;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec2 vFogUv;\nuniform float uMundo;')
       .replace('#include <project_vertex>', `#include <project_vertex>
@@ -2048,8 +2049,19 @@ function addFog(m){
         fogWp = modelMatrix * fogWp;
         vFogUv = fogWp.xz / uMundo;`);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vFogUv;\nuniform sampler2D uFogTex;')
-      .replace('#include <fog_fragment>', 'gl_FragColor.rgb *= texture2D(uFogTex, vFogUv).r;\n#include <fog_fragment>');
+      .replace('#include <common>', `#include <common>
+        varying vec2 vFogUv;
+        uniform sampler2D uFogTex; uniform float uMundo; uniform float uNubes; uniform float uTiempoN;
+        float nubeH(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7)))*43758.5453); }
+        float nubeR(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0 - 2.0*f);
+          return mix(mix(nubeH(i), nubeH(i + vec2(1.0, 0.0)), f.x), mix(nubeH(i + vec2(0.0, 1.0)), nubeH(i + vec2(1.0, 1.0)), f.x), f.y); }`)
+      .replace('#include <fog_fragment>', `gl_FragColor.rgb *= texture2D(uFogTex, vFogUv).r;
+        if(uNubes > 0.0){
+          vec2 nw = vFogUv*uMundo*0.035 + vec2(uTiempoN*0.012, uTiempoN*0.007);
+          float nb = nubeR(nw)*0.65 + nubeR(nw*2.1 + 3.7)*0.35;
+          gl_FragColor.rgb *= 1.0 - uNubes*smoothstep(0.5, 0.76, nb);
+        }
+        #include <fog_fragment>`);   // sombras de nubes que avanzan despacio con el viento
   };
   return m;
 }
@@ -2423,20 +2435,22 @@ function soldier(body, f, P, tc, rol){
 }
 
 // Ametralladora sobre la torre (mejora de unidad): gira por su cuenta hacia el blanco de la ametralladora
-function armaTorre(t, f, P, k){
+function armaTorre(t, f, P, k, tc){
   if(!t) return;
   const a = named(new THREE.Group(), 'ametra');
-  if(f==='atlas'){   // estación de armas remota: cuna con sensor óptico y caja de munición
-    a.position.set(-0.28*k, 0.4, -0.12); t.add(a);
-    a.add(cyl(0.1, 0.08, P.dark, 0, 0, 0, 12), box(0.2, 0.15, 0.3, P.trim, 0, 0.08, 0.02), box(0.1, 0.1, 0.16, P.dark, 0.14, 0.1, -0.04), lamp(0.07, 0.05, 0.02, P.glow, -0.05, 0.17, 0.17));
-    const b = barrel(0.7, 0.026, GUN); b.position.set(0.02, 0.16, 0.48); a.add(b);
-    const fl = barrel(0.08, 0.04, P.dark); fl.position.set(0.02, 0.16, 0.84); a.add(fl);
-  } else {   // ametralladora pesada con anillo, escudo, cajón y freno de boca
+  if(f==='atlas'){   // estación de armas remota: anillo, carcasa con franja del equipo, sensor, munición y ametralladora larga
+    a.position.set(-0.3*k, 0.4, -0.15); t.add(a);
+    a.add(cyl(0.16, 0.1, P.dark, 0, 0, 0, 14), box(0.3, 0.22, 0.46, P.trim, 0, 0.1, 0.02), box(0.3, 0.04, 0.3, tc, 0, 0.32, -0.02));
+    a.add(box(0.14, 0.16, 0.26, P.dark, 0.21, 0.12, -0.06), lamp(0.12, 0.08, 0.03, P.glow, -0.08, 0.24, 0.25));
+    const b = barrel(1.1, 0.045, GUN); b.position.set(0.03, 0.22, 0.75); a.add(b);
+    const fl = barrel(0.12, 0.065, P.dark); fl.position.set(0.03, 0.22, 1.3); a.add(fl);
+  } else {   // ametralladora pesada: anillo, poste, escudo con franja del equipo, cajón, munición y freno de boca
     a.position.set(0.3*k, 0.52*k, -0.18); t.add(a);
-    a.add(cyl(0.12, 0.06, P.dark, 0, 0, 0, 12), cyl(0.03, 0.22, P.metal, 0, 0.04, 0, 8), box(0.34, 0.22, 0.03, P.hull, 0, 0.16, 0.18));
-    a.add(box(0.1, 0.1, 0.32, GUN, 0, 0.28, 0.04), box(0.1, 0.12, 0.14, 0x4f5a3a, 0.12, 0.22, -0.02));
-    const b = barrel(0.75, 0.032, GUN); b.position.set(0, 0.29, 0.52); a.add(b);
-    const fr = barrel(0.1, 0.05, GUN); fr.position.set(0, 0.29, 0.9); a.add(fr);
+    a.add(cyl(0.17, 0.08, P.dark, 0, 0, 0, 14), cyl(0.045, 0.3, P.metal, 0, 0.06, 0, 8));
+    a.add(box(0.5, 0.34, 0.04, P.hull, 0, 0.22, 0.26), box(0.5, 0.05, 0.05, tc, 0, 0.55, 0.26));
+    a.add(box(0.14, 0.14, 0.46, GUN, 0, 0.38, 0.06), box(0.16, 0.17, 0.2, 0x4f5a3a, 0.17, 0.31, -0.03));
+    const b = barrel(1.1, 0.045, GUN); b.position.set(0, 0.4, 0.75); a.add(b);
+    const fr = barrel(0.14, 0.07, GUN); fr.position.set(0, 0.4, 1.3); a.add(fr);
   }
 }
 // Tren de aterrizaje: rueda de morro y dos principales; solo se ve cerca del suelo
@@ -2544,7 +2558,8 @@ function unitModel(e, o, body){
         for(const sx of [-1,1]) t.add(tilt(box(0.06,0.32*k,0.7*k,0x6b6152,sx*0.5*k,0.04,0.05), 0, 0, sx*0.18));   // placas soldadas a los lados
         const b = barrel(1.4*k,0.09,GUN); b.position.set(0,0.22*k,0.9*k); t.add(b);
       }
-      if(UNIT_UPS.has('estacionRemota') || UNIT_UPS.has('ametralladora')) armaTorre(body.getObjectByName('turret'), f, P, k);
+      if(UNIT_UPS.has('estacionRemota') || UNIT_UPS.has('ametralladora')){ armaTorre(body.getObjectByName('turret'), f, P, k, tc);
+        body.add(box(0.36, 0.03, 0.13, 0xf2d16b, 0, f==='atlas' ? 0.83 : 0.91, -0.92*k)); }   // galón dorado: unidad mejorada
       break; }
     case 'antiaereo':
       if(f==='atlas'){            // 6x6 con radar y lanzador de misiles
@@ -2618,7 +2633,8 @@ function unitModel(e, o, body){
       body.add(box(1.15,0.35,2.15,P.hull,0,0.3,0), box(1.17,0.32,1.05,P.trim,0,0.65,-0.5)); cab(body, 1.1, 0.58, 0.84, tc, P.glass, 0.65, 0.55);
       body.add(box(0.3,0.25,0.3,WOOD,-0.35,0.95,-0.85), box(1.2,0.1,0.12,P.metal,0,0.38,1.1));
       { const t = turret(0.95,-0.45); t.add(cyl(0.08,0.35,P.metal,0,0,0,8), box(0.4,0.3,0.05,P.dark,0,0.35,0.15)); const b = barrel(0.9,0.045,GUN); b.position.set(0,0.42,0.45); t.add(b); }
-      if(UNIT_UPS.has('sinRetroceso')){   // cañón sin retroceso sobre pedestal en la caja de carga, con tobera trasera
+      if(UNIT_UPS.has('sinRetroceso')){   // cañón sin retroceso sobre pedestal en la caja de carga, con tobera trasera y galón dorado
+        body.add(box(0.3, 0.03, 0.12, 0xf2d16b, -0.25, 0.98, 0.35));
         const a = named(new THREE.Group(), 'ametra'); a.position.set(0.36, 0.97, -0.95); body.add(a);
         a.add(cyl(0.05, 0.38, P.metal, 0, 0, 0, 8), box(0.14, 0.12, 0.3, P.dark, 0, 0.36, 0), box(0.05, 0.08, 0.12, 0x2a2a28, 0.09, 0.56, 0.2));
         const tubo = barrel(1.35, 0.065, 0x5d6447); tubo.position.set(0, 0.48, 0.1); a.add(tubo);
@@ -2750,7 +2766,7 @@ function mergeMeshes(list, opt){
 function mergeGroup(g, opt, y0=0){
   const lit = [], glow = [], vid = [];
   for(const c of g.children.slice()){
-    if(c.isMesh){ (c.material.userData.ventana ? vid : c.material.userData.glow ? glow : lit).push(c); g.remove(c); }
+    if(c.isMesh){ if(c.userData.propio) continue; (c.material.userData.ventana ? vid : c.material.userData.glow ? glow : lit).push(c); g.remove(c); }   // las mallas propias (banderas) no se fusionan
     else mergeGroup(c, opt, y0 + c.position.y);
   }
   if(lit.length){ const m = new THREE.Mesh(mergeMeshes(lit, opt ? Object.assign({}, opt, { y0 }) : null), vcMat(false, opt && opt.mat)); m.castShadow = true; m.receiveShadow = true; g.add(m); }
@@ -3017,6 +3033,27 @@ function ambientar(body, e, f, P, tc, s, desde){
     k[2](x, z, yaw + (R() < 0.5 ? 0 : Math.PI)); puestos.push({ x, z, r:k[1] });
     for(let zz=celda(z - k[1]); zz<=celda(z + k[1]); zz++) for(let xx=celda(x - k[1]); xx<=celda(x + k[1]); xx++) ocup[zz*NG + xx] = 1;
   }
+}
+// Bandera del equipo que ondea con el viento. Malla propia (no se fusiona con el edificio) con un sombreador de ondas.
+const BANDERA_MAT = new Map();
+function banderaMat(color){
+  if(!BANDERA_MAT.has(color)){
+    const m = addFog(new THREE.MeshLambertMaterial({ color, side:THREE.DoubleSide })), fog = m.onBeforeCompile;
+    m.onBeforeCompile = sh => { fog(sh); sh.uniforms.uViento = VIENTO;
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uViento;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          { float k = clamp(position.x + 0.5, 0.0, 1.0);
+            transformed.z += sin(uViento*5.0 - position.x*5.5)*0.13*k + sin(uViento*8.3 - position.x*9.0)*0.04*k;
+            transformed.y += sin(uViento*3.1 - position.x*4.0)*0.03*k; }`); };
+    m.customProgramCacheKey = () => 'bandera';
+    BANDERA_MAT.set(color, m);
+  }
+  return BANDERA_MAT.get(color);
+}
+function bandera(body, x, z, alto, color){
+  body.add(cyl(0.05, alto, 0x8a8a84, x, 0.1, z, 8), ball(0.07, 0xd9c27a, x, alto + 0.14, z));   // mástil y remate
+  const f = new THREE.Mesh(geo('bandera', () => new THREE.PlaneGeometry(1, 0.6, 10, 4)), banderaMat(color));
+  f.position.set(x + 0.52, alto - 0.22, z); f.castShadow = true; f.userData.propio = true; body.add(f);
 }
 function buildingModel(e, body){
   const f = e.owner>=0 && S.players[e.owner] ? S.players[e.owner].faction : 'neutral', tc = teamColor(e.owner);
@@ -3299,6 +3336,7 @@ function buildingModel(e, body){
       break; }
     default: body.add(box(s*0.8,1.2,s*0.8,P.hull,0,0.16,0), box(s*0.82,0.12,s*0.82,tc,0,1.36,0));
   }
+  if((e.type==='centro' || e.type==='cuartel') && e.owner>=0 && OPTIONS.calidad!=='baja') bandera(body, -s*0.42, s*0.42, e.type==='centro' ? 3.4 : 2.8, tc);   // bandera del equipo
   if(!small && e.type!=='pozo' && !DETAIL_LO) ambientar(body, e, f, P, tc, s, nLosa);
   // Mejoras terminadas: piezas nuevas y galones dorados en la fachada (una por mejora)
   const ups = mejorasDe(e).filter(k => MEJORAS[k].edificio===e.type);
@@ -3621,8 +3659,10 @@ function buildVegetation(){
     return fusion(p); });
   // Piedras sueltas: tres formas (redonda, alargada y laja plana)
   const piedraG = [1, 2, 3].map(v => geo('piedra' + v, () => fusion([tinte(bulto(1, v===2 ? 1.5 : 1, v===3 ? 0.35 : 0.7, v===2 ? 0.8 : 1, v*3.1, 6, 4), 0x8a7a64, 0xb5a588, -0.5, 0.6)])));
-  const mk = (g, color, list, cast) => {
-    const m = new THREE.InstancedMesh(g, addFog(new THREE.MeshLambertMaterial({ color, vertexColors: !!g.attributes.color, side: g === palmaG || g === pastoG ? THREE.DoubleSide : THREE.FrontSide })), Math.max(1, list.length)), d = new THREE.Object3D(), c = new THREE.Color();
+  const mk = (g, color, list, cast, flex=0) => {
+    const mt = addFog(new THREE.MeshLambertMaterial({ color, vertexColors: !!g.attributes.color, side: g === palmaG || g === pastoG ? THREE.DoubleSide : THREE.FrontSide }));
+    if(flex > 0 && OPTIONS.calidad!=='baja') conViento(mt, flex);
+    const m = new THREE.InstancedMesh(g, mt, Math.max(1, list.length)), d = new THREE.Object3D(), c = new THREE.Color();
     list.forEach(([x, z, sc, r, t], i) => { d.position.set(x, terrainH(x, z), z); d.rotation.set(0, r, 0); d.scale.setScalar(sc); d.updateMatrix(); m.setMatrixAt(i, d.matrix); m.setColorAt(i, c.setHSL(0.1, 0.05, 0.85 + t*0.15)); });
     if(!list.length){ d.scale.setScalar(0); d.updateMatrix(); m.setMatrixAt(0, d.matrix); }
     m.castShadow = cast; m.receiveShadow = true; scene.add(m); return m;
@@ -3641,10 +3681,30 @@ function buildVegetation(){
   for(let i=0; i<6000 && piedras[0].length + piedras[1].length + piedras[2].length < stones.length + 500*cant; i++){
     const x = 2 + rnd()*(WORLD-4), z = 2 + rnd()*(WORLD-4), h = terrainH(x, z), pend = Math.abs(terrainH(x + 0.8, z) - h) + Math.abs(terrainH(x, z + 0.8) - h);
     if(pend > 0.25 && pend < 1.2 && libreSeco(x, z)) piedras[i % 3].push([x, z, 0.1 + rnd()*0.28, rnd()*6.28, rnd()]); }
-  VEG = { shrubs: mk(sg, 0xffffff, shrubs, OPTIONS.calidad==='alta'), stones: mk(piedraG[0], 0xffffff, piedras[0], false), stones2: mk(piedraG[1], 0xffffff, piedras[1], false), stones3: mk(piedraG[2], 0xffffff, piedras[2], false),
+  VEG = { shrubs: mk(sg, 0xffffff, shrubs, OPTIONS.calidad==='alta', 0.1), stones: mk(piedraG[0], 0xffffff, piedras[0], false), stones2: mk(piedraG[1], 0xffffff, piedras[1], false), stones3: mk(piedraG[2], 0xffffff, piedras[2], false),
     sl: shrubs, tl: piedras[0], tl2: piedras[1], tl3: piedras[2],
-    palmas: mk(palmaG, 0xffffff, palmas, OPTIONS.calidad!=='baja'), secos: mk(secoG, 0xffffff, secos, OPTIONS.calidad==='alta'), acacias: mk(acaciaG, 0xffffff, acacias, OPTIONS.calidad!=='baja'),
-    agaves: mk(agaveG, 0xffffff, agaves, false), pasto: mk(pastoG, 0xffffff, pasto, false), al: acacias, gl: agaves };
+    palmas: mk(palmaG, 0xffffff, palmas, OPTIONS.calidad!=='baja', 0.014), secos: mk(secoG, 0xffffff, secos, OPTIONS.calidad==='alta', 0.006), acacias: mk(acaciaG, 0xffffff, acacias, OPTIONS.calidad!=='baja', 0.012),
+    agaves: mk(agaveG, 0xffffff, agaves, false, 0.04), pasto: mk(pastoG, 0xffffff, pasto, false, 0.3), al: acacias, gl: agaves };
+}
+// Viento: las plantas se mecen más en la copa que en la base, con un desfase por posición para que no se muevan al unísono
+const VIENTO = { value:0 };
+function conViento(m, flex){
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = sh => { prev(sh); sh.uniforms.uViento = VIENTO; sh.uniforms.uFlex = { value:flex };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uViento; uniform float uFlex;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        {
+          #ifdef USE_INSTANCING
+            vec3 vBase = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+          #else
+            vec3 vBase = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+          #endif
+          float vF = vBase.x*0.37 + vBase.z*0.23, vH = max(0.0, transformed.y), vA = uFlex*vH*vH;
+          transformed.x += (sin(uViento*1.3 + vF) + 0.35*sin(uViento*3.7 + vF*2.1))*vA;
+          transformed.z += cos(uViento*1.1 + vF*1.3)*vA*0.6;
+        }`); };
+  m.customProgramCacheKey = () => 'viento';
+  return m;
 }
 // Huellas: dos franjas por marca, 900 marcas en un búfer circular; se encogen al envejecer (12 s)
 const TRACKS = (() => {
@@ -4119,8 +4179,50 @@ function soltarBomba(u, tg){
 }
 // Remolinos de polvo que cruzan el desierto de vez en cuando (solo ambiente; calidad Media y Alta)
 let REMOLINO_T = 12;
+// Aves que planean en círculos alto sobre el desierto, cerca de la vista de la cámara (solo ambiente)
+let AVES = null;
+function crearAves(){
+  const ala = new THREE.BufferGeometry(); ala.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0,0,0.14, 0.62,0,-0.06, 0,0,-0.16]), 3)); ala.computeVertexNormals();
+  const m = new THREE.MeshBasicMaterial({ color:0x2a2622, side:THREE.DoubleSide });
+  AVES = [];
+  for(let i=0; i<4; i++){
+    const a = new THREE.Group(), izq = new THREE.Mesh(ala, m), der = new THREE.Mesh(ala, m); der.scale.x = -1; a.add(izq, der);
+    a.userData = { izq, der, cx:0, cz:0, r:rnd(6, 12), ang:rnd(0, 6.28), vel:rnd(0.22, 0.38)*(Math.random() < 0.5 ? -1 : 1), alt:rnd(11, 15), fase:rnd(0, 20) };
+    a.visible = false; scene.add(a); AVES.push(a);
+  }
+}
+function moverAves(dt){
+  if(!AVES) crearAves();
+  const vis = OPTIONS.calidad!=='baja' && !!S.water;
+  for(const a of AVES){
+    const u = a.userData; a.visible = vis; if(!vis) continue;
+    if(!u.cx || Math.hypot(u.cx - cam.x, u.cz - cam.z) > cam.dist*1.6){ u.cx = cam.x + rnd(-1, 1)*cam.dist*0.6; u.cz = cam.z + rnd(-1, 1)*cam.dist*0.5; }
+    u.ang += u.vel*dt; u.fase += dt;
+    const sv = Math.sign(u.vel), x = u.cx + Math.cos(u.ang)*u.r, z = u.cz + Math.sin(u.ang)*u.r;
+    a.position.set(x, terrainH(x, z) + u.alt + Math.sin(u.fase*0.4)*0.6, z); a.rotation.y = Math.atan2(-Math.sin(u.ang)*sv, Math.cos(u.ang)*sv); a.rotation.z = -sv*0.25;   // inclinado hacia el centro del círculo
+    const aleteo = (u.fase % 9) < 1.6 ? Math.sin(u.fase*9)*0.55 : 0.12;   // unos aleteos y luego planea
+    u.izq.rotation.z = aleteo; u.der.rotation.z = -aleteo;
+  }
+}
+// Matas rodantes: bolas de ramas secas que cruzan el desierto empujadas por el viento, rebotando
+let RODADOR_T = 8, RODADOR_G = null;
+function soltarRodador(){
+  const x = cam.x + rnd(-1, 1)*cam.dist*0.7, z = cam.z + rnd(-1, 1)*cam.dist*0.5;
+  if(x < 4 || z < 4 || x > WORLD-4 || z > WORLD-4 || S.water[idx(toCell(x), toCell(z))] || !visAt(x, z)) return;
+  if(!RODADOR_G){   // ramas: cada extremo de las aristas se desplaza al azar, así las líneas quedan sueltas y enmarañadas
+    const R = mulberry32(5), base = new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(0.42, 1)), p = base.attributes.position;
+    for(let i=0; i<p.count; i++){ const k = 0.8 + R()*0.45; p.setXYZ(i, p.getX(i)*k + (R() - 0.5)*0.14, p.getY(i)*k + (R() - 0.5)*0.14, p.getZ(i)*k + (R() - 0.5)*0.14); }
+    RODADOR_G = { g:base, m:new THREE.LineBasicMaterial({ color:0x7a5e3a, transparent:true, opacity:0.9 }) }; }
+  const o = new THREE.Group();
+  for(const [sc, rx, ry] of [[1, 0, 0], [0.74, 0.6, 0.9], [0.52, 1.7, 0.4]]){ const l = new THREE.LineSegments(RODADOR_G.g, RODADOR_G.m); l.scale.setScalar(sc); l.rotation.set(rx, ry, rx*0.5); o.add(l); }
+  o.position.set(x, terrainH(x, z) + 0.45, z);
+  const ang = 0.6 + rnd(-0.4, 0.4), v = rnd(1.6, 2.8);   // el viento sopla hacia el este y algo al sur
+  addFx(o, rnd(10, 15), 'rodador', { own:false, vx:Math.cos(ang)*v, vz:Math.sin(ang)*v, rebote:rnd(0, 6) });
+}
 function ambienteTick(dt){
+  if(dt > 0) moverAves(dt);
   if(OPTIONS.calidad==='baja' || !S.water || dt <= 0) return;
+  RODADOR_T -= dt; if(RODADOR_T <= 0){ RODADOR_T = rnd(20, 40); soltarRodador(); if(Math.random() < 0.4) soltarRodador(); }
   REMOLINO_T -= dt; if(REMOLINO_T > 0) return; REMOLINO_T = rnd(18, 35);
   const x = cam.x + rnd(-1, 1)*cam.dist*0.8, z = cam.z + rnd(-1, 1)*cam.dist*0.6;
   if(x < 4 || z < 4 || x > WORLD-4 || z > WORLD-4 || S.water[idx(toCell(x), toCell(z))] || !visAt(x, z)) return;
@@ -4272,7 +4374,8 @@ hooks = {
   upgraded(b, key){
     const MU = MEJORAS[key]; if(MU && MU.unidades) for(const e of S.ents){ if(e.dead || e.kind!=='unit' || e.owner!==b.owner || !MU.unidades.includes(e.type)) continue; const o = meshes.get(e.id); if(!o) continue;
       const ty = o.turret ? o.turret.rotation.y : 0; if(o.outlines){ for(const c of o.outlines) c.parent && c.parent.remove(c); o.outlines = null; o.outMode = null; }
-      o.g.remove(o.body); o.body = unitBody(e, o); o.g.add(o.body); if(o.turret) o.turret.rotation.y = ty; if(visAt(e.x, e.z)) sparks(e.x, 1.4, e.z, 4, 0.6); }
+      o.g.remove(o.body); o.body = unitBody(e, o); o.g.add(o.body); if(o.turret) o.turret.rotation.y = ty;
+      if(visAt(e.x, e.z)){ sparks(e.x, 1.4, e.z, 4, 0.6); groundRing(e.x, e.z, e.radius*1.6, 0xf2d16b, 1.2, 'pulse'); } }   // anillo dorado: la mejora se nota en cada unidad
     for(const e of S.ents){ if(e.dead || e.kind!=='bld' || e.owner!==b.owner || (e.type!==MEJORAS[key].edificio && e.type!==MEJORA_APLICA[key])) continue; const o = meshes.get(e.id); if(!o) continue;
       scene.remove(o.g); const n = buildModel(e); scene.add(n.g); meshes.set(e.id, n); if(visAt(e.x, e.z)) groundRing(e.x, e.z, e.n*CELL*0.7, 0xf2d16b, 1.2, 'pulse'); } if(b.owner!==LOCAL) return; sfx('chime'); toast(`Mejora terminada: ${MEJORAS[key].nombre}`); },
   superFire(p, b, x, z){
@@ -4354,7 +4457,7 @@ function updateEffects(dt){
   if(SHAKE > 0) SHAKE = Math.max(0, SHAKE - dt*1.6);
   updateFlashLights(dt);
   if(TEX.water) TEX.water.offset.set(TEX.water.offset.x + dt*0.03, TEX.water.offset.y + dt*0.017);
-  WATER_TIME.value += dt;
+  WATER_TIME.value += dt; VIENTO.value += dt;
   for(let i=effects.length-1; i>=0; i--){
     const f = effects[i]; f.life -= dt; const k = Math.min(1, 1 - f.life/f.max), o = f.obj;
     if(f.kind==='boom'){ o.scale.setScalar(f.size*(0.3+0.9*Math.sqrt(k))); o.material.opacity = 0.95*(1-k); o.material.color.lerp(BOOM_DARK, Math.min(1, dt*4)); }
@@ -4419,8 +4522,17 @@ function updateEffects(dt){
         puff(px, y + 0.4, pz, rnd(0.8, 1.2), 0x2e2a26, rnd(2, 3), 0.9, 0.45); }
       if(k > 0.85) o.position.y -= dt*0.25;
     }
+    else if(f.kind==='rodador'){
+      o.position.x += f.vx*dt; o.position.z += f.vz*dt; f.rebote += dt*3.2;
+      o.position.y = terrainH(o.position.x, o.position.z) + 0.45 + Math.abs(Math.sin(f.rebote))*0.35;
+      o.rotation.z -= f.vx*dt*2.4; o.rotation.x += f.vz*dt*2.4;   // rueda en la dirección del viento
+      const px = o.position.x, pz = o.position.z;   // se deshace al llegar al borde del mapa o al agua
+      if(!f.fin && (px < 2 || pz < 2 || px > WORLD-2 || pz > WORLD-2 || S.water[idx(toCell(px), toCell(pz))])){ f.fin = true; f.life = Math.min(f.life, f.max*0.15); }
+      if(k > 0.85) o.scale.setScalar(Math.max(0.01, (1 - k)/0.15));
+    }
     else if(f.kind==='remolino'){
       f.x += f.vx*dt; f.z += f.vz*dt; f.ang += dt*7; f.st -= dt;
+      if(f.x < 2 || f.z < 2 || f.x > WORLD-2 || f.z > WORLD-2) f.life = 0;   // fuera del mapa se deshace
       const fuerza = Math.sin(k*Math.PI);   // crece y se deshace
       if(f.st <= 0){ f.st = 0.07/q; const h = rnd(0, 3.2)*fuerza, r = 0.35 + h*0.35, y = terrainH(f.x, f.z), a = f.ang + h;
         puff(f.x + Math.cos(a)*r, y + 0.2 + h, f.z + Math.sin(a)*r, 0.5 + h*0.25, 0xc8ad7c, 0.8, 0.9, 0.3*fuerza + 0.05, -Math.sin(a)*2.2, Math.cos(a)*2.2); }
@@ -4496,7 +4608,7 @@ function setOutline(o, mode){
   o.outMode = mode;
   if(mode && !o.outlines){
     o.outlines = [];
-    const lit = []; o.body.traverse(m => { if(m.isMesh && m.material !== VCMAT.luz && m.material !== LUZ_OFF && !WIN_MAT.includes(m.material) && m.geometry.attributes.normal && m.geometry.type!=='RingGeometry') lit.push(m); });
+    const lit = []; o.body.traverse(m => { if(m.isMesh && !m.userData.propio && m.material !== VCMAT.luz && m.material !== LUZ_OFF && !WIN_MAT.includes(m.material) && m.geometry.attributes.normal && m.geometry.type!=='RingGeometry') lit.push(m); });
     for(const m of lit){ const c = new THREE.Mesh(m.geometry, outlineMat(mode)); c.position.copy(m.position); c.rotation.copy(m.rotation); c.scale.copy(m.scale); c.renderOrder = -1; m.parent.add(c); o.outlines.push(c); }
   }
   if(o.outlines) for(const c of o.outlines){ c.visible = !!mode; if(mode) c.material = outlineMat(mode); }
@@ -4538,7 +4650,8 @@ function syncMeshes(alpha, dt, time){
       const tg = e.working!=null ? S.byId.get(e.working) : curTarget(e);
       if(moving) o.targetYaw = Math.atan2(dx, dz);
       else if(tg && !o.turret && !e.air) o.targetYaw = Math.atan2(tg.x-e.x, tg.z-e.z);
-      else if(e.air && !moving && !o.rotor){ if(e.fase==='hangar') o.targetYaw = 0; else if(!e.fase && !e.parked) o.targetYaw += dt*1.2; }   // en vuelo de espera gira; en el hangar mira hacia la puerta
+      else if(e.air && !moving && !o.rotor){ if(e.fase==='hangar') o.targetYaw = 0; else if(!e.fase && !e.parked) o.targetYaw += dt*1.2; }
+      else if(!e.air && o.legs && o.legs.length){ o.mirarT = (o.mirarT===undefined ? rnd(2, 6) : o.mirarT) - dt; if(o.mirarT <= 0){ o.mirarT = rnd(3, 7); o.targetYaw += rnd(-0.6, 0.6); } }   // en reposo, el soldado mira alrededor   // en vuelo de espera gira; en el hangar mira hacia la puerta
       // Giro con peso: la infantería gira rápido; los vehículos pesados y los barcos, despacio
       const pie = !!(o.legs && o.legs.length), giro = e.air ? 3 : pie ? 9 : o.boat ? 2.2 : e.type==='pesado' ? 2.8 : (e.type==='tanque' || e.type==='antiaereo' || e.type==='artilleria') ? 3.6 : 5;
       const yaw0 = o.yaw; o.yaw = lerpAngle(o.yaw, o.targetYaw, Math.min(1, dt*giro));
@@ -4558,8 +4671,11 @@ function syncMeshes(alpha, dt, time){
       if(o.boat) o.body.rotation.z = Math.sin(time*1.3+e.id)*0.04;
       if(avion){
         const k4 = Math.min(1, dt*4);
-        o.body.rotation.z += ((o.cerca ? 0 : Math.max(-0.7, Math.min(0.7, o.yawRate*0.32))) - o.body.rotation.z)*k4;   // alabeo en los giros; nivelado en tierra
-        o.body.rotation.x += (Math.max(-0.28, Math.min(0.1, -o.vz*0.09)) - o.body.rotation.x)*k4;                     // morro arriba al subir
+        // Balanceo en vuelo: el bombardero, pesado, se mece más y más despacio que el caza
+        const bal = o.cerca ? 0 : e.type==='bombardero' ? 1 : 0.5;
+        const meceZ = bal*(Math.sin(time*0.7 + e.id)*0.07 + Math.sin(time*1.9 + e.id*2.3)*0.02), meceX = bal*Math.sin(time*0.55 + e.id*1.3)*0.025;
+        o.body.rotation.z += ((o.cerca ? 0 : Math.max(-0.7, Math.min(0.7, o.yawRate*0.32))) + meceZ - o.body.rotation.z)*k4;   // alabeo en los giros; nivelado en tierra
+        o.body.rotation.x += (Math.max(-0.28, Math.min(0.1, -o.vz*0.09)) + meceX - o.body.rotation.x)*k4;                     // morro arriba al subir
         if(o.ring) o.ring.position.y = o.suelo - 0.26 - o.g.position.y;
         if(o.tren) o.tren.visible = o.cerca || o.alt < AIR_Y - 1.5;
         if(o.bomba) o.bomba.visible = e.ammo > 0;
@@ -4593,7 +4709,8 @@ function syncMeshes(alpha, dt, time){
         o.g.position.y = o.alt + Math.sin(time*2+e.id)*0.12;
         if(loading && o.cargo) o.cargo.visible = e.htimer < Math.round(1.2*TICK_HZ);   // el contenedor aparece al engancharlo
       } else if(e.type==='recolector' && o.cargo && e.hstate==='loading') o.cargo.visible = e.htimer < Math.round(1.2*TICK_HZ);
-      if(o.turret){ const aim = tg ? Math.atan2(tg.x-e.x, tg.z-e.z) : o.yaw; o.turret.rotation.y = lerpAngle(o.turret.rotation.y, aim-o.yaw, Math.min(1, dt*8)); }
+      // Sin blanco, la torreta vigila despacio a un lado y al otro
+      if(o.turret){ const aim = tg ? Math.atan2(tg.x-e.x, tg.z-e.z) : o.yaw + (moving ? 0 : Math.sin(time*0.25 + e.id*1.7)*0.45); o.turret.rotation.y = lerpAngle(o.turret.rotation.y, aim-o.yaw, Math.min(1, dt*8)); }
       if(o.ametra){ const t2 = e.tg2!=null ? S.byId.get(e.tg2) : null, base = o.yaw + (o.turret && o.ametra.parent===o.turret ? o.turret.rotation.y : 0);   // arma secundaria: apunta a su propio blanco
         o.ametra.rotation.y = lerpAngle(o.ametra.rotation.y, t2 && !t2.dead ? Math.atan2(t2.x-e.x, t2.z-e.z) - base : 0, Math.min(1, dt*10)); }
       if(o.cargo && e.hstate!=='loading') o.cargo.visible = e.carry>0;
@@ -4633,6 +4750,12 @@ function syncMeshes(alpha, dt, time){
       }
       // Vehículo muy dañado: humo negro
       if(e.hp < e.maxhp*0.35 && !o.legs.length && OPTIONS.calidad!=='baja'){ o.hurtT = (o.hurtT||0) - dt; if(o.hurtT <= 0){ o.hurtT = 0.3/fxQ(); puff(x, (e.air ? AIR_Y : 0.8), z, 0.45, 0x2e2a26, 1.3, 0.8, 0.45); } }
+      // Escape de los motores: humo oscuro en Hierro (diésel) y gris en la Guerrilla; Atlas es eléctrico. Solo cerca de la cámara.
+      if(!e.air && !o.boat && o.axles && o.axles.length && o.fac!=='atlas' && OPTIONS.calidad==='alta' && Math.abs(x - cam.x) < cam.dist && Math.abs(z - cam.z) < cam.dist){
+        o.escT = (o.escT||0) - dt*(moving ? 1 : 0.35);
+        if(o.escT <= 0){ o.escT = 0.38; const L = e.radius*0.85, sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
+          puff(x - sy*L + cy*0.3, terrainH(x, z) + 1.0, z - cy*L - sy*0.3, 0.32, o.fac==='hierro' ? 0x2e2b28 : 0x77706a, 1.2, 0.7, 0.32); }
+      }
       // Polvo detrás de los vehículos terrestres y estela de los barcos
       if(moving && !e.air && (o.boat || (o.axles && o.axles.length)) && OPTIONS.calidad!=='baja'){
         o.dustT -= dt;
@@ -4718,21 +4841,36 @@ function groundAt(sx, sy){
   groundPlane.constant = 0; return out;
 }
 function renderPos(e){ const o = meshes.get(e.id); return o ? o.g.position : { x:e.x, y:yOf(e), z:e.z }; }
-function unitScreen(e){ const p = renderPos(e); return toScreen(p.x, e.air ? p.y : 0.5, p.z); }
+// Centro visible de la unidad en pantalla: su posición dibujada (con la altura del relieve) a media altura del modelo
+function unitScreen(e){ const p = renderPos(e); return toScreen(p.x, e.air ? p.y : p.y + 0.6, p.z); }
+// Radio de clic en píxeles: el tamaño real de la entidad proyectado a su distancia de la cámara (mínimo 16 px)
+const _v2 = new THREE.Vector3();
+function radioPantalla(e, p){
+  const d = camera.position.distanceTo(_v2.set(p.x, p.y, p.z)) || 1, k = H/(2*Math.tan(camera.fov*Math.PI/360));
+  const r = e.kind==='unit' ? (e.radius || 0.6)*1.2 + 0.35 : Math.min(e.w||e.n, e.h||e.n)*CELL*0.45;
+  return Math.max(16, r/d*k);
+}
 
 const selected = new Set();
 function selectedEnts(){ return [...selected].map(id => S.byId.get(id)).filter(e => e && !e.dead); }
 function selectOnly(ids){ selected.clear(); ids.forEach(id => selected.add(id)); }
 const myFaction = () => FACTIONS[S.players[LOCAL].faction];
+// Entidad bajo el cursor. Unidades: la más cercana a su centro visible dentro de su radio en pantalla (se ajusta al
+// acercar la cámara y al relieve). Edificios: por la losa bajo el cursor o por su silueta (los altos tapan el suelo de atrás).
 function pick(sx, sy){
-  let best = null, bd = 24*24;
+  let best = null, bs = 1;
   for(const e of S.ents){
     if(e.kind!=='unit' || e.dead || !seenLocal(e)) continue;
-    const s = unitScreen(e), d = (s.x-sx)**2+(s.y-sy)**2; if(d<bd){ bd=d; best=e; } }
+    const s = unitScreen(e); if(!s.ok) continue;
+    const d = Math.hypot(s.x-sx, s.y-sy)/radioPantalla(e, renderPos(e)); if(d < bs){ bs = d; best = e; } }
   if(best) return best;
-  const g = groundAt(sx, sy); if(!g) return null;
-  for(const e of S.ents){ if(e.kind==='unit' || e.kind==='crate' || e.dead || !seenLocal(e)) continue; if(g.x>=e.cx*CELL && g.x<=(e.cx+(e.w||e.n))*CELL && g.z>=e.cz*CELL && g.z<=(e.cz+(e.h||e.n))*CELL) return e; }
-  return null;
+  const g = groundAt(sx, sy); let bb = null, bd = 1;
+  for(const e of S.ents){
+    if(e.kind==='unit' || e.kind==='crate' || e.dead || !seenLocal(e)) continue;
+    if(g && g.x>=e.cx*CELL && g.x<=(e.cx+(e.w||e.n))*CELL && g.z>=e.cz*CELL && g.z<=(e.cz+(e.h||e.n))*CELL) return e;
+    const p = renderPos(e), s = toScreen(p.x, p.y + 1.2, p.z); if(!s.ok) continue;
+    const d = Math.hypot(s.x-sx, s.y-sy)/radioPantalla(e, p); if(d < bd){ bd = d; bb = e; } }
+  return bb;
 }
 const METRICS = { cmds:0, frames:0, time:0 };
 function issue(c){ c.p = LOCAL; METRICS.cmds++; queueCmd(c); }
@@ -5079,7 +5217,7 @@ function drawOverlay(){
     const building = e.kind==='bld' && !e.built;
     const capturing = e.kind==='unit' && e.order && e.order.type==='capture' && e.capT>0;
     if(!sel && e.hp>=e.maxhp && !building && !capturing) continue;
-    const p = renderPos(e), h = e.kind==='bld' ? (e.type==='torre' ? 3.2 : e.type==='trinchera' ? 1.6 : ['bunker','minigun','bateria'].includes(e.type) ? 2.4 : e.type==='pozo' ? 3 : 4.6) : e.air ? p.y+1.2 : 1.9;
+    const p = renderPos(e), h = p.y + (e.kind==='bld' ? (e.type==='torre' ? 3.2 : e.type==='trinchera' ? 1.6 : ['bunker','minigun','bateria'].includes(e.type) ? 2.4 : e.type==='pozo' ? 3 : 4.6) : e.air ? 1.2 : 1.9);   // sobre el relieve
     const s = toScreen(p.x, h, p.z); if(!s.ok) continue;
     const bw = e.kind==='bld' ? (e.n<=SUBC ? 34 : e.n > 8 ? 70 : 54) : 28, f = Math.max(0, e.hp/e.maxhp);
     octx.fillStyle = 'rgba(18,26,28,.8)'; octx.fillRect(s.x-bw/2-1, s.y-1, bw+2, building||capturing ? 11 : 6);
@@ -5353,6 +5491,7 @@ function groundMat(alta){
 }
 function applyOptions(rebuild){
   if(scene.userData.ground) scene.userData.ground.material = groundMat(OPTIONS.calidad==='alta');
+  NUBES_U.value = OPTIONS.calidad==='baja' ? 0 : 0.18;
   if(LAST_QUALITY && LAST_QUALITY !== OPTIONS.calidad){ UNIT_PROTO.clear(); BLD_PROTO.clear(); PROP_PROTO.clear(); rebuild = true; }
   LAST_QUALITY = OPTIONS.calidad;
   const dpr = window.devicePixelRatio || 1;
