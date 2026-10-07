@@ -2626,6 +2626,7 @@ function unitBody(e, o){
   o.fac = f;
   o.axles = []; o.legs = []; o.shins = [];
   body.traverse(c => { if(c.name==='axle') o.axles.push(c); else if(c.name==='leg') o.legs.push(c); else if(c.name==='shin') o.shins.push(c); });
+  o.lote = []; for(const l of o.legs) l.traverse(m => { if(m.isMesh){ m.visible = false; o.lote.push(m); } });   // las piernas se dibujan por lotes (dibujarLotes)
   if(o.turret) o.turret.userData.base = o.turret.position.clone();
   o.walk = 0; o.recoil = 0; o.dustT = 0; o.born = S.tick > 1 ? performance.now() : 0;
   if(p.boat) o.boat = true;
@@ -4188,12 +4189,17 @@ function syncMeshes(alpha, dt, time){
       if(moving) o.targetYaw = Math.atan2(dx, dz);
       else if(tg && !o.turret && !e.air) o.targetYaw = Math.atan2(tg.x-e.x, tg.z-e.z);
       else if(e.air && !moving && !o.rotor) o.targetYaw += dt*1.2;   // en espera, el avión gira en el sitio
-      o.yaw = lerpAngle(o.yaw, o.targetYaw, Math.min(1, dt*(e.air?3:10)));
+      // Giro con peso: la infantería gira rápido; los vehículos pesados y los barcos, despacio
+      const pie = !!(o.legs && o.legs.length), giro = e.air ? 3 : pie ? 9 : o.boat ? 2.2 : e.type==='pesado' ? 2.8 : (e.type==='tanque' || e.type==='antiaereo' || e.type==='artilleria') ? 3.6 : 5;
+      const yaw0 = o.yaw; o.yaw = lerpAngle(o.yaw, o.targetYaw, Math.min(1, dt*giro));
+      let dYaw = o.yaw - yaw0; if(dYaw > Math.PI) dYaw -= 2*Math.PI; if(dYaw < -Math.PI) dYaw += 2*Math.PI;
+      o.yawRate = (o.yawRate||0) + ((dt > 0 ? dYaw/dt : 0) - (o.yawRate||0))*Math.min(1, dt*6);
       if(e.air){ o.alt = o.alt===undefined ? AIR_Y : o.alt + ((e.parked ? terrainH(x, z) + 0.45 : AIR_Y) - o.alt)*Math.min(1, dt*1.4); }
       if(e.air && !UT(e.owner,e.type).hover){ const camH = Math.sin(cam.pitch)*cam.dist; o.g.scale.setScalar(Math.max(1, (camH - o.alt)/Math.max(1, camH - AIR_Y))); }
       o.g.position.set(x, e.air ? (UT(e.owner,e.type).hover ? AIR_Y + Math.sin(time*2+e.id)*0.15 : o.alt + (e.parked ? 0 : Math.sin(time*2+e.id)*0.15)) : o.boat ? WATER_Y + 0.08 + Math.sin(time*1.6+e.id)*0.05 : terrainH(x, z), z); o.g.rotation.y = o.yaw;
       if(o.boat) o.body.rotation.z = Math.sin(time*1.3+e.id)*0.04;
-      if(e.air && !o.rotor) o.body.rotation.z = moving ? 0 : 0.35;
+      if(e.air && !o.rotor && !e.parked) o.body.rotation.z += (Math.max(-0.7, Math.min(0.7, o.yawRate*0.32)) - o.body.rotation.z)*Math.min(1, dt*4);   // alabeo hacia el lado del giro
+      if(e.air && o.rotor){ const k = Math.min(1, dt*3); o.body.rotation.x += ((moving ? 0.14 : 0) - o.body.rotation.x)*k; o.body.rotation.z += (Math.max(-0.3, Math.min(0.3, o.yawRate*0.15)) - o.body.rotation.z)*k; }   // morro abajo al avanzar
       if(o.rotor) o.rotor.rotation.y += dt*25;
       if(o.star) o.star.rotation.y += dt*2;
       o.body.position.y = !o.tool && (e.working!=null || (e.order && e.order.type==='capture' && e.capT>0)) ? Math.abs(Math.sin(time*12))*0.12 : 0;
@@ -4235,6 +4241,17 @@ function syncMeshes(alpha, dt, time){
         const sc = o.body.scale.x || 1, bob = moving ? Math.abs(Math.cos(o.walk))*0.028*sc : 0, lean = moving ? 0.07 : 0;
         o.body.position.y += bob; o.body.rotation.x += (lean - o.body.rotation.x)*kk;   // rebote del paso e inclinación al avanzar
       }
+      if(!e.air && !o.boat && !pie && o.body){
+        const L = Math.max(0.7, e.radius*1.1), W = L*0.7, sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
+        const hF = terrainH(x + sy*L, z + cy*L), hB = terrainH(x - sy*L, z - cy*L), hR = terrainH(x + cy*W, z - sy*W), hL = terrainH(x - cy*W, z + sy*W);
+        const vel = dt > 0 ? step/dt : 0; o.acc = (o.acc||0) + (((vel - (o.vel||0))/Math.max(dt, 0.001)) - (o.acc||0))*Math.min(1, dt*5); o.vel = vel;
+        const cabeceo = Math.atan2(hB - hF, 2*L) + Math.max(-0.05, Math.min(0.05, -o.acc*0.012)), alabeo = Math.atan2(hR - hL, 2*W);
+        const vib = moving ? Math.sin(time*38 + e.id)*0.006 : Math.sin(time*24 + e.id)*0.002, k = Math.min(1, dt*8);
+        o.body.rotation.x += (cabeceo + vib - o.body.rotation.x)*k; o.body.rotation.z += (alabeo - o.body.rotation.z)*k;
+      }
+      // Infantería: respiración en reposo y retroceso del arma al disparar
+      if(pie && o.body){ if(!moving) o.body.scale.y = (o.body.scale.x||1)*(1 + Math.sin(time*2.2 + e.id)*0.012); else o.body.scale.y = o.body.scale.x||1;
+        if(o.recoil > 0 && !o.turret){ o.body.rotation.x -= o.recoil*0.1; o.recoil = Math.max(0, o.recoil - dt*7); } }
       if(o.rotor2) o.rotor2.rotation.x += dt*32;
       if(o.spin) o.spin.rotation.y += dt*2.5;
       // Retroceso del cañón: la torre retrocede sobre su propio eje y vuelve
@@ -5486,7 +5503,37 @@ function postInit(w, h){
   POST.w = w; POST.h = h; POST.ready = true;
 }
 function postPass(material, target){ POST.quad.material = material; renderer.setRenderTarget(target); renderer.render(POST.qs, POST.qc); }
+// Lotes de instancias: las piernas de la infantería (piezas animadas que se repiten en cada soldado) se dibujan con una
+// InstancedMesh por geometría y material, en lugar de dos a cuatro mallas por soldado. Las mallas originales quedan ocultas
+// y solo aportan su matriz animada.
+const LOTES = new Map(), LOTE_FR = new THREE.Frustum(), LOTE_M = new THREE.Matrix4(), LOTE_S = new THREE.Sphere();
+function nuevoLote(m, cap, prev){
+  const im = new THREE.InstancedMesh(m.geometry, m.material, cap);
+  im.frustumCulled = false; im.castShadow = m.castShadow; im.receiveShadow = m.receiveShadow;
+  if(prev){ im.instanceMatrix.array.set(prev.im.instanceMatrix.array); scene.remove(prev.im); prev.im.dispose(); }
+  scene.add(im); return { im, n: prev ? prev.n : 0, cap };
+}
+function dibujarLotes(){
+  for(const l of LOTES.values()) l.n = 0;
+  camera.updateMatrixWorld(); LOTE_M.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); LOTE_FR.setFromProjectionMatrix(LOTE_M);
+  LOTE_S.radius = 1.5;
+  for(const o of meshes.values()){
+    if(!o.lote || !o.lote.length || !o.g.visible || !o.g.parent || !o.body.visible) continue;
+    LOTE_S.center.copy(o.g.position); if(!LOTE_FR.intersectsSphere(LOTE_S)) continue;
+    for(const m of o.lote){
+      if(m.parent && !m.parent.visible) continue;
+      m.updateWorldMatrix(true, false);
+      const k = m.geometry.id + '|' + m.material.id + '|' + (m.castShadow ? 1 : 0);
+      let l = LOTES.get(k);
+      if(!l) LOTES.set(k, l = nuevoLote(m, 64));
+      else if(l.n >= l.cap) LOTES.set(k, l = nuevoLote(m, l.cap*2, l));
+      l.im.setMatrixAt(l.n++, m.matrixWorld);
+    }
+  }
+  for(const l of LOTES.values()){ l.im.count = l.n; l.im.visible = l.n > 0; l.im.instanceMatrix.needsUpdate = true; }
+}
 function renderFrame(){
+  dibujarLotes();
   if(OPTIONS.calidad !== 'alta'){ renderer.setRenderTarget(null); renderer.render(scene, camera); return; }
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   if(!POST.ready || POST.w !== size.x || POST.h !== size.y) postInit(size.x, size.y);

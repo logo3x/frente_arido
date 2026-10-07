@@ -28,3 +28,6 @@ Thumbs.db
 /.playwright-mcp
 /herramientas/estudio/iniciar.local.ps1
 /arte/imagenes/respaldos
+/herramientas/voces/crudo
+/herramientas/voces/fondos
+/herramientas/voces/frases.json

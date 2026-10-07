@@ -25,7 +25,7 @@ return [
     // true: si el validador no responde, no se registra la misión. false: se registra como no verificada.
     'validar_campania' => (bool) env('GAME_VALIDAR_CAMPANIA', true),
     'sim_version' => env('GAME_SIM_VERSION', '0.9.6'),
-    'version' => '0.9.6',   // versión que muestra el sitio
+    'version' => '0.9.7',   // versión que muestra el sitio
     // Fichas de unidades y edificios que muestra la landing (public/img/ficha-<clave>-<facción>.webp)
     'arsenal' => [
         'atlas' => [

@@ -534,8 +534,9 @@ class Motor {
   // Reproduce una voz por un canal de radio: banda telefónica, saturación leve y chasquidos de apertura y cierre
   tocarRadio(buf, vol=0.8, f='atlas'){
     const c = this.ctx, s = c.createBufferSource(), hp = c.createBiquadFilter(), lp = c.createBiquadFilter(), w = c.createWaveShaper(), g = c.createGain();
-    hp.type = 'highpass'; hp.frequency.value = 320; lp.type = 'lowpass'; lp.frequency.value = f==='atlas' ? 4200 : 3200; w.curve = curvaSat(f==='guerrilla' ? 3 : 1.6);
-    s.buffer = buf; g.gain.value = vol; s.connect(hp); hp.connect(lp); lp.connect(w); w.connect(g); g.connect(this.efectos);
+    // Las voces grabadas ya vienen procesadas como radio de campo (despliegue: voces/procesar.py): aquí solo se limpia el extremo
+    hp.type = 'highpass'; hp.frequency.value = 150; lp.type = 'lowpass'; lp.frequency.value = 7000; w.curve = curvaSat(1);
+    s.buffer = buf; g.gain.value = Math.min(2.2, vol*2.2); s.connect(hp); hp.connect(lp); lp.connect(w); w.connect(g); g.connect(this.efectos);
     this.tocar('squelch', f, { vol:0.7 }); s.start(c.currentTime + 0.05);
     s.onended = () => this.tocar('squelch-fin', f, { vol:0.7 });
   }
