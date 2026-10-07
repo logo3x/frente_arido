@@ -162,6 +162,7 @@ body.replay #tools,body.replay #powers{display:none}
 .faction span{font-size:12px;color:var(--muted);line-height:1.35}
 .faction.on{background:#3a3220;border-color:var(--amber)}
 #netwait{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--panel);border:1px solid var(--amber);padding:12px 18px;border-radius:4px;z-index:4;font-size:16px}
+#netwait button{margin-left:14px}
 #netwait[hidden],#pingChip[hidden],#btnPause[hidden],#powers[hidden]{display:none}
 @media (max-width:700px){
   #minimap{width:108px;height:108px}

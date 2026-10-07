@@ -198,14 +198,16 @@ class LobbyController extends Controller
         return redirect()->to(config('game.client_url').'?'.$query);
     }
 
+    // El creador cierra su sala mientras espera jugadores o está lista para empezar. Si la partida ya se jugó
+    // en el servidor, su resultado se registra igual al terminar (el webhook solo ignora las finalizadas).
     public function cancelar(Request $request, Partida $partida): RedirectResponse
     {
-        abort_unless((int) $partida->anfitrion_id === (int) $request->user()->id, 403);
-        abort_unless($partida->estado === Partida::ESPERANDO, 409, 'Solo se cancelan salas sin rival.');
+        abort_unless((int) $partida->anfitrion_id === (int) $request->user()->id, 403, 'Solo el creador puede cerrar la sala.');
+        abort_unless(in_array($partida->estado, [Partida::ESPERANDO, Partida::LISTA], true), 409, 'La sala ya terminó o ya se cerró.');
         $partida->update(['estado' => Partida::CANCELADA]);
         $this->avisarLobby();
 
-        return redirect()->route('lobby.index')->with('ok', 'Sala cancelada.');
+        return redirect()->route('lobby.index')->with('ok', 'Sala cerrada.');
     }
 
     // Notifica por Reverb. Si la difusión no está configurada, el lobby sigue con la consulta periódica.

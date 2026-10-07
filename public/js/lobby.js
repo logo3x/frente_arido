@@ -42,3 +42,9 @@
   // app.js (Echo) se carga como módulo y puede terminar después de este script
   if (!conectarTiempoReal()) window.addEventListener('load', conectarTiempoReal);
 })();
+
+// Confirmación de acciones del lobby, como «Cerrar sala» (formularios con data-confirmar)
+document.addEventListener('submit', e => {
+  const f = e.target.closest ? e.target.closest('form[data-confirmar]') : null;
+  if (f && !window.confirm(f.dataset.confirmar)) e.preventDefault();
+});

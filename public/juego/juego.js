@@ -5540,7 +5540,7 @@ function netConnect(url, room, name, token){
   ws.onclose = () => {
     if(NET.ws!==ws) return;
     clearInterval(NET.pingT);
-    if(NET.started && !NET.ended){ $('netwait').hidden=false; $('netwait').textContent='Conexión perdida. Reintentando…'; setTimeout(() => { if(NET.ws===ws) netConnect(url, room, name, token); }, 2000); }
+    if(NET.started && !NET.ended){ $('netwait').hidden=false; $('netwaitTxt').textContent='Conexión perdida. Reintentando…'; setTimeout(() => { if(NET.ws===ws) netConnect(url, room, name, token); }, 2000); }
   };
   ws.onmessage = ev => onNet(JSON.parse(ev.data));
 }
@@ -5553,6 +5553,11 @@ function onNet(m){
       clearInterval(NET.pingT); NET.pingT = setInterval(() => netSend({ t:'ping', ts:performance.now() }), 2000);
       break;
     case 'room': renderRoom(m); break;
+    case 'closed': {   // el creador cerró la sala: todos vuelven al lobby (si entraron desde el sitio) o al menú
+      const ws = NET.ws, propio = NET.cerrando; NET.ws = null; NET.cerrando = false; if(ws) ws.close(); $('room').hidden = true;
+      if(RETURN_URL){ if(!propio) toast('El creador cerró la sala'); setTimeout(() => { location.href = RETURN_URL; }, propio ? 0 : 1500); }
+      else { $('menu').hidden = false; menuMsg(propio ? 'Sala cerrada.' : 'El creador cerró la sala.'); }
+      break; }
     case 'start': {
       const nj = Array.isArray(m.factions) ? m.factions.length : 0, eqOk = m.equipos === undefined || (Array.isArray(m.equipos) && m.equipos.length === nj && m.equipos.every(t => Number.isInteger(t) && t >= 0 && t < 8));
       if(!Number.isInteger(m.seed) || ![2,4,6,8].includes(nj) || !Number.isInteger(m.slot) || m.slot < 0 || m.slot >= nj || !eqOk || !m.factions.every(f => FACTIONS[f]) || (m.map && (nj > 2 || mapError(m.map))) || !Array.isArray(m.log)){ toast('Mensaje de inicio inválido del servidor'); break; }
@@ -5567,7 +5572,7 @@ function onNet(m){
       NET.lastPkt = performance.now();
       break; }
     case 'tick': if(!Number.isInteger(m.n) || !Array.isArray(m.c)) break; NET.queue.push(m); NET.lastPkt = performance.now(); break;
-    case 'paused': $('netwait').hidden = false; $('netwait').textContent = m.reason; break;
+    case 'paused': $('netwait').hidden = false; $('netwaitTxt').textContent = m.reason; break;
     case 'resumed': $('netwait').hidden = true; break;
     case 'retirado': if(Number.isInteger(m.slot) && NET.names) toast(`${String(NET.names[m.slot] || 'Un jugador').slice(0, 24)} quedó fuera de la partida (${m.motivo==='rendicion' ? 'se rindió' : 'abandono'})`); break;
     case 'pong': NET.ping = Math.round(performance.now() - m.ts); break;
@@ -5578,8 +5583,9 @@ function onNet(m){
 }
 function renderRoom(m){
   const COLORES = ['azul','rojo','verde azulado','amarillo','violeta','naranja','cian','rosa'], eqs = m.modo==='equipos';
-  $('roomPlayers').innerHTML = m.players.map((p,i) => `<tr><td>Jugador ${i+1} (${COLORES[i] || ''})${eqs && p ? ` · equipo ${p.team+1}` : ''}</td><td>${p ? `${esc(p.name)}${i===NET.slot?' (usted)':''} · ${FACTIONS[p.faction] ? FACTIONS[p.faction].nombre : ''} · ${p.connected ? (p.ready?'listo':'esperando') : 'desconectado'}` : '<span style="color:var(--muted)">libre</span>'}</td></tr>`).join('');
+  $('roomPlayers').innerHTML = m.players.map((p,i) => `<tr><td>Jugador ${i+1} (${COLORES[i] || ''})${eqs && p ? ` · equipo ${p.team+1}` : ''}</td><td>${p ? `${esc(p.name)}${i===NET.slot?' (usted)':''}${p.anf ? ' · creador' : ''} · ${FACTIONS[p.faction] ? FACTIONS[p.faction].nombre : ''} · ${p.connected ? (p.ready?'listo':'esperando') : 'desconectado'}` : '<span style="color:var(--muted)">libre</span>'}</td></tr>`).join('');
   const me = m.players[NET.slot];
+  $('btnRoomClose').hidden = !(me && me.anf);   // solo el creador de la sala puede cerrarla
   $('roomMap').textContent = m.mapName || 'Estándar';
   $('btnRoomMap').hidden = NET.slot!==0 || !!(me && me.ready); $('btnRoomMapStd').hidden = NET.slot!==0 || !m.mapName || !!(me && me.ready);
   if(me){ NET.faction = me.faction; factionCards($('roomFactions'), me.faction, f => { if(!me.ready) netSend({ t:'faction', f }); else roomMsg('Cancele «Listo» para cambiar de facción.'); }); }
@@ -5782,7 +5788,19 @@ $('btnOnline').addEventListener('click', () => {
   netConnect(url, room, name, null);
 });
 $('btnReady').addEventListener('click', () => netSend({ t:'ready', ready:$('btnReady').textContent==='Listo' }));
-$('btnLeave').addEventListener('click', () => { const ws = NET.ws; NET.ws = null; if(ws) ws.close(); $('room').hidden = true; $('menu').hidden = false; menuMsg(''); });
+$('btnRoomClose').addEventListener('click', () => { if(!confirm('¿Cerrar la sala? Los demás jugadores saldrán de ella.')) return; NET.cerrando = true; netSend({ t:'close' }); });
+$('btnLeave').addEventListener('click', () => { const ws = NET.ws; NET.ws = null; if(ws) ws.close(); if(RETURN_URL){ location.href = RETURN_URL; return; } $('room').hidden = true; $('menu').hidden = false; menuMsg(''); });
+// Salir durante la espera o la reconexión de una partida en línea: vuelve al lobby (si se entró desde el sitio) o al menú
+$('btnNetSalir').addEventListener('click', () => {
+  if(NET.started && !NET.ended && !confirm('¿Salir de la partida en línea? Puede registrarse como derrota.')) return;
+  const ws = NET.ws; NET.ws = null; if(ws) ws.close(); NET.online = false; NET.started = false; $('netwait').hidden = true;
+  if(RETURN_URL){ location.href = RETURN_URL; return; }
+  endEl.hidden = true; $('menu').hidden = false; menuMsg(''); startGame(20261004, 'solo'); paused = true;
+});
+// Volver al sitio: al lobby o al panel si se entró desde el sitio; si no, a la portada. Versión visible en el menú.
+{ const desdeSala = !!params.get('room'), volver = desdeSala ? 'Volver al lobby' : 'Volver al panel';
+  if(RETURN_URL){ $('lnkSitio').href = RETURN_URL; $('lnkSitio').textContent = volver; $('btnLeave').textContent = volver; }
+  $('menuVersion').textContent = `Versión ${SIM_VERSION} · estrategia en tiempo real`; }
 
 // ======================= REPETICIONES =======================
 // Una repetición guarda semilla, facciones, jugadores IA y las órdenes por tick. La simulación determinista hace el resto.
@@ -6094,8 +6112,8 @@ function frame(now){
       while(NET.queue.length && (acc >= DT || NET.queue.length > 3) && ran < 120){ applyNetTick(NET.queue.shift()); acc = Math.max(0, acc-DT); ran++; }
       if(!NET.queue.length && acc > DT) acc = DT;
       const stalled = now - NET.lastPkt > 600, nw = $('netwait');
-      if(stalled && nw.hidden && NET.ws && NET.ws.readyState===1){ nw.hidden = false; nw.textContent = 'Esperando al servidor…'; }
-      else if(!stalled && nw.textContent==='Esperando al servidor…') nw.hidden = true;
+      if(stalled && nw.hidden && NET.ws && NET.ws.readyState===1){ nw.hidden = false; $('netwaitTxt').textContent = 'Esperando al servidor…'; }
+      else if(!stalled && $('netwaitTxt').textContent==='Esperando al servidor…') nw.hidden = true;
     }
     if(S.over && !NET.sentResult){ NET.sentResult = true; NET.overAt = now; netSend({ t:'result', winner:S.winner }); }
   } else if(!paused && !S.over){ acc += dt; while(acc >= DT){ simTick(); acc -= DT; } }

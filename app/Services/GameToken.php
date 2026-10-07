@@ -20,6 +20,7 @@ class GameToken
             'plazas' => (int) ($partida->plazas ?: 2),
             'modo' => $partida->modo === 'equipos' ? 'equipos' : 'todos',
             'uid' => (string) $user->id,
+            'anf' => (int) $partida->anfitrion_id === (int) $user->id,   // el creador puede cerrar la sala desde el juego
             'name' => mb_substr($user->name, 0, 24),
             'exp' => time() + (int) config('game.token_ttl'),
         ], JSON_UNESCAPED_UNICODE));

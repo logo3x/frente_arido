@@ -1,6 +1,6 @@
 # Despliegue en IIS · Frente Árido
 
-Guía para publicar el proyecto en Windows Server con IIS (10 o posterior).
+Guía para publicar el proyecto en Windows Server con IIS (10 o posterior). Corresponde a la versión 0.9.8 del juego.
 
 ## Arquitectura
 
@@ -47,9 +47,11 @@ El puerto 8080 no se abre en el firewall: todo entra por 443.
 cd C:\inetpub
 git clone https://github.com/logo3x/frente_arido.git frente-arido
 cd frente-arido
-git checkout v0.9.4        # o main, cuando la rama esté fusionada
+git checkout main          # versión publicada
 copy .env.example .env
 ```
+
+La rama `v0.9.4` trae los cambios en desarrollo; para producción use `main`.
 
 ## 5. Configurar el `.env` (producción)
 
@@ -110,6 +112,7 @@ El script lee `GAME_SECRET` del `.env`, instala las dependencias de `servidor\`,
 | `https://juego.ejemplo.co/.env` | Error 404 |
 | `https://juego.ejemplo.co/validar-mision` | Error 404 |
 | Crear sala en el lobby y entrar con dos cuentas | Ambos jugadores conectados (`wss://…/ws`) |
+| Cerrar la sala desde el lobby o desde la sala de espera (creador) | La sala desaparece del lobby y los demás jugadores vuelven al menú |
 | Completar una misión con cuenta | Las estrellas aparecen como verificadas en el panel |
 
 Si la partida en línea no conecta: revise que el servicio esté en marcha (`Get-Service FrenteAridoJuego`), que ARR tenga el proxy habilitado, que IIS tenga el «Protocolo WebSocket» instalado y que `ALLOWED_ORIGINS` coincida con el dominio exacto (con `https://`).

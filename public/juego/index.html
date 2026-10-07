@@ -200,18 +200,18 @@
   <button id="rpExit">Salir</button>
 </div>
 <div id="toast"></div>
-<div id="netwait" hidden>Esperando al servidor…</div>
+<div id="netwait" hidden><span id="netwaitTxt">Esperando al servidor…</span><button id="btnNetSalir">Salir de la partida</button></div>
 
 <div id="menu" class="modal">
   <div class="card" role="dialog" aria-label="Menú principal">
-    <div style="display:flex;gap:10px;align-items:center"><span class="emblem" id="menuEmblem"></span><div><h2 style="margin:0">Frente Árido</h2><p style="margin:2px 0 0">Prototipo v0.9.1 · estrategia en tiempo real</p></div></div>
+    <div style="display:flex;gap:10px;align-items:center"><span class="emblem" id="menuEmblem"></span><div><h2 style="margin:0">Frente Árido</h2><p style="margin:2px 0 0" id="menuVersion">Estrategia en tiempo real</p></div></div>
     <div class="maprow"><span>Perfil: <b id="profName">Comandante</b> · <span id="profStats"></span></span><button id="btnHistory">Perfil e historial</button></div>
     <div class="menu-modos">
       <button id="btnCampaign" class="primary"><b>Campaña</b><span>Doce misiones en tres frentes</span></button>
       <button id="btnSkirmish"><b>Escaramuza</b><span>Partida libre contra la IA</span></button>
       <button id="btnTutorial"><b>Entrenamiento</b><span>Recorrido guiado de cinco pasos</span></button>
     </div>
-    <div class="maprow"><button id="btnMenuOptions">Opciones</button><button id="btnReplayLoad">Ver repetición</button></div>
+    <div class="maprow"><button id="btnMenuOptions">Opciones</button><button id="btnReplayLoad">Ver repetición</button><a class="btnlink" id="lnkSitio" href="../">Ir al sitio</a></div>
     <input type="file" id="replayFile" accept=".json,application/json" hidden>
     <h3>Partida en línea</h3>
     <label>Servidor<input id="inServer" value="ws://localhost:8080" autocomplete="off"></label>
@@ -284,7 +284,8 @@
     <div class="maprow" id="roomMapRow"><span>Mapa: <b id="roomMap">Estándar</b></span><button id="btnRoomMap" hidden>Elegir mapa</button><button id="btnRoomMapStd" hidden>Usar estándar</button></div>
     <p class="msg" id="roomMsg"></p>
     <button id="btnReady" class="primary">Listo</button>
-    <button id="btnLeave">Salir</button>
+    <button id="btnLeave">Volver al menú</button>
+    <button id="btnRoomClose" hidden>Cerrar sala</button>
   </div>
 </div>
 

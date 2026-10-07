@@ -52,8 +52,8 @@
                         <td>{{ $p->estado === 'esperando' ? ($p->esMultijugador() ? 'Esperando jugadores' : 'Esperando rival') : 'Lista' }}</td>
                         <td class="acc">
                             <a class="btn primario mini" href="{{ route('lobby.jugar', $p) }}">Entrar</a>
-                            @if ($p->estado === 'esperando' && $p->anfitrion_id == auth()->id())
-                                <form method="POST" action="{{ route('lobby.cancelar', $p) }}">@csrf @method('DELETE')<button class="btn mini">Cancelar</button></form>
+                            @if ($p->anfitrion_id == auth()->id())
+                                <form method="POST" action="{{ route('lobby.cancelar', $p) }}" data-confirmar="¿Cerrar la sala {{ $p->codigo }}? Los demás jugadores ya no podrán entrar.">@csrf @method('DELETE')<button class="btn mini">Cerrar sala</button></form>
                             @endif
                         </td>
                     </tr>

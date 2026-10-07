@@ -73,7 +73,7 @@ function verifyToken(token, room) {
   try { data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')); } catch { return { ok: false, msg: 'Token ilegible' }; }
   if (data.room !== room) return { ok: false, msg: 'El token no corresponde a la sala' };
   if (!data.exp || data.exp < Date.now() / 1000) return { ok: false, msg: 'Token vencido' };
-  return { ok: true, uid: String(data.uid), name: String(data.name || 'Jugador').slice(0, 24),
+  return { ok: true, uid: String(data.uid), name: String(data.name || 'Jugador').slice(0, 24), anf: data.anf === true,   // anf: creador de la sala en Laravel
            plazas: PLAZAS.has(data.plazas) ? data.plazas : 2, modo: data.modo === 'equipos' ? 'equipos' : 'todos' };
 }
 
@@ -84,7 +84,7 @@ function roomState(room) {
   return { t: 'room', room: room.code, started: room.started,
     mapName: room.map ? room.map.nombre : null,
     plazas: room.players.length, modo: room.modo,
-    players: room.players.map((p, i) => p ? { slot: i, name: p.name, ready: p.ready, connected: p.connected, faction: p.faction, team: equipoDe(room, i), fuera: !!p.fuera } : null) };
+    players: room.players.map((p, i) => p ? { slot: i, name: p.name, ready: p.ready, connected: p.connected, faction: p.faction, team: equipoDe(room, i), fuera: !!p.fuera, anf: !!p.anf } : null) };
 }
 // Equipo de cada plaza: en modo equipos, mitades (aliados vecinos en el anillo); si no, uno por jugador
 const equipoDe = (room, i) => room.modo === 'equipos' ? Math.floor(i / (room.players.length / 2)) : i;
@@ -146,11 +146,15 @@ async function reportResult(room, winner, reason) {
               names: room.players.map(p => p.name), ticks: room.tick, winner, log: room.log.filter(p => p.c.length).map(p => [p.n, p.c]) },
     players: room.players.map(p => p.id)
   });
+  await postWebhook(room, body);
+}
+// Envía a Laravel un cuerpo firmado con HMAC (resultado de la partida o sala cerrada)
+async function postWebhook(room, body) {
   const sig = crypto.createHmac('sha256', SECRET).update(body).digest('hex');
   try {
     const res = await fetch(WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Game-Signature': sig }, body });
-    log(`sala ${room.code}: resultado enviado a Laravel (${res.status})`);
-  } catch (e) { log(`sala ${room.code}: error al reportar resultado: ${e.message}`); }
+    log(`sala ${room.code}: aviso enviado a Laravel (${res.status})`);
+  } catch (e) { log(`sala ${room.code}: error al avisar a Laravel: ${e.message}`); }
 }
 
 // ---------- Persistencia de partidas en curso ----------
@@ -224,12 +228,13 @@ function onJoin(ws, m) {
   if (slot >= 0) {                                              // reconexión
     const p = room.players[slot];
     if (p.connected && p.ws !== ws) { try { p.ws.close(4000, 'Sesión reemplazada'); } catch {} }
-    p.ws = ws; p.connected = true;
+    p.ws = ws; p.connected = true; if (auth.anf) p.anf = true;
   } else {
     if (room.started) return send(ws, { t: 'error', msg: 'La partida ya comenzó' });
     slot = room.players.findIndex(p => !p);
     if (slot < 0) return send(ws, { t: 'error', msg: 'La sala está llena' });
-    room.players[slot] = { id, name, ws, ready: false, connected: true, faction: DEFAULT_FACTION[slot % DEFAULT_FACTION.length] };
+    // Creador: el que indica el token de Laravel; en desarrollo (sin GAME_SECRET), el primero en entrar
+    room.players[slot] = { id, name, ws, ready: false, connected: true, faction: DEFAULT_FACTION[slot % DEFAULT_FACTION.length], anf: auth.dev ? slot === 0 && room.players.every(q => !q || !q.anf) : !!auth.anf };
   }
   ws.room = room; ws.slot = slot; clearTimeout(ws.joinTimer);
   send(ws, { t: 'joined', room: code, slot });
@@ -308,6 +313,19 @@ function onResult(ws, m) {
   const r = room.results, act = activos(room);
   if (act.every(i => r[i] !== undefined)) { const ok = act.every(i => r[i] === r[act[0]]); finalize(room, ok ? r[act[0]] : -1, ok ? 'victoria' : 'discrepancia'); }
   else if (!room.endTimer) room.endTimer = setTimeout(() => finalize(room, m.winner, 'victoria'), 5000);
+}
+// El creador cierra la sala antes de empezar: todos salen y Laravel la marca como cancelada (sin resultado ni Elo)
+function onCerrar(ws) {
+  const room = ws.room; if (!room) return;
+  const p = room.players[ws.slot];
+  if (!p || !p.anf) return send(ws, { t: 'error', msg: 'Solo el creador puede cerrar la sala' });
+  if (room.started || room.ended) return send(ws, { t: 'error', msg: 'La partida ya comenzó: use la rendición' });
+  room.ended = true;
+  broadcast(room, { t: 'closed' });
+  for (const q of room.players) if (q && q.ws) { q.ws.room = null; try { q.ws.close(1000, 'Sala cerrada'); } catch {} }
+  rooms.delete(room.code); forgetRoom(room);
+  log(`sala ${room.code}: cerrada por su creador (${p.name})`);
+  if (WEBHOOK) postWebhook(room, JSON.stringify({ room: room.code, reason: 'cerrada', ticks: 0 }));
 }
 function onClose(ws) {
   const room = ws.room; if (!room) return;
@@ -419,6 +437,7 @@ function route(ws, m) {
       case 'hash': return onHash(ws, m);
       case 'result': return onResult(ws, m);
       case 'surrender': return onSurrender(ws);
+      case 'close': return onCerrar(ws);
       case 'ping': return send(ws, { t: 'pong', ts: Number.isFinite(m.ts) ? m.ts : 0 });
     }
 }

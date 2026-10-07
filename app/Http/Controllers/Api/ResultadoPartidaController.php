@@ -23,7 +23,7 @@ class ResultadoPartidaController extends Controller
 
         $datos = $request->validate([
             'room' => ['required', 'string', 'max:8'],
-            'reason' => ['required', 'in:victoria,abandono,desincronizacion,discrepancia,reinicio'],
+            'reason' => ['required', 'in:victoria,abandono,desincronizacion,discrepancia,reinicio,cerrada'],
             'ticks' => ['required', 'integer', 'min:0'],
             'winner_uid' => ['nullable', 'string'],
             'winner_team' => ['nullable', 'integer', 'min:-1', 'max:7'],
@@ -36,6 +36,20 @@ class ResultadoPartidaController extends Controller
         $partida = Partida::where('codigo', $datos['room'])->firstOrFail();
         if ($partida->estado === Partida::FINALIZADA) {
             return response()->noContent(); // idempotente
+        }
+
+        // El creador cerró la sala desde el juego antes de empezar: queda cancelada, sin resultado ni cambio de Elo
+        if ($datos['reason'] === 'cerrada') {
+            if (in_array($partida->estado, [Partida::ESPERANDO, Partida::LISTA], true)) {
+                $partida->update(['estado' => Partida::CANCELADA]);
+                try {
+                    broadcast(new SalasActualizadas());
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
+
+            return response()->noContent();
         }
 
         if ($partida->esMultijugador()) {
