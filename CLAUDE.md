@@ -67,6 +67,7 @@ node pruebas/auditoria-determinismo.js          # determinismo y repeticiones
 node pruebas/prueba-campania.js 6000            # 12 misiones y entrenamiento
 node pruebas/prueba-seguridad.js                # seguridad del servidor
 node pruebas/prueba-lockstep-n.js 4 2400 equipos   # partida en línea de N jugadores con un abandono
+node pruebas/prueba-lockstep-n.js 6 2400 ia        # personas contra jugadores IA en línea (sala armada)
 node pruebas/prueba-huellas.js                  # compara con huellas-base.json (refactorizar sin cambiar resultados)
 node pruebas/prueba-huellas.js guardar          # nueva línea base (solo tras un cambio de simulación intencional)
 node pruebas/generar-iconos.js                  # actualiza public/juego/img/iconos.json tras agregar íconos

@@ -23,10 +23,11 @@ class ResultadoPartidaController extends Controller
 
         $datos = $request->validate([
             'room' => ['required', 'string', 'max:8'],
-            'reason' => ['required', 'in:victoria,abandono,desincronizacion,discrepancia,reinicio,cerrada'],
+            'reason' => ['required', 'in:victoria,abandono,desincronizacion,discrepancia,reinicio,cerrada,configuracion,iniciada'],
             'ticks' => ['required', 'integer', 'min:0'],
             'winner_uid' => ['nullable', 'string'],
             'winner_team' => ['nullable', 'integer', 'min:-1', 'max:7'],
+            'ia' => ['nullable', 'integer', 'min:0', 'max:7'],
             'jugadores' => ['nullable', 'array', 'max:8'],
             'jugadores.*.uid' => ['required_with:jugadores', 'string'],
             'jugadores.*.team' => ['required_with:jugadores', 'integer', 'min:0', 'max:7'],
@@ -47,6 +48,34 @@ class ResultadoPartidaController extends Controller
                 } catch (\Throwable $e) {
                     report($e);
                 }
+            }
+
+            return response()->noContent();
+        }
+
+        // Plazas de IA que el creador agregó en la sala del juego: el lobby las cuenta como ocupadas
+        if ($datos['reason'] === 'configuracion') {
+            if ($partida->esMultijugador() && in_array($partida->estado, [Partida::ESPERANDO, Partida::LISTA], true)) {
+                $ia = min((int) ($datos['ia'] ?? 0), $partida->plazas - 1);
+                $llena = $partida->jugadores()->count() + $ia >= $partida->plazas;
+                $partida->update(['ia' => $ia, 'estado' => $llena ? Partida::LISTA : Partida::ESPERANDO]);
+                $this->avisarLobby();
+            }
+
+            return response()->noContent();
+        }
+
+        // La partida empezó en el servidor: la sala deja de ofrecerse y quedan registrados solo los que entraron
+        // (alguien pudo unirse en el lobby y no llegar a la sala antes de que se llenara con IA)
+        if ($datos['reason'] === 'iniciada') {
+            if (in_array($partida->estado, [Partida::ESPERANDO, Partida::LISTA], true)) {
+                $cambios = ['estado' => Partida::LISTA];
+                if ($partida->esMultijugador()) {
+                    $cambios['ia'] = min((int) ($datos['ia'] ?? 0), $partida->plazas - 1);
+                    $this->quitarAusentes($partida, collect($datos['jugadores'] ?? [])->map(fn ($j) => (int) $j['uid']));
+                }
+                $partida->update($cambios);
+                $this->avisarLobby();
             }
 
             return response()->noContent();
@@ -74,7 +103,7 @@ class ResultadoPartidaController extends Controller
             }
             $cambio = null;
             $minimo = (int) config('game.elo_min_ticks', 1800);
-            if ($valido && $partida->rival_id && in_array($datos['reason'], ['victoria', 'abandono'], true) && $datos['ticks'] >= $minimo) {
+            if ($valido && $partida->rival_id && empty($datos['ia']) && in_array($datos['reason'], ['victoria', 'abandono'], true) && $datos['ticks'] >= $minimo) {
                 $perdedorId = (int) $ganador === (int) $partida->anfitrion_id ? $partida->rival_id : $partida->anfitrion_id;
                 $cambio = $this->actualizarElo((int) $ganador, (int) $perdedorId);
             }
@@ -100,26 +129,28 @@ class ResultadoPartidaController extends Controller
 
     // Sala de más de 2: cada jugador gana o pierde según su equipo. Elo por equipos: el promedio de los ganadores contra el
     // de los perdedores (K = 32); cada ganador suma el cambio y los perdedores lo pierden repartido entre ellos.
+    // Con jugadores IA en la partida no hay Elo (el resultado y la experiencia sí cuentan); si ganó la IA, todos pierden.
     private function resultadoMultijugador(Partida $partida, array $datos, Request $request): Response
     {
         $equipoGanador = $datos['winner_team'] ?? -1;
         $equipos = collect($datos['jugadores'] ?? [])->mapWithKeys(fn ($j) => [(int) $j['uid'] => (int) $j['team']]);
+        $ia = (int) ($datos['ia'] ?? 0);
         $ruta = null;
         if (! empty($datos['replay'])) {
             $ruta = "repeticiones/{$partida->codigo}.json";
             Storage::disk('local')->put($ruta, json_encode($request->input('replay'), JSON_UNESCAPED_UNICODE));
         }
-        DB::transaction(function () use ($partida, $datos, $equipoGanador, $equipos, $ruta) {
+        DB::transaction(function () use ($partida, $datos, $equipoGanador, $equipos, $ia, $ruta) {
             $partida = Partida::whereKey($partida->id)->lockForUpdate()->first();
             if ($partida->estado === Partida::FINALIZADA) {
                 return;
             }
-            $ids = $partida->jugadores()->pluck('users.id')->map(fn ($v) => (int) $v);
-            // Solo cuentan los jugadores registrados en la sala; los equipos los informa el servidor de partidas firmado
-            $valido = $equipoGanador >= 0 && $ids->every(fn ($id) => $equipos->has($id));
+            // Solo cuentan los registrados que jugaron; los equipos los informa el servidor de partidas firmado
+            $ids = $this->quitarAusentes($partida, $equipos->keys()->map(fn ($v) => (int) $v));
+            $valido = $equipoGanador >= 0 && $ids->isNotEmpty() && $ids->every(fn ($id) => $equipos->has($id));
             $ganadores = $valido ? $ids->filter(fn ($id) => $equipos[$id] === $equipoGanador)->values() : collect();
             $perdedores = $valido ? $ids->reject(fn ($id) => $equipos[$id] === $equipoGanador)->values() : collect();
-            $conElo = $valido && $ganadores->isNotEmpty() && $perdedores->isNotEmpty() && in_array($datos['reason'], ['victoria', 'abandono'], true) && $datos['ticks'] >= (int) config('game.elo_min_ticks', 1800);
+            $conElo = $valido && $ia === 0 && $ganadores->isNotEmpty() && $perdedores->isNotEmpty() && in_array($datos['reason'], ['victoria', 'abandono'], true) && $datos['ticks'] >= (int) config('game.elo_min_ticks', 1800);
             $cambio = 0;
             if ($conElo) {
                 $elos = DB::table('users')->whereIn('id', $ids)->lockForUpdate()->pluck('elo', 'id');
@@ -134,7 +165,7 @@ class ResultadoPartidaController extends Controller
                 }
                 $partida->jugadores()->updateExistingPivot($id, ['resultado' => $valido ? ($gana ? 'victoria' : 'derrota') : null, 'elo_cambio' => $delta, 'equipo' => $equipos[$id] ?? null]);
             }
-            $partida->update(['estado' => Partida::FINALIZADA, 'equipo_ganador' => $valido ? $equipoGanador : null, 'ganador_id' => $ganadores->first(),
+            $partida->update(['estado' => Partida::FINALIZADA, 'ia' => min($ia, $partida->plazas - 1), 'equipo_ganador' => $valido ? $equipoGanador : null, 'ganador_id' => $ganadores->first(),
                 'motivo' => $datos['reason'], 'duracion_ticks' => $datos['ticks'], 'repeticion' => $ruta, 'elo_cambio' => $conElo ? $cambio : null, 'finalizada_at' => now()]);
         });
         try {
@@ -144,6 +175,32 @@ class ResultadoPartidaController extends Controller
         }
 
         return response()->noContent();
+    }
+
+    // Deja en la sala solo a los registrados que jugaron (los informa el servidor de partidas) y devuelve sus id.
+    // Si el aviso no trae jugadores, no se quita a nadie.
+    private function quitarAusentes(Partida $partida, \Illuminate\Support\Collection $presentes): \Illuminate\Support\Collection
+    {
+        $registrados = $partida->jugadores()->pluck('users.id')->map(fn ($v) => (int) $v);
+        if ($presentes->isEmpty()) {
+            return $registrados->values();
+        }
+        $ausentes = $registrados->diff($presentes);
+        if ($ausentes->isNotEmpty()) {
+            $partida->jugadores()->detach($ausentes->all());
+        }
+
+        return $registrados->intersect($presentes)->values();
+    }
+
+    // Refresca las salas y el historial en los lobbies abiertos. Si la difusión no está configurada, siguen con la consulta periódica.
+    private function avisarLobby(): void
+    {
+        try {
+            broadcast(new SalasActualizadas());
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     // Elo estándar con K = 32. Devuelve los puntos que gana el vencedor (y pierde el vencido).

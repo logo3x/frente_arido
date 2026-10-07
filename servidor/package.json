@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node ../pruebas/auditoria-determinismo.js && node ../pruebas/prueba-motores.js 1500 && node ../pruebas/prueba-campania.js 7200 && node ../pruebas/prueba-entrenamiento.js && node ../pruebas/prueba-validador.js && node ../pruebas/prueba-seguridad.js && node ../pruebas/prueba-lockstep.js 3000 '' guerrilla hierro && node ../pruebas/prueba-lockstep.js 3000 1200 atlas guerrilla ../pruebas/mapa-rio.json && node ../pruebas/prueba-persistencia.js && node ../pruebas/prueba-token.js && node ../pruebas/prueba-repeticion-servidor.js",
+    "test": "node ../pruebas/auditoria-determinismo.js && node ../pruebas/prueba-motores.js 1500 && node ../pruebas/prueba-campania.js 7200 && node ../pruebas/prueba-entrenamiento.js && node ../pruebas/prueba-validador.js && node ../pruebas/prueba-seguridad.js && node ../pruebas/prueba-lockstep.js 3000 '' guerrilla hierro && node ../pruebas/prueba-lockstep.js 3000 1200 atlas guerrilla ../pruebas/mapa-rio.json && node ../pruebas/prueba-lockstep-n.js 6 2400 ia && node ../pruebas/prueba-persistencia.js && node ../pruebas/prueba-token.js && node ../pruebas/prueba-repeticion-servidor.js",
     "verificador": "node ../pruebas/generar-verificador.js"
   },
   "dependencies": {

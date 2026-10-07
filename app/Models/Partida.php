@@ -19,9 +19,10 @@ class Partida extends Model
 
     public const PLAZAS = [2, 4, 6, 8];
 
-    protected $fillable = ['codigo', 'plazas', 'modo', 'anfitrion_id', 'rival_id', 'invitado_id', 'ganador_id', 'equipo_ganador', 'estado', 'motivo', 'duracion_ticks', 'repeticion', 'elo_cambio', 'finalizada_at'];
+    protected $fillable = ['codigo', 'plazas', 'modo', 'ia', 'anfitrion_id', 'rival_id', 'invitado_id', 'ganador_id', 'equipo_ganador', 'estado', 'motivo', 'duracion_ticks', 'repeticion', 'elo_cambio', 'finalizada_at'];
 
-    protected $casts = ['finalizada_at' => 'datetime', 'plazas' => 'integer'];
+    // ia: plazas de jugadores IA que el creador agregó en la sala del juego (las informa el servidor de partidas)
+    protected $casts = ['finalizada_at' => 'datetime', 'plazas' => 'integer', 'ia' => 'integer'];
 
     // Las rutas usan el código de sala en lugar del id.
     public function getRouteKeyName(): string
@@ -74,7 +75,7 @@ class Partida extends Model
 
     public function ocupadas(): int
     {
-        return $this->esMultijugador() ? $this->jugadores()->count() : ($this->rival_id ? 2 : 1);
+        return $this->esMultijugador() ? $this->jugadores()->count() + (int) $this->ia : ($this->rival_id ? 2 : 1);
     }
 
     // Texto de jugadores para las tablas
@@ -85,7 +86,7 @@ class Partida extends Model
         }
         $nombres = $this->jugadores->map(fn ($u) => $u->name.($this->modo === 'equipos' ? ' (eq. '.($u->pivot->equipo + 1).')' : ''));
 
-        return $nombres->implode(', ').' · '.$this->jugadores->count().'/'.$this->plazas;
+        return $nombres->implode(', ').' · '.($this->jugadores->count() + (int) $this->ia).'/'.$this->plazas.($this->ia ? ' ('.$this->ia.' IA)' : '');
     }
 
     // victoria | derrota | sin_resultado para un usuario

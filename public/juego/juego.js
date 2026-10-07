@@ -3574,7 +3574,7 @@ function waterMat(){
   m.onBeforeCompile = sh => { fog(sh);
     sh.uniforms.uTerr = TERR_U; sh.uniforms.uHN = HN_U; sh.uniforms.uTime = WATER_TIME;
     sh.fragmentShader = sh.fragmentShader
-      .replace('uniform sampler2D uFogTex;', 'uniform sampler2D uFogTex;\nuniform sampler2D uTerr;\nuniform float uTime;\nuniform float uMundo;\nuniform float uHN;')
+      .replace('uniform sampler2D uFogTex;', 'uniform sampler2D uFogTex;\nuniform sampler2D uTerr;\nuniform float uTime;\nuniform float uHN;')   // uMundo ya la declara addFog
       .replace('gl_FragColor.rgb *= texture2D(uFogTex', `{
         float fres = pow(1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0), 3.0);
         gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.74, 0.83, 0.86), fres*0.55);          // reflejo del cielo
@@ -5660,6 +5660,8 @@ function showTransmission(text){
 
 // ======================= RED (lockstep con reloj de servidor) =======================
 const RETURN_URL = safeUrl(params.get('return'));
+// Versión del protocolo de la sala: debe coincidir con la del servidor (una página antigua en caché no puede entrar)
+const PROTO_SALA = 2;
 const NET = { plazas:2, modo:'todos', ws:null, online:false, started:false, slot:0, queue:[], lastPkt:0, ping:null, pingT:null, sentResult:false, names:['',''], room:'', ended:null, overAt:0, faction:null };
 document.addEventListener('click', e => { const b = e.target.closest('#onPlazas button, #onModo button'); if(!b) return;
   if(b.dataset.np){ NET.plazas = +b.dataset.np; document.querySelectorAll('#onPlazas button').forEach(x => x.classList.toggle('on', x===b)); $('onModoRow').hidden = NET.plazas <= 2; }
@@ -5674,7 +5676,7 @@ function netConnect(url, room, name, token){
   let ws;
   try { ws = new WebSocket(url); } catch(e){ menuMsg('Dirección de servidor inválida', true); return; }
   NET.ws = ws;
-  ws.onopen = () => netSend({ t:'join', room, name, token, plazas:NET.plazas || 2, modo:NET.modo || 'todos' });
+  ws.onopen = () => netSend({ t:'join', proto:PROTO_SALA, room, name, token, plazas:NET.plazas || 2, modo:NET.modo || 'todos' });
   ws.onerror = () => { if(!NET.started) menuMsg('No fue posible conectar con el servidor', true); };
   ws.onclose = () => {
     if(NET.ws!==ws) return;
@@ -5686,25 +5688,36 @@ function netConnect(url, room, name, token){
 function onNet(m){
   switch(m.t){
     case 'joined':
-      NET.slot = m.slot; NET.room = m.room;
+      NET.slot = m.slot; NET.room = m.room; SALA.sel = m.slot; SALA.errorHasta = 0;
       $('menu').hidden = true; $('roomCode').textContent = m.room;
       if(!NET.started){ $('room').hidden = false; if(soloFaction) netSend({ t:'faction', f:soloFaction }); }
-      clearInterval(NET.pingT); NET.pingT = setInterval(() => netSend({ t:'ping', ts:performance.now() }), 2000);
+      clearInterval(NET.pingT); NET.pingT = setInterval(() => netSend({ t:'ping', ts:performance.now(), ms:NET.ping }), 2000);
       break;
-    case 'room': renderRoom(m); break;
+    case 'room': if(NET.started) NET.estado = m; renderRoom(m); break;
     case 'closed': {   // el creador cerró la sala: todos vuelven al lobby (si entraron desde el sitio) o al menú
       const ws = NET.ws, propio = NET.cerrando; NET.ws = null; NET.cerrando = false; if(ws) ws.close(); $('room').hidden = true;
       if(RETURN_URL){ if(!propio) toast('El creador cerró la sala'); setTimeout(() => { location.href = RETURN_URL; }, propio ? 0 : 1500); }
       else { $('menu').hidden = false; menuMsg(propio ? 'Sala cerrada.' : 'El creador cerró la sala.'); }
       break; }
     case 'start': {
-      const nj = Array.isArray(m.factions) ? m.factions.length : 0, eqOk = m.equipos === undefined || (Array.isArray(m.equipos) && m.equipos.length === nj && m.equipos.every(t => Number.isInteger(t) && t >= 0 && t < 8));
-      if(!Number.isInteger(m.seed) || ![2,4,6,8].includes(nj) || !Number.isInteger(m.slot) || m.slot < 0 || m.slot >= nj || !eqOk || !m.factions.every(f => FACTIONS[f]) || (m.map && (nj > 2 || mapError(m.map))) || !Array.isArray(m.log)){ toast('Mensaje de inicio inválido del servidor'); break; }
-      LOCAL = m.slot; NET.names = m.names; NET.online = true; NET.started = true; NET.ended = null; NET.sentResult = false; NET.overAt = 0;
+      // Configuración de la partida resuelta por el servidor: se valida todo antes de usarlo (null: valores por defecto)
+      const nj = Array.isArray(m.factions) ? m.factions.length : 0;
+      const lista = (a, ok) => a === undefined || a === null || (Array.isArray(a) && a.length === nj && a.every(ok));
+      const eqOk = lista(m.equipos, t => Number.isInteger(t) && t >= 0 && t < 8);
+      const posOk = lista(m.pos, v => Number.isInteger(v) && v >= 0 && v < nj) && (!Array.isArray(m.pos) || new Set(m.pos).size === nj);
+      const colOk = lista(m.colores, v => Number.isInteger(v) && v >= 0 && v < 8), nivOk = lista(m.niveles, v => ['facil','normal','dificil'].includes(v));
+      const iaOk = m.ia === undefined || (Array.isArray(m.ia) && m.ia.length < nj && new Set(m.ia).size === m.ia.length && m.ia.every(i => Number.isInteger(i) && i >= 0 && i < nj && i !== m.slot));
+      const crOk = m.creditos === undefined || (Number.isInteger(m.creditos) && m.creditos >= 500 && m.creditos <= 20000);
+      if(!Number.isInteger(m.seed) || ![2,4,6,8].includes(nj) || !Number.isInteger(m.slot) || m.slot < 0 || m.slot >= nj || !eqOk || !posOk || !colOk || !nivOk || !iaOk || !crOk
+         || !m.factions.every(f => FACTIONS[f]) || (m.map && (nj > 2 || mapError(m.map))) || !Array.isArray(m.log)){ toast('Mensaje de inicio inválido del servidor'); break; }
+      LOCAL = m.slot; NET.online = true; NET.started = true; NET.ended = null; NET.sentResult = false; NET.overAt = 0;
+      NET.names = m.factions.map((_, i) => Array.isArray(m.names) ? String(m.names[i] || 'Jugador ' + (i+1)).slice(0, 24) : 'Jugador ' + (i+1));
+      NET.luz = ['dia','atardecer','noche'].includes(m.luz) ? m.luz : 'dia'; NET.estado = null; NET.pings = null;
       $('room').hidden = true; $('menu').hidden = true; $('netwait').hidden = true;
       SFX.hush = true;
       CURRENT_TEAMS = Array.isArray(m.equipos) ? m.equipos : null;
-      startGame(m.seed, 'online', m.factions, null, m.map || null);
+      ESC_SIG = { pos:Array.isArray(m.pos) ? m.pos : null, colores:Array.isArray(m.colores) ? m.colores : null };
+      startGame(m.seed, 'online', m.factions, Array.isArray(m.ia) ? m.ia : [], m.map || null, null, Array.isArray(m.niveles) ? m.niveles : 'normal', m.creditos || 3000);
       NET.queue = [];
       if(m.log && m.log.length){ const t0=performance.now(); for(const pkt of m.log) applyNetTick(pkt); updateFog(0, true); toast(`Partida recuperada: ${m.log.length} ticks en ${Math.round(performance.now()-t0)} ms`); }
       SFX.hush = false;
@@ -5714,26 +5727,118 @@ function onNet(m){
     case 'paused': $('netwait').hidden = false; $('netwaitTxt').textContent = m.reason; break;
     case 'resumed': $('netwait').hidden = true; break;
     case 'retirado': if(Number.isInteger(m.slot) && NET.names) toast(`${String(NET.names[m.slot] || 'Un jugador').slice(0, 24)} quedó fuera de la partida (${m.motivo==='rendicion' ? 'se rindió' : 'abandono'})`); break;
-    case 'pong': NET.ping = Math.round(performance.now() - m.ts); break;
+    case 'pong': NET.ping = Math.round(performance.now() - m.ts);
+      NET.pings = Array.isArray(m.pings) && m.pings.length <= 8 ? m.pings.map(v => Number.isInteger(v) && v >= 0 && v < 60000 ? v : null) : null; break;
     case 'desync': NET.ended = { winner:-1, reason:'desincronizacion' }; if(!S.over){ S.over = true; S.winner = -1; } break;
     case 'ended': NET.ended = { winner:m.winner, reason:m.reason }; if(!S.over){ S.over = true; S.winner = m.winner; } $('netwait').hidden = true; break;
-    case 'error': if(NET.started) toast(m.msg); else if(!$('room').hidden) roomMsg(m.msg, true); else { $('room').hidden = true; $('menu').hidden = false; menuMsg(m.msg, true); } break;
+    case 'error': { const t = String(m.msg || 'Error del servidor').slice(0, 160);
+      if(NET.started) toast(t); else if(!$('room').hidden){ roomMsg(t, true); SALA.errorHasta = performance.now() + 5000; } else { $('room').hidden = true; $('menu').hidden = false; menuMsg(t, true); } break; }
   }
 }
-function renderRoom(m){
-  const COLORES = ['azul','rojo','verde azulado','amarillo','violeta','naranja','cian','rosa'], eqs = m.modo==='equipos';
-  $('roomPlayers').innerHTML = m.players.map((p,i) => `<tr><td>Jugador ${i+1} (${COLORES[i] || ''})${eqs && p ? ` · equipo ${p.team+1}` : ''}</td><td>${p ? `${esc(p.name)}${i===NET.slot?' (usted)':''}${p.anf ? ' · creador' : ''} · ${FACTIONS[p.faction] ? FACTIONS[p.faction].nombre : ''} · ${p.connected ? (p.ready?'listo':'esperando') : 'desconectado'}` : '<span style="color:var(--muted)">libre</span>'}</td></tr>`).join('');
-  const me = m.players[NET.slot];
-  $('btnRoomClose').hidden = !(me && me.anf);   // solo el creador de la sala puede cerrarla
-  $('roomMap').textContent = m.mapName || 'Estándar';
-  $('btnRoomMap').hidden = NET.slot!==0 || !!(me && me.ready); $('btnRoomMapStd').hidden = NET.slot!==0 || !m.mapName || !!(me && me.ready);
-  if(me){ NET.faction = me.faction; factionCards($('roomFactions'), me.faction, f => { if(!me.ready) netSend({ t:'faction', f }); else roomMsg('Cancele «Listo» para cambiar de facción.'); }); }
-  $('btnReady').textContent = me && me.ready ? 'Cancelar listo' : 'Listo';
-  const libres = m.players.filter(p => !p).length;
-  roomMsg(libres ? `Faltan ${libres} ${libres===1 ? 'jugador' : 'jugadores'}. Comparta el código de sala.` : '');
-  $('roomMapRow').hidden = m.players.length > 2;
-  $('roomPlazas').textContent = m.players.length > 2 ? `Mapa continental · ${m.players.length} jugadores · ${eqs ? 'dos equipos' : 'todos contra todos'}` : '';
+// ======================= SALA EN LÍNEA =======================
+// Como la escaramuza: cada plaza es una persona, un jugador IA o queda abierta. El creador arma la partida (mapa, recursos,
+// hora del día y jugadores IA); cada jugador elige su facción, equipo, color y lugar. El servidor valida cada cambio
+// y al iniciar resuelve lo que quedó al azar: todos los clientes reciben la misma configuración.
+const SALA = { m:null, sel:0, mapa:null, errorHasta:0, tpl:null };
+// Plantilla que corresponde al nombre del mapa de la sala (para marcar la pestaña elegida)
+function plantillaDeSala(nombre){
+  if(!nombre) return 'estandar';
+  if(!SALA.tpl){ SALA.tpl = {}; document.querySelectorAll('#roomTpl button').forEach(b => { const mp = generateMap(b.dataset.tpl, 3); if(mp) SALA.tpl[mp.nombre] = b.dataset.tpl; }); }
+  return SALA.tpl[nombre] || '';
 }
+function renderRoom(m){
+  if(!m || !Array.isArray(m.players) || NET.started) return;
+  SALA.m = m;
+  const P = m.players, N = P.length, dosJ = N <= 2, me = P[NET.slot], anf = !!(me && me.anf), listo = !!(me && me.ready), cfg = m.cfg || {};
+  if(!(SALA.sel >= 0 && SALA.sel < N)) SALA.sel = NET.slot;
+  // Mapa de la sala de 2: se conserva el mismo objeto mientras no cambie (la vista previa no se rehace en cada mensaje)
+  const mp = dosJ && m.map && !mapError(m.map) ? m.map : null;
+  if(!mp) SALA.mapa = null; else if(!SALA.mapa || SALA.mapa.terrain !== mp.terrain || SALA.mapa.nombre !== mp.nombre) SALA.mapa = mp;
+  const opt = (v, t, cur) => `<option value="${v}"${String(v)===String(cur) ? ' selected' : ''}>${t}</option>`;
+  const sel = (k, html, ok, et) => `<select data-k="${k}" aria-label="${et}"${ok ? '' : ' disabled'}>${html}</select>`;
+  const verTipo = !dosJ && anf && !listo;   // el creador convierte las plazas abiertas en IA y al revés
+  const tipoSel = p => sel('tipo', opt('abierta', 'Abierta', p ? 'ia' : 'abierta') + opt('ia', 'IA', p ? 'ia' : 'abierta'), true, 'Tipo de plaza');
+  $('roomRows').innerHTML = P.map((p, i) => {
+    const cls = i===SALA.sel ? ' class="sel"' : '';
+    if(!p) return `<tr data-p="${i}"${cls}><td><span class="sw libre"></span>${verTipo ? tipoSel(null) : 'Abierta'}</td><td colspan="${dosJ ? 4 : 5}" class="sub">Esperando jugador${verTipo ? ' (o elija «IA»)' : ''}</td><td></td></tr>`;
+    const ia = p.tipo==='ia', propio = i===NET.slot, ok = !listo && (ia ? anf : propio || anf);
+    const nombre = ia ? (verTipo ? tipoSel(p) : 'IA') : `${esc(p.name)}${propio ? ' (usted)' : ''}${p.anf ? ' · creador' : ''}`;
+    const fac = sel('fac', (ia ? opt('aleatoria', 'Aleatoria', p.faction) : '') + Object.entries(FACTIONS).map(([k, F]) => opt(k, F.nombre, p.faction)).join(''), !listo && (ia ? anf : propio), 'Facción');
+    const eq = dosJ ? '' : `<td>${sel('eq', opt(0, 'Solo', p.eq) + [1,2,3,4].map(t => opt(t, 'Equipo ' + t, p.eq)).join(''), ok, 'Equipo')}</td>`;
+    const dif = ia ? sel('dif', opt('facil', 'Fácil', p.dif) + opt('normal', 'Normal', p.dif) + opt('dificil', 'Difícil', p.dif), ok, 'Dificultad') : '<span class="sub">—</span>';
+    const est = ia ? 'IA' : !p.connected ? 'desconectado' : p.ready ? 'listo' : 'esperando';
+    return `<tr data-p="${i}"${cls}><td><span class="sw" style="background:${colorCss(p.color)}"></span>${nombre}</td><td>${fac}</td>${eq}`
+      + `<td>${sel('color', COLORES_JUG.map((c, k) => opt(k, c, p.color)).join(''), ok, 'Color')}</td><td>${dif}</td>`
+      + `<td>${sel('pos', opt(-1, 'Al azar', p.pos) + [...Array(N).keys()].map(l => opt(l, 'Lugar ' + (l+1), p.pos)).join(''), ok, 'Lugar de aparición')}</td>`
+      + `<td class="est${p.ready || ia ? ' ok' : ''}">${est}</td></tr>`;
+  }).join('');
+  $('roomThEq').hidden = dosJ;
+  // Facción propia con las tarjetas (la tabla también la tiene)
+  if(me){ NET.faction = me.faction; factionCards($('roomFactions'), me.faction, f => { if(!me.ready) netSend({ t:'faction', f }); else roomMsg('Cancele «Listo» para cambiar de facción.'); }); }
+  // Vista previa con los lugares de aparición: la misma semilla y el mismo mapa con los que se jugará
+  const d = previaDatos(N, cfg.semilla || 1, dosJ ? SALA.mapa : null), ps = P[SALA.sel];
+  pintarPrevia($('roomPreview'), d, P.map(p => p ? { pos:p.pos, color:p.color } : null), SALA.sel);
+  const ubica = ps && !listo && (SALA.sel===NET.slot || anf);
+  $('roomPreviewTxt').textContent = !ubica ? 'Los números son los lugares de aparición.' : SALA.sel===NET.slot ? 'Haga clic en un número para elegir su lugar.'
+    : `Haga clic en un número para ubicar a ${ps.tipo==='ia' ? 'la IA de la plaza ' + (SALA.sel+1) : ps.name} en ese lugar.`;
+  $('btnRoomTrazado').hidden = !anf || listo || !!(dosJ && SALA.mapa);   // el trazado cambia el mapa estándar y el continental
+  // Campo de batalla: lo cambia el creador; los demás lo ven
+  $('roomTplRow').hidden = !dosJ;
+  const tpl = plantillaDeSala(m.mapName);
+  document.querySelectorAll('#roomTpl button').forEach(b => b.classList.toggle('on', b.dataset.tpl===tpl));
+  $('roomMap').textContent = dosJ ? (m.mapName || 'Estándar') : `Continental (${N} jugadores)`;
+  $('btnRoomMap').hidden = !anf || !dosJ || listo; $('btnRoomMapStd').hidden = !anf || !dosJ || !m.mapName || listo;
+  document.querySelectorAll('#roomCredits button').forEach(b => b.classList.toggle('on', +b.dataset.cr===cfg.creditos));
+  document.querySelectorAll('#roomLight button').forEach(b => b.classList.toggle('on', b.dataset.lt===cfg.luz));
+  for(const id of ['roomTpl', 'roomCredits', 'roomLight']) $(id).classList.toggle('bloq', !anf || listo);
+  // Encabezado, avisos y botones
+  const ias = P.filter(p => p && p.tipo==='ia').length, personas = P.filter(p => p && p.tipo!=='ia').length, libres = P.filter(p => !p).length;
+  $('roomPlazas').textContent = dosJ ? 'Uno contra uno' : `${N} plazas · ${personas} ${personas===1 ? 'persona' : 'personas'}${ias ? ` · ${ias} IA` : ''}${libres ? ` · ${libres} ${libres===1 ? 'abierta' : 'abiertas'}` : ''}`;
+  const inicia = dosJ ? 'La partida inicia cuando ambos marcan «Listo».' : 'La partida inicia cuando todos marcan «Listo».';
+  $('roomIntro').textContent = (anf ? (dosJ ? 'Arme la partida: mapa, recursos y hora del día. ' : 'Arme la partida: mapa, recursos, hora del día y jugadores IA. ')
+                                    : (dosJ ? 'Elija su facción, color y lugar; el creador arma el resto. ' : 'Elija su facción, equipo, color y lugar; el creador arma el resto. ')) + inicia;
+  $('btnRoomClose').hidden = !anf;   // solo el creador de la sala puede cerrarla
+  $('btnReady').textContent = listo ? 'Cancelar listo' : 'Listo';
+  if(performance.now() > SALA.errorHasta) roomMsg(libres ? `Faltan ${libres} ${libres===1 ? 'jugador' : 'jugadores'}. Comparta el código de sala${anf && !dosJ ? ' o agregue jugadores IA' : ''}.` : listo ? 'Esperando a los demás jugadores.' : '');
+}
+// ======================= LISTA DE JUGADORES =======================
+// Botón de la barra superior (tecla J): facción, equipo, estado y ping de cada jugador. En línea, el servidor informa
+// el ping de los demás junto con la respuesta de ping; la IA y las partidas locales no tienen ping.
+const enPie = p => S.ents.some(e => !e.dead && e.kind==='bld' && e.owner===p && e.type!=='pozo' && !esRefugio(e));
+function renderListaJugadores(){
+  if($('listaJug').hidden || !S.players) return;
+  const est = NET.online && NET.estado && Array.isArray(NET.estado.players) ? NET.estado.players : [], pings = NET.online && Array.isArray(NET.pings) ? NET.pings : [];
+  $('listaJugRows').innerHTML = S.players.map((pl, p) => {
+    const ia = S.aiPlayers.includes(p), sp = est[p], col = Array.isArray(CURRENT_COLORES) && Number.isInteger(CURRENT_COLORES[p]) ? CURRENT_COLORES[p] : p;
+    const nombre = NET.online ? NET.names[p] : REC && REC.names ? REC.names[p] : '';
+    const eq = S.players.filter(q => q.team === pl.team).length > 1 ? 'Equipo ' + (pl.team + 1) : 'Solo';
+    const vivo = enPie(p), estado = !vivo ? 'eliminado' : sp && sp.fuera ? 'se retiró' : sp && sp.connected === false ? 'desconectado' : ia ? 'IA' : 'en juego';
+    const ms = !NET.online || ia || !vivo ? null : p===LOCAL ? NET.ping : pings[p];
+    const cls = !Number.isInteger(ms) ? '' : ms < 120 ? 'bien' : ms < 250 ? 'medio' : 'mal';
+    return `<tr class="${p===LOCAL ? 'yo' : ''}"><td><span class="sw" style="background:${colorCss(col)}"></span>${esc(String(nombre || 'Jugador ' + (p + 1)))}${p===LOCAL ? ' (usted)' : ''}</td>`
+      + `<td>${FACTIONS[pl.faction] ? FACTIONS[pl.faction].nombre : ''}</td><td>${eq}</td><td class="${vivo && estado!=='desconectado' ? '' : 'fuera'}">${estado}</td>`
+      + `<td class="num ${cls}">${Number.isInteger(ms) ? ms + ' ms' : '—'}</td></tr>`;
+  }).join('');
+}
+function verListaJugadores(v){ $('listaJug').hidden = !v; $('btnJugadores').setAttribute('aria-expanded', String(!!v)); if(v){ LISTA_T = 1; renderListaJugadores(); } }
+$('btnJugadores').addEventListener('click', () => verListaJugadores($('listaJug').hidden));
+addEventListener('keydown', e => { if(e.key && e.key.toLowerCase()==='j' && !e.ctrlKey && !e.altKey && !(e.target && ['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) && $('menu').hidden && $('room').hidden) verListaJugadores($('listaJug').hidden); });
+// Cambios en la tabla: el servidor los valida y responde con la sala actualizada
+$('roomRows').addEventListener('change', e => {
+  const s = e.target.closest('select'), tr = e.target.closest('tr'); if(!s || !tr) return;
+  const i = +tr.dataset.p, k = s.dataset.k, v = ['tipo','fac','dif'].includes(k) ? s.value : +s.value;
+  SALA.sel = i; netSend({ t:'slot', slot:i, k, v });
+});
+$('roomRows').addEventListener('click', e => { const tr = e.target.closest('tr'); if(!tr || e.target.closest('select') || !SALA.m) return; SALA.sel = +tr.dataset.p; renderRoom(SALA.m); });
+$('roomPreview').addEventListener('click', e => {
+  const m = SALA.m; if(!m || !m.players[SALA.sel]) return;
+  const N = m.players.length, l = lugarEnPrevia($('roomPreview'), previaDatos(N, (m.cfg && m.cfg.semilla) || 1, N <= 2 ? SALA.mapa : null), e);
+  if(l >= 0){ netSend({ t:'slot', slot:SALA.sel, k:'pos', v:l }); sfx('click'); }
+});
+$('roomCredits').addEventListener('click', e => { const b = e.target.closest('button'); if(b) netSend({ t:'cfg', k:'creditos', v:+b.dataset.cr }); });
+$('roomLight').addEventListener('click', e => { const b = e.target.closest('button'); if(b) netSend({ t:'cfg', k:'luz', v:b.dataset.lt }); });
+$('roomTpl').addEventListener('click', e => { const b = e.target.closest('button'); if(b) netSend({ t:'map', map:generateMap(b.dataset.tpl, 3) }); });
+$('btnRoomTrazado').addEventListener('click', () => netSend({ t:'cfg', k:'trazado' }));
 function applyNetTick(pkt){
   if(pkt.n < S.tick) return;
   if(pkt.n > S.tick) console.warn('Tick fuera de orden', pkt.n, S.tick);
@@ -5806,14 +5911,14 @@ $('jugRows').addEventListener('change', e => {
 $('jugRows').addEventListener('focusin', e => { const tr = e.target.closest('tr'); if(!tr || +tr.dataset.p===ESC.sel) return; ESC.sel = +tr.dataset.p; document.querySelectorAll('#jugRows tr').forEach(t => t.classList.toggle('sel', +t.dataset.p===ESC.sel)); dibujarPrevia(); });
 $('jugRows').addEventListener('click', e => { const tr = e.target.closest('tr'); if(!tr || e.target.closest('select')) return; ESC.sel = +tr.dataset.p; document.querySelectorAll('#jugRows tr').forEach(t => t.classList.toggle('sel', +t.dataset.p===ESC.sel)); dibujarPrevia(); });
 // Vista previa: arma la partida en una simulación aparte, sin modelos ni sonido, y luego restaura el estado anterior
+// La sala en línea la usa con su propia cantidad de jugadores, semilla y mapa.
 const PREVIA = { datos:null, n:0, semilla:0, mapa:undefined };
-function previaDatos(){
-  const n = ESC.n, mapa = n > 2 ? null : soloMap;
-  if(PREVIA.datos && PREVIA.n===n && PREVIA.semilla===ESC.semilla && PREVIA.mapa===mapa) return PREVIA.datos;
+function previaDatos(n = ESC.n, semilla = ESC.semilla, mapa = n > 2 ? null : soloMap){
+  if(PREVIA.datos && PREVIA.n===n && PREVIA.semilla===semilla && PREVIA.mapa===mapa) return PREVIA.datos;
   const guarda = Object.assign({}, S), lg = LG, hk = hooks, d = {};
   hooks = Object.fromEntries(Object.keys(hk).map(k => [k, () => {}]));
   try {
-    newGame(ESC.semilla, [], [...Array(n)].map(() => 'atlas'), mapa, null, 'normal', 3000);
+    newGame(semilla, [], [...Array(n)].map(() => 'atlas'), mapa, null, 'normal', 3000);
     d.grid = GRID; d.world = WORLD; d.agua = S.water.slice(); d.roca = S.rockGrid.slice(); d.bloq = S.blocked.slice();
     d.depositos = S.ents.filter(e => e.kind==='depot').map(e => ({ cx:e.cx, cz:e.cz, w:e.w, h:e.h }));
     d.pozos = S.ents.filter(e => e.type==='pozo').map(e => ({ x:e.x, z:e.z }));
@@ -5821,12 +5926,18 @@ function previaDatos(){
   } finally {
     hooks = hk; for(const k of Object.keys(S)) if(!(k in guarda)) delete S[k]; Object.assign(S, guarda); setGrid(lg);
   }
-  Object.assign(PREVIA, { datos:d, n, semilla:ESC.semilla, mapa }); return d;
+  Object.assign(PREVIA, { datos:d, n, semilla, mapa }); return d;
 }
 function dibujarPrevia(){
   const cv = $('mapPreview'); if(!cv || $('skirmish').hidden) return;
   escAsegurar();
-  const d = previaDatos(), g = cv.getContext('2d'), W = cv.width, k = d.grid/W, img = g.createImageData(W, W), px = img.data;
+  pintarPrevia(cv, previaDatos(), ESC.jug.slice(0, ESC.n), ESC.sel);
+  $('mapPreviewTxt').textContent = ESC.sel===0 ? 'Haga clic en un número para elegir su lugar.' : `Haga clic en un número para ubicar a la IA ${ESC.sel} en ese lugar.`;
+  $('btnTrazado').hidden = !(ESC.n > 2 || !soloMap);
+}
+// Dibuja el mapa y los lugares numerados. jug: { pos, color } por jugador (null: plaza libre); sel: fila seleccionada.
+function pintarPrevia(cv, d, jug, sel){
+  const g = cv.getContext('2d'), W = cv.width, k = d.grid/W, img = g.createImageData(W, W), px = img.data;
   for(let y=0; y<W; y++) for(let x=0; x<W; x++){
     const c = Math.floor(y*k)*d.grid + Math.floor(x*k), o = (y*W + x)*4;
     const col = d.agua[c] ? [63,120,150] : d.roca[c] ? [122,106,82] : d.bloq[c] ? [96,88,74] : [201,164,106];
@@ -5838,19 +5949,21 @@ function dibujarPrevia(){
   g.fillStyle = '#1e1c1a'; for(const w of d.pozos){ g.beginPath(); g.arc(w.x*s, w.z*s, 4, 0, 6.283); g.fill(); }
   // Lugares: número del lugar, relleno con el color del jugador asignado (gris si queda al azar)
   d.lugares.forEach((l, i) => {
-    const p = ESC.jug.findIndex((j, q) => q < ESC.n && j.pos===i), x = l.x*s, y = l.z*s;
-    g.beginPath(); g.arc(x, y, 13, 0, 6.283); g.fillStyle = p >= 0 ? colorCss(ESC.jug[p].color) : '#77746c'; g.fill();
-    g.lineWidth = p >= 0 && p===ESC.sel ? 3.5 : 1.5; g.strokeStyle = p >= 0 && p===ESC.sel ? '#ffffff' : 'rgba(20,20,20,.8)'; g.stroke();
+    const p = jug.findIndex(j => j && j.pos===i), x = l.x*s, y = l.z*s;
+    g.beginPath(); g.arc(x, y, 13, 0, 6.283); g.fillStyle = p >= 0 ? colorCss(jug[p].color) : '#77746c'; g.fill();
+    g.lineWidth = p >= 0 && p===sel ? 3.5 : 1.5; g.strokeStyle = p >= 0 && p===sel ? '#ffffff' : 'rgba(20,20,20,.8)'; g.stroke();
     g.fillStyle = '#fff'; g.font = 'bold 13px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i+1), x, y + 0.5);
   });
-  const nom = ESC.sel===0 ? 'usted' : 'IA ' + ESC.sel;
-  $('mapPreviewTxt').textContent = `Clic en un número: ubica a ${nom} en ese lugar.`;
-  $('btnTrazado').hidden = !(ESC.n > 2 || !soloMap);
+}
+// Lugar de aparición bajo el clic en la vista previa (-1 si no hay ninguno cerca)
+function lugarEnPrevia(cv, d, e){
+  const r = cv.getBoundingClientRect(), x = (e.clientX - r.left)*cv.width/r.width, y = (e.clientY - r.top)*cv.height/r.height;
+  const s = cv.width/d.world; let mejor = -1, md = 22;
+  d.lugares.forEach((l, i) => { const dd = Math.hypot(l.x*s - x, l.z*s - y); if(dd < md){ md = dd; mejor = i; } });
+  return mejor;
 }
 $('mapPreview').addEventListener('click', e => {
-  const cv = $('mapPreview'), r = cv.getBoundingClientRect(), x = (e.clientX - r.left)*cv.width/r.width, y = (e.clientY - r.top)*cv.height/r.height;
-  const d = previaDatos(), s = cv.width/d.world; let mejor = -1, md = 22;
-  d.lugares.forEach((l, i) => { const dd = Math.hypot(l.x*s - x, l.z*s - y); if(dd < md){ md = dd; mejor = i; } });
+  const mejor = lugarEnPrevia($('mapPreview'), previaDatos(), e);
   if(mejor < 0) return;
   const J = ESC.jug, otro = J.findIndex((j, q) => q < ESC.n && q!==ESC.sel && j.pos===mejor);
   if(otro >= 0) J[otro].pos = J[ESC.sel].pos; J[ESC.sel].pos = mejor; sfx('click'); renderJugadores();
@@ -6042,7 +6155,7 @@ function showEnd(){
   if(!RECORDED){ RECORDED = true; recordGame({ modo: NET.online ? 'online' : 'solo', faccion:pl.faction, rival: NET.online ? String(NET.names[1-LOCAL]||'Rival') : S.players.length > 2 ? `${S.players.filter(p => isEnemy(LOCAL, S.players.indexOf(p))).length} rivales IA` : `IA ${FACTIONS[S.players[1-LOCAL].faction].nombre} (${DIFF_TXT[CURRENT_LEVEL]})`, resultado: S.winner<0 ? 'anulada' : win ? 'victoria' : 'derrota', duracion:s, mision:null }); }
 }
 function startGame(seed, mode, factions, aiList, map, mission, aiLevel, creditos){
-  GRUPOS.clear();
+  GRUPOS.clear(); verListaJugadores(false); if(mode!=='online'){ NET.estado = null; NET.pings = null; }
   for(const o of meshes.values()) scene.remove(o.g); meshes.clear();
   for(const f of effects) scene.remove(f.obj); effects.length = 0;
   selected.clear(); setAMove(false); cancelPlacing(); cancelTargeting(); endShown = false; endEl.hidden = true; wasLow = false; RECORDED = false;
@@ -6065,8 +6178,9 @@ function startGame(seed, mode, factions, aiList, map, mission, aiLevel, creditos
   CURRENT_MAP = map !== undefined ? map : (mode==='solo' ? soloMap : null);
   CURRENT_LEVEL = aiLevel || (mode==='solo' ? soloDiff : 'normal');
   CURRENT_CREDITS = creditos || (mode==='solo' ? soloCredits : 3000);
-  applyAmbiente(mode==='mision' && mission ? (MISSION_LIGHT[MISSION_UI.id] || 'dia') : mode==='solo' ? (soloLight==='aleatoria' ? ['dia','atardecer','noche'][Math.floor(Math.random()*3)] : soloLight) : 'dia');
-  newGame(seed, mode==='online' ? [] : (mode==='replay' || mode==='mision') ? aiList : fac.map((_, p) => p).filter(p => p!==LOCAL), fac, fac.length > 2 ? null : CURRENT_MAP, mission || null, CURRENT_LEVEL, CURRENT_CREDITS, CURRENT_TEAMS, CURRENT_POS);
+  applyAmbiente(mode==='mision' && mission ? (MISSION_LIGHT[MISSION_UI.id] || 'dia') : mode==='solo' ? (soloLight==='aleatoria' ? ['dia','atardecer','noche'][Math.floor(Math.random()*3)] : soloLight) : mode==='online' ? (NET.luz || 'dia') : 'dia');
+  // En línea, los jugadores IA de la sala los juega la simulación en todos los clientes (la misma para todos)
+  newGame(seed, mode==='online' ? (aiList || []) : (mode==='replay' || mode==='mision') ? aiList : fac.map((_, p) => p).filter(p => p!==LOCAL), fac, fac.length > 2 ? null : CURRENT_MAP, mission || null, CURRENT_LEVEL, CURRENT_CREDITS, CURRENT_TEAMS, CURRENT_POS);
   GAME_MODE = mode;
   ajustarMundo();
   preloadIcons(S.players[LOCAL].faction);   // íconos generados de la facción, si existen
@@ -6136,7 +6250,7 @@ $('btnRestart').addEventListener('click', () => {
 });
 
 // Bucle principal: simulación a 15 Hz, render a la tasa del navegador con interpolación
-let acc = 0, last = performance.now(), uiT = 0;
+let acc = 0, last = performance.now(), uiT = 0, LISTA_T = 0;
 // ======================= POSPROCESADO (calidad Alta) =======================
 // Resplandor propio (r128 local no incluye EffectComposer): escena a una textura, paso de brillo con umbral,
 // desenfoque gaussiano separable a 1/4 de resolución y composición con viñeta y leve gradación cálida.
@@ -6272,7 +6386,7 @@ function frame(now){
   drawOverlay();
   if(S.tick>0 && !S.over && !paused){ METRICS.frames++; METRICS.time += dt; }
   FPS.n++; FPS.t += dt; if(FPS.t >= 1){ FPS.v = Math.round(FPS.n/FPS.t); FPS.n = 0; FPS.t = 0; if(OPTIONS.fps) $('fpsVal').textContent = FPS.v; adaptQuality(); }
-  uiT -= dt; if(uiT <= 0){ uiT = 0.2; renderPanel(); renderPowers(); updateTopbar(); drawMinimap(); if(S.mission) renderObjectives(); if(NET.online) $('pingVal').textContent = NET.ping==null ? '–' : NET.ping; }
+  uiT -= dt; if(uiT <= 0){ uiT = 0.2; renderPanel(); renderPowers(); updateTopbar(); drawMinimap(); if(S.mission) renderObjectives(); if(NET.online) $('pingVal').textContent = NET.ping==null ? '–' : NET.ping; if((LISTA_T -= 0.2) <= 0){ LISTA_T = 1; renderListaJugadores(); } }
   if(S.over && !endShown && (!NET.online || NET.ended || now - NET.overAt > 1500)) showEnd();
   else if(!S.over && !endShown && !REPLAY && S.players.length > 2 && S.tick % 15 === 0 && !S.ents.some(e => !e.dead && e.kind==='bld' && e.owner===LOCAL && e.type!=='pozo')){ ELIMINADO = true; showEnd(); }
   renderFrame();

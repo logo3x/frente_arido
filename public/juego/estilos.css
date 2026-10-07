@@ -66,6 +66,18 @@ button:disabled{opacity:.45;cursor:default}
 #tools button{min-width:116px;text-align:left;display:flex;align-items:center;gap:8px}
 #tools button .ic{width:18px;height:18px;color:var(--ink)}
 #tools kbd{margin-left:auto;font:inherit;font-size:11px;color:var(--muted);border:1px solid var(--btnline);border-radius:3px;padding:0 4px}
+/* Lista de jugadores (botón de la barra superior): se abre sobre el panel del comandante */
+#listaJug{position:fixed;top:52px;right:8px;z-index:6;min-width:380px;max-width:calc(100vw - 16px);background:linear-gradient(var(--panel),var(--panel)),#161a1a;box-shadow:0 6px 18px rgba(0,0,0,.45);border:1px solid var(--line);border-radius:3px;padding:8px 10px;zoom:var(--ui-zoom,1)}
+#listaJug[hidden]{display:none}
+#listaJug h4{margin:0 0 6px;font-size:13px;color:var(--amber)}
+#listaJug .tabla-jug{width:100%;border-collapse:collapse;font-size:13px}
+#listaJug .tabla-jug th{text-align:left;font-weight:600;color:var(--muted);padding:3px 6px;border-bottom:1px solid var(--line)}
+#listaJug .tabla-jug td{padding:4px 6px;color:var(--ink);white-space:nowrap}
+#listaJug .tabla-jug tr{cursor:default}
+#listaJug .num{text-align:right;font-variant-numeric:tabular-nums}
+#listaJug tr.yo td{background:rgba(232,163,61,.10)}
+#listaJug td.fuera{color:var(--muted)}
+#listaJug .bien{color:var(--ok)}#listaJug .medio{color:var(--amber)}#listaJug .mal{color:var(--bad)}
 #powers{position:fixed;top:52px;right:8px;width:178px;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:7px 8px;display:flex;flex-direction:column;gap:5px}
 #powers .hdr{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
 #powers .hdr b{color:var(--ink)}
@@ -99,6 +111,7 @@ button:disabled{opacity:.45;cursor:default}
 .card .msg.err{color:var(--bad)}
 .factions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 10px}
 .maprow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0;font-size:14px;color:var(--muted)}
+.maprow[hidden]{display:none}
 .maprow b{color:var(--ink)}
 .btnlink{font-size:14px;color:var(--ink);background:#2c3739;border:1px solid #4b5a5a;border-radius:3px;padding:6px 10px;text-decoration:none}
 .btnlink:hover{background:#37464a}
@@ -225,3 +238,12 @@ body.replay #tools,body.replay #powers{display:none}
 .tabla-jug select:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
 @media (max-width:900px){.esc-grid{grid-template-columns:1fr}.esc-mapa canvas{width:min(320px,100%);height:auto}}
 #skirmish .card.wide{max-width:1080px !important}
+/* Sala en línea: misma tabla y vista previa que la escaramuza. Lo que solo cambia el creador se ve, pero no se puede tocar. */
+#room .card.wide{max-width:1080px !important}
+#room h3 .sub{font-weight:400;font-size:12px;margin-left:8px}
+.tabs.bloq button{pointer-events:none}
+.tabs.bloq button:not(.on){opacity:.55}
+.tabla-jug select:disabled{color:var(--ink);opacity:.85;background:transparent;border-color:transparent;-webkit-appearance:none;appearance:none;padding-left:0;cursor:default}
+.tabla-jug .sw.libre{background:transparent;border:1px dashed #77746c}
+.tabla-jug td.est{color:var(--muted);white-space:nowrap}
+.tabla-jug td.est.ok{color:#8fd18f}

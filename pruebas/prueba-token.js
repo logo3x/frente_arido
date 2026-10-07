@@ -11,7 +11,7 @@ function token(room, uid, name, exp = Math.floor(Date.now()/1000) + 3600, key = 
 let hook = null;
 http.createServer((req, res) => { let b=''; req.on('data', d => b += d); req.on('end', () => { hook = { sig:req.headers['x-game-signature'], body:b, valid: crypto.createHmac('sha256', SECRET).update(b).digest('hex') === req.headers['x-game-signature'] }; res.writeHead(204); res.end(); }); }).listen(HOOK);
 const srv = spawn('node', [path.join(__dirname, '../servidor/server.js')], { env:{ ...process.env, PORT, GAME_SECRET:SECRET, RESULT_WEBHOOK:`http://localhost:${HOOK}/api/partidas/resultado`, TICK_MS:'5', RECONNECT_MS:'1500' } });
-const join = (tok, room = 'SALA01') => new Promise(res => { const ws = new WebSocket(`ws://localhost:${PORT}`); ws.on('open', () => ws.send(JSON.stringify({ t:'join', room, token:tok }))); ws.on('message', d => { const m = JSON.parse(d); if(m.t==='joined'||m.t==='error') res({ ws, m }); }); });
+const join = (tok, room = 'SALA01') => new Promise(res => { const ws = new WebSocket(`ws://localhost:${PORT}`); ws.on('open', () => ws.send(JSON.stringify({ t:'join', proto:2, room, token:tok }))); ws.on('message', d => { const m = JSON.parse(d); if(m.t==='joined'||m.t==='error') res({ ws, m }); }); });
 const checks = [];
 const check = (name, cond) => { checks.push(cond); console.log(`  ${cond ? 'ok   ' : 'FALLO'} ${name}`); };
 setTimeout(async () => {

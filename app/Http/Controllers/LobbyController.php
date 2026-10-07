@@ -62,7 +62,8 @@ class LobbyController extends Controller
                 'codigo' => $p->codigo,
                 'anfitrion' => $p->anfitrion->name,
                 'plazas' => (int) $p->plazas,
-                'ocupadas' => $p->plazas > 2 ? (int) $p->jugadores_count : 1,
+                'ocupadas' => $p->plazas > 2 ? (int) $p->jugadores_count + (int) $p->ia : 1,   // las plazas de IA cuentan como ocupadas
+                'ia' => (int) $p->ia,
                 'modo' => $p->modo,
                 'creada' => $p->created_at->diffForHumans(),
                 'unirse_url' => route('lobby.unirse', $p),
@@ -114,13 +115,18 @@ class LobbyController extends Controller
                 return true;
             }
             if ($p->esMultijugador()) {
-                // Sala de más de 2: se toma la siguiente plaza libre; la sala queda lista al completarse
+                // Sala de más de 2: se toma la primera plaza libre; la sala queda lista al completarse (las plazas de IA cuentan)
                 $ocupadas = $p->jugadores()->count();
-                if ($p->estado !== Partida::ESPERANDO || $ocupadas >= $p->plazas) {
+                if ($p->estado !== Partida::ESPERANDO || $ocupadas + (int) $p->ia >= $p->plazas) {
                     return false;
                 }
-                $p->jugadores()->attach($user->id, ['plaza' => $ocupadas, 'equipo' => $p->modo === 'equipos' ? intdiv($ocupadas, intdiv($p->plazas, 2)) : null]);
-                if ($ocupadas + 1 >= $p->plazas) {
+                $usadas = $p->jugadores()->pluck('partida_jugadores.plaza')->map(fn ($v) => (int) $v)->all();
+                $plaza = 0;
+                while (in_array($plaza, $usadas, true)) {
+                    $plaza++;
+                }
+                $p->jugadores()->attach($user->id, ['plaza' => $plaza, 'equipo' => $p->modo === 'equipos' ? intdiv($plaza, intdiv($p->plazas, 2)) : null]);
+                if ($ocupadas + 1 + (int) $p->ia >= $p->plazas) {
                     $p->update(['estado' => Partida::LISTA]);
                 }
 

@@ -14,7 +14,7 @@
       if (!res.ok) throw new Error(res.status);
       const salas = await res.json();
       tabla.innerHTML = salas.length
-        ? salas.map(s => `<tr><td><b>${esc(s.codigo)}</b></td><td>${esc(s.anfitrion)}</td><td class="num">${Number(s.ocupadas)}/${Number(s.plazas)}${s.modo === 'equipos' ? ' · equipos' : ''}</td><td>${esc(s.creada)}</td>
+        ? salas.map(s => `<tr><td><b>${esc(s.codigo)}</b></td><td>${esc(s.anfitrion)}</td><td class="num">${Number(s.ocupadas)}/${Number(s.plazas)}${Number(s.ia) ? ` (${Number(s.ia)} IA)` : ''}${s.modo === 'equipos' ? ' · equipos' : ''}</td><td>${esc(s.creada)}</td>
             <td class="acc"><form method="POST" action="${esc(s.unirse_url)}"><input type="hidden" name="_token" value="${esc(token)}"><button class="btn primario mini">Unirse</button></form></td></tr>`).join('')
         : vacio('No hay salas abiertas. Cree una y comparta el código.');
     } catch (e) {

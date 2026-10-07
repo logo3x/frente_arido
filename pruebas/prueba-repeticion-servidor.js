@@ -22,7 +22,7 @@ setTimeout(async () => {
   const sim = html.split('// ======================= SIM-START =======================')[1].split('// ======================= SIM-END =======================')[0];
   const ctx = {}; vm.createContext(ctx); vm.runInContext(sim + '\nglobalThis.api = { S, newGame, simTick, stateHash };', ctx);
   const { api } = ctx, rp = hook.replay, target = results[0].tick;
-  api.newGame(rp.seed, rp.ai, rp.factions);
+  api.newGame(rp.seed, rp.ai, rp.factions, rp.map || null, null, rp.aiLevel || 'normal', rp.creditos || 3000, rp.equipos || null, rp.posiciones || null);
   let i = 0;
   while(api.S.tick < target){
     while(i < rp.log.length && rp.log[i][0] === api.S.tick){ for(const c of rp.log[i][1]) api.S.cmdQueue.push(Object.assign({}, c, { tick:api.S.tick })); i++; }

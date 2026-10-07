@@ -23,7 +23,7 @@ $envArchivo = Join-Path $Raiz ".env"
 if (-not (Test-Path $envArchivo)) { throw "No se encontró $envArchivo. Configure Laravel primero." }
 $linea = Select-String -Path $envArchivo -Pattern '^\s*GAME_SECRET\s*=' | Select-Object -First 1
 if (-not $linea) { throw "Falta GAME_SECRET en el .env." }
-$secreto = ($linea.Line -split '=', 2)[1].Trim().Trim('"')
+$secreto = ($linea.Line -split '=', 2)[1].Trim().Trim('"').Trim("'")   # igual que Laravel: sin espacios ni comillas
 if ($secreto.Length -lt 32) { throw "GAME_SECRET debe tener al menos 32 caracteres." }
 
 $node = (Get-Command node -ErrorAction Stop).Source
