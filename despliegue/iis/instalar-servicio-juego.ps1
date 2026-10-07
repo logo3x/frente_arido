@@ -1,4 +1,4 @@
-# Instala el servidor de partidas (Node.js) como servicio de Windows con NSSM.
+﻿# Instala el servidor de partidas (Node.js) como servicio de Windows con NSSM.
 # Ejecutar en PowerShell como administrador, desde la carpeta del proyecto en el servidor:
 #   .\despliegue\iis\instalar-servicio-juego.ps1 -Dominio "juego.ejemplo.co"
 # Requisitos: Node.js 18 o superior y NSSM (https://nssm.cc) en el PATH o en -Nssm.
