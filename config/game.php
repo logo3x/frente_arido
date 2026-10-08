@@ -24,8 +24,8 @@ return [
     'validator_url' => env('GAME_VALIDATOR_URL', 'http://127.0.0.1:8080/validar-mision'),
     // true: si el validador no responde, no se registra la misión. false: se registra como no verificada.
     'validar_campania' => (bool) env('GAME_VALIDAR_CAMPANIA', true),
-    'sim_version' => env('GAME_SIM_VERSION', '0.9.8'),
-    'version' => '0.9.8',   // versión que muestra el sitio
+    'sim_version' => env('GAME_SIM_VERSION', '0.9.9'),
+    'version' => '0.9.9',   // versión que muestra el sitio
     // Fichas de unidades y edificios que muestra la landing (public/img/ficha-<clave>-<facción>.webp)
     'arsenal' => [
         'atlas' => [

@@ -10,7 +10,7 @@ const LC = 2, SUBC = 4, CELL = LC / SUBC;
 let LG = 64, GRID = LG * SUBC, WORLD = LG * LC, NCELLS = GRID * GRID;
 const L2F = v => v * SUBC;   // celda de diseño → celda fina
 const AIR_Y = 6;
-const SIM_VERSION = '0.9.8';
+const SIM_VERSION = '0.9.9';
 let LOCAL = 0;   // jugador de este cliente (0 o 1)
 const hyp = (x,y) => Math.sqrt(x*x + y*y);   // sqrt es exacta en IEEE 754; Math.hypot puede variar entre navegadores
 let hooks = { income(){}, upgraded(){}, spawn(){}, death(){}, remove(){}, shot(){}, built(){}, power(){}, impact(){}, captured(){}, rankUp(){}, crate(){}, tunnel(){}, superFire(){}, heroDown(){}, mission(){} };
@@ -133,7 +133,14 @@ const MEJORAS = Object.assign(Object.create(null), {
   // Mejoras de unidades (fábrica): un arma secundaria propia de cada facción, visible en el modelo. 'unidades' indica qué modelos cambian.
   estacionRemota:{ nombre:'Estación de armas remota', edificio:'fabrica', faccion:'atlas', cost:800, time:22, rango:2, fx:{ arma2:{ tanque:'remota' } }, unidades:['tanque'], desc:'Los tanques suman una ametralladora remota, eficaz contra infantería' },
   ametralladora:{ nombre:'Ametralladoras de torre', edificio:'fabrica', faccion:'hierro', cost:800, time:22, rango:2, fx:{ arma2:{ pesado:'pesada', tanque:'pesada' } }, unidades:['pesado','tanque'], desc:'Tanques y tanques pesados suman una ametralladora pesada, eficaz contra infantería' },
-  sinRetroceso: { nombre:'Cañón sin retroceso', edificio:'fabrica', faccion:'guerrilla', cost:700, time:20, rango:2, fx:{ arma2:{ tecnico:'sinretroceso' } }, unidades:['tecnico'], desc:'Los técnicos suman un cañón sin retroceso, eficaz contra blindados' }
+  sinRetroceso: { nombre:'Cañón sin retroceso', edificio:'fabrica', faccion:'guerrilla', cost:700, time:20, rango:2, fx:{ arma2:{ tecnico:'sinretroceso' } }, unidades:['tecnico'], desc:'Los técnicos suman un cañón sin retroceso, eficaz contra blindados' },
+  // Defensas: se compran en la misma defensa y valen para todas las de ese tipo, también las ya construidas. Se ven en el modelo.
+  torreBlindaje:{ nombre:'Torre reforzada', edificio:'torre', cost:600, time:20, rango:1, fx:{ bhpT:{ torre:0.35 }, brange:{ torre:1 } }, desc:'Torres con +35 % de vida y +1 de alcance' },
+  torreFuego:   { nombre:'Munición de alto poder', edificio:'torre', cost:800, time:24, rango:2, fx:{ bdmg:{ torre:0.25 } }, desc:'+25 % de daño de las torres' },
+  aspilleras:   { nombre:'Aspilleras ampliadas', edificio:'bunker', faccion:'hierro', cost:600, time:20, rango:1, fx:{ bgar:{ bunker:1 }, bhpT:{ bunker:0.25 }, brange:{ bunker:1 } }, desc:'Minibúnker con una plaza más, +25 % de vida y +1 de alcance' },
+  escudoMinigun:{ nombre:'Escudo blindado', edificio:'minigun', faccion:'hierro', cost:600, time:20, rango:1, fx:{ bhpT:{ minigun:0.35 }, brange:{ minigun:1 } }, desc:'Torreta minigun con +35 % de vida y +1 de alcance' },
+  radarLargo:   { nombre:'Radar de largo alcance', edificio:'bateria', faccion:'atlas', cost:700, time:22, rango:1, fx:{ brange:{ bateria:2 }, bhpT:{ bateria:0.2 } }, desc:'Baterías con +2 de alcance y +20 % de vida' },
+  trincheraProfunda:{ nombre:'Trinchera profunda', edificio:'trinchera', faccion:'guerrilla', cost:400, time:16, rango:1, fx:{ bgar:{ trinchera:1 }, brange:{ trinchera:1 } }, desc:'Trincheras con una plaza más y +1 de alcance' }
 });
 const hasBuilt = (p, type) => S.ents.some(e => !e.dead && e.kind==='bld' && e.owner===p && e.type===type && e.built);
 // ¿Puede el jugador p comprar la mejora 'key' en el edificio b? (sin efectos: también lo consulta la interfaz)
@@ -156,6 +163,11 @@ function applyUpFx(p, fx){
   if(fx.link && tab.b.bateria) tab.b.bateria.linkR += fx.link;
   if(fx.bdmg) for(const k in fx.bdmg) if(tab.b[k]) tab.b[k].dmg = tab.b[k].dmg*(1+fx.bdmg[k]);
   if(fx.resist) for(const k in fx.resist) if(tab.b[k]) tab.b[k].resist += fx.resist[k];
+  // Por tipo de edificio: vida (también los ya construidos), alcance y visión, y plazas de la guarnición
+  if(fx.bhpT) for(const k in fx.bhpT) if(tab.b[k]){ const inc = fx.bhpT[k]; tab.b[k].hp = Math.round(tab.b[k].hp*(1+inc));
+    for(const e of S.ents) if(e.kind==='bld' && e.owner===p && e.type===k && !e.dead){ const nm = Math.round(e.maxhp*(1+inc)); e.hp = e.hp*nm/e.maxhp; e.maxhp = nm; } }
+  if(fx.brange) for(const k in fx.brange) if(tab.b[k]){ tab.b[k].range = (tab.b[k].range||0) + fx.brange[k]; tab.b[k].sight += fx.brange[k]; }
+  if(fx.bgar) for(const k in fx.bgar) if(tab.b[k] && tab.b[k].garrison) tab.b[k].garrison += fx.bgar[k];
   // Por tipo de unidad: daño, vida (también las que ya están en el campo), velocidad y alcance
   if(fx.udmg) for(const k in fx.udmg) if(tab.u[k] && tab.u[k].dmg) tab.u[k].dmg = tab.u[k].dmg*(1+fx.udmg[k]);
   if(fx.uhp) for(const k in fx.uhp) if(tab.u[k]){ const inc = fx.uhp[k]; tab.u[k].hp = Math.round(tab.u[k].hp*(1+inc));
@@ -552,12 +564,13 @@ function detectedBy(e, p, peek){
 }
 const targetable = (p, e) => !stealthed(e) || detectedBy(e, p);
 // evitaInf: suma distancia a la infantería para preferir blindados, edificios y aeronaves (búnker con antitanques)
-function findTarget(u, radius, weapon, evitaInf){
+function findTarget(u, radius, weapon, evitaInf, zona){
   const ut = u.kind==='unit' ? UT(u.owner,u.type) : null, minR = ut && ut.minRange ? ut.minRange : 0, vis = S.vis[u.owner];
   let best=null, bs=1e9;
   for(const e of S.ents){
     if(e.dead || !isEnemy(u.owner, e.owner) || e.kind==='depot' || e.kind==='crate' || !canHit(weapon,e)) continue;
     const d=distTo(u,e); if(d>radius || d<minR) continue;
+    if(zona && hyp(e.x-zona.x, e.z-zona.z) > zona.r) continue;   // defensa de un área: solo enemigos dentro de ella
     if(minR && !vis[cellOf(e)]) continue;                 // la artillería necesita visión aliada del objetivo
     if(!targetable(u.owner, e)) continue;
     const s=d + (e.kind==='bld'?(e.type==='torre'||e.type==='tunel'||(e.owner>=0 && (BT(e.owner,e.type).weapon||BT(e.owner,e.type).garrison))?2:6):0) + (e.kind==='unit' && !UT(e.owner,e.type).weapon ? 2 : 0) + (evitaInf && armorOf(e)==='inf' ? 12 : 0);
@@ -780,6 +793,14 @@ function heliTick(u, t){
     if(!cur && (S.tick+u.id)%4===0) cur = findTarget(u, t.sight, t.weapon);
     u.target = cur ? cur.id : null; tg = cur;
   }
+  if(!tg && u.order && u.order.type==='defend'){   // helicóptero que defiende un área: patrulla sobre su puesto
+    const O = u.order, lim = O.r + t.range;
+    let cur = u.target!=null ? S.byId.get(u.target) : null;
+    if(cur && (cur.dead || cur.owner<0 || !targetable(u.owner,cur) || hyp(cur.x-O.x, cur.z-O.z) > lim + 1)) cur = null;
+    if(!cur && (S.tick+u.id)%4===0) cur = findTarget(u, hyp(u.x-O.x, u.z-O.z) + lim, t.weapon, false, { x:O.x, z:O.z, r:lim });
+    u.target = cur ? cur.id : null; tg = cur;
+    if(!tg){ flyTo(u, clampW(O.hx), clampW(O.hz), t.speed); return; }
+  }
   if(tg){ if(distTo(u,tg) <= t.range){ if(u.cd<=0) fire(u,tg,t); } else flyTo(u, clampW(tg.x), clampW(tg.z), t.speed); return; }
   if(u.order && (u.order.type==='move' || u.order.type==='amove')){ if(flyTo(u, clampW(u.order.x), clampW(u.order.z), t.speed)) u.order=null; }
 }
@@ -862,6 +883,21 @@ function unitTickInner(u){
   if(u.order && u.order.type==='attack'){
     tg = S.byId.get(u.order.id);
     if(!tg || tg.dead || tg.owner<0 || !isEnemy(u.owner, tg.owner) || !canHit(t.weapon,tg) || !targetable(u.owner,tg)){ u.order=null; tg=null; u.path=null; u.mode=null; }
+  }
+  if(u.order && u.order.type==='defend'){   // defender un área: enfrenta solo a enemigos dentro del área (más su alcance); sin blancos vuelve a su puesto
+    const O = u.order, lim = O.r + t.range, du = hyp(u.x-O.x, u.z-O.z);
+    let cur = u.target!=null ? S.byId.get(u.target) : null;
+    if(cur && (cur.dead || cur.owner<0 || !isEnemy(u.owner, cur.owner) || !targetable(u.owner,cur) || hyp(cur.x-O.x, cur.z-O.z) > lim + 1 || (t.minRange && distTo(u,cur)<t.minRange))) cur = null;
+    if(!cur && (S.tick+u.id)%4===0) cur = findTarget(u, du + lim, t.weapon, false, { x:O.x, z:O.z, r:lim });
+    u.target = cur ? cur.id : null; tg = cur;
+    if(!tg){
+      if(u.mode){ u.mode=null; u.path=null; }
+      if(hyp(u.x-O.hx, u.z-O.hz) > 0.75){
+        if(!u.path && !(O.rp > S.tick)){ u.path = findPath(u.x,u.z,O.hx,O.hz); u.pi=0; O.rp = S.tick + TICK_HZ; }   // sin camino, reintenta cada segundo
+        if(u.path && stepMove(u, t.speed)) u.path = null;
+      }
+      return;
+    }
   }
   if(!tg && (!u.order || u.order.type==='amove')){
     let cur = u.target!=null ? S.byId.get(u.target) : null;
@@ -1077,6 +1113,19 @@ function applyCmd(c){
       us.forEach((u,i) => { const g=cells[i]||{x:c.x,z:c.z};
         u.order={ type:(UT(u.owner,u.type).weapon ? c.t : 'move'), x:g.x, z:g.z }; u.path=null; u.target=null; u.mode=null; if(u.air && u.astate!=='rtb') u.astate=null; });
       break; }
+    case 'defend': {   // defender un área: cada unidad toma un puesto en el área, enfrenta solo a los enemigos que entran y vuelve a su puesto
+      if(!Number.isFinite(c.x) || !Number.isFinite(c.z)) break;
+      const x = clampW(c.x), z = clampW(c.z), us = c.ids.map(own).filter(e => e && e.kind==='unit');
+      us.sort((a,b) => (hyp(a.x-x,a.z-z) - hyp(b.x-x,b.z-z)) || a.id-b.id);
+      const r = 5 + Math.min(5, Math.floor(us.length/4));   // el área crece con el grupo
+      const navs = us.filter(u => UT(u.owner,u.type).naval), lands = us.filter(u => !UT(u.owner,u.type).naval);
+      const cellsL = goalCells(x, z, lands.length), cellsN = navs.length ? naval(() => goalCells(x, z, navs.length)) : [];
+      let li = 0, ni = 0;
+      for(const u of us){ const t = UT(u.owner,u.type), g = (t.naval ? cellsN[ni++] : cellsL[li++]) || { x, z };
+        if(!t.weapon || (t.air && !t.hover)) u.order = { type:(t.weapon ? 'amove' : 'move'), x:g.x, z:g.z };   // sin arma o avión: va al lugar
+        else u.order = { type:'defend', x, z, r, hx:g.x, hz:g.z };
+        u.path=null; u.target=null; u.mode=null; if(u.air && u.astate!=='rtb') u.astate=null; }
+      break; }
     case 'attack': {
       const tg = S.byId.get(c.target); if(!tg || tg.dead || tg.owner===c.p || tg.owner<0) break;
       c.ids.map(own).filter(e => e && e.kind==='unit' && UT(e.owner,e.type).weapon && canHit(UT(e.owner,e.type).weapon, tg))
@@ -1097,6 +1146,10 @@ function applyCmd(c){
     case 'rendir': {
       for(const e of S.ents){ if(e.dead || e.owner!==c.p) continue; if(e.type==='pozo'){ const was = e.owner; e.owner = -1; e.target = null; hooks.captured(e, was); continue; } kill(e); }
       pl.tunnel = []; break; }
+    // Mando por IA de un jugador desconectado. Solo las inserta el servidor (como «rendir»): la IA de la simulación juega por él
+    // desde ese tick en todos los clientes, y le devuelve el mando cuando vuelve.
+    case 'iaToma': if(!S.aiPlayers.includes(c.p)) S.aiPlayers.push(c.p); break;
+    case 'iaDeja': S.aiPlayers = S.aiPlayers.filter(q => q !== c.p); break;
     case 'upgrade': {
       const b = own(c.id); if(!upgradeOk(c.p, b, c.type)) break;
       pl.credits -= MEJORAS[c.type].cost; pl.ups[c.type] = 1; b.upq = { key:c.type, prog:0 };
@@ -1272,7 +1325,7 @@ function aiTick(p){
     const foeVeh = S.ents.filter(e => !e.dead && e.kind==='unit' && isEnemy(p, e.owner) && UT(e.owner,e.type).armor==='veh').length;
     // Mejoras: cada 15 s compra la primera disponible de la lista si sobra dinero
     if((S.tick + p*97) % (15*TICK_HZ) < TICK_HZ/2){
-      for(const key of ['reactor','carga','instruccion','blindaje','perforantes','misilesGuiados','emboscada','sensores','aleacion','diesel','trucados','cohetes','montaje','enlace','doblecanon','camuflaje','fortificacion','exoesqueleto','estandarte','veterania','ametralladora','estacionRemota','sinRetroceso']){
+      for(const key of ['reactor','carga','instruccion','blindaje','perforantes','misilesGuiados','emboscada','sensores','aleacion','diesel','trucados','cohetes','montaje','enlace','doblecanon','camuflaje','fortificacion','exoesqueleto','estandarte','veterania','ametralladora','estacionRemota','sinRetroceso','torreBlindaje','aspilleras','escudoMinigun','radarLargo','trincheraProfunda','torreFuego']){
         const U = MEJORAS[key], b = blds.find(x => x.type===U.edificio && x.built && !x.upq);
         if(b && upgradeOk(p, b, key) && me.credits >= U.cost + 600){ applyCmd({ t:'upgrade', p, id:b.id, type:key }); break; }
       }
@@ -1578,11 +1631,13 @@ function setupMission(def){
 const ladoMapa = n => n <= 2 ? 64 : n <= 4 ? 96 : 128;
 // Rotación exacta para la simetría de N bases (solo raíces cuadradas: determinista entre motores)
 const ROT = { 2:[-1, 0], 3:[-0.5, Math.sqrt(3)/2], 4:[0, 1], 6:[0.5, Math.sqrt(3)/2], 8:[Math.SQRT1_2, Math.SQRT1_2] };
-function newGame(seed, aiPlayers=[1], factions=['atlas','hierro'], map=null, mission=null, aiLevel='normal', creditos=3000, equipos=null, posiciones=null){
+function newGame(seed, aiPlayers=[1], factions=['atlas','hierro'], map=null, mission=null, aiLevel='normal', creditos=3000, equipos=null, posiciones=null, vacios=null){
   const NJ = factions.length; if(NJ > 2 && !ROT[NJ]) throw new Error('Número de jugadores no admitido: ' + NJ);
   // Lugar de aparición: posiciones[p] es el lugar (0 a NJ-1) del jugador p. Debe ser una permutación; las misiones usan el orden fijo.
   const pos = !mission && Array.isArray(posiciones) && posiciones.length === NJ && posiciones.every(v => Number.isInteger(v) && v >= 0 && v < NJ) && new Set(posiciones).size === NJ ? posiciones.slice() : factions.map((_, i) => i);
   const enLugar = []; pos.forEach((l, p) => { enLugar[l] = p; });   // jugador que ocupa cada lugar
+  // Plazas vacías (partida en línea de más de 2 que empieza sin llenar todos los lugares): su lugar queda sin base ni constructor
+  const vac = NJ > 2 && !mission && Array.isArray(vacios) ? vacios.filter((v, i, a) => Number.isInteger(v) && v >= 0 && v < NJ && a.indexOf(v) === i) : [];
   setGrid(ladoMapa(NJ)); if(NJ > 2){ map = null; mission = null; }
   // Recursos iniciales de escaramuza y partidas en línea (500 a 20.000). Las misiones parten de 2.000 y los ajustan con def.creditos.
   const ini = mission ? 2000 : Math.max(500, Math.min(20000, Math.floor(+creditos || 3000)));
@@ -1590,7 +1645,7 @@ function newGame(seed, aiPlayers=[1], factions=['atlas','hierro'], map=null, mis
   const eq = i => Array.isArray(equipos) && Number.isInteger(equipos[i]) && equipos[i] >= 0 && equipos[i] < 8 ? equipos[i] : i;
   const player = (f, i) => ({ team:eq(i), ups:{}, credits:ini, kills:0, faction:f, xp:0, rank:1, cp:1, unlocked:{}, cool:{}, tunnel:[], navKills:0, mods:{ dmg:{}, prod:0, build:0, income:0 } });
   Object.assign(S, { tick:0, seed, rng:mulberry32(seed), nextId:1, ents:[], byId:new Map(), blocked:new Uint8Array(NCELLS),
-    rocks:[], ruins:[], rockGrid:new Uint8Array(NCELLS), players:factions.map(player), cmdQueue:[], over:false, winner:-1, aiPlayers,
+    rocks:[], ruins:[], rockGrid:new Uint8Array(NCELLS), players:factions.map(player), cmdQueue:[], over:false, winner:-1, aiPlayers:aiPlayers.slice(), aiInicial:aiPlayers.slice(), vacios:vac.length <= NJ - 2 ? vac : [],
     vis:factions.map(() => new Uint8Array(NCELLS)), exp:factions.map(() => new Uint8Array(NCELLS)),
     power:factions.map(() => ({prod:0,cons:0,low:false})), events:[], reveals:[], log:[], heroes:factions.map(() => null), water:new Uint8Array(NCELLS), bonus:factions.map(() => 1), thinkMult:factions.map(() => 1), mission:null, map:map ? String(map.nombre||'Mapa personalizado').slice(0,40) : 'Estándar',
     tab:factions.map(f => buildTables(f)), posiciones:pos,
@@ -1674,7 +1729,7 @@ function ensancharDepositos(){
 }
 function finInicio(mission, aiPlayers, aiLevel){
   for(let p=0; p<S.players.length; p++){
-    const c = S.ents.find(e => e.kind==='bld' && e.owner===p && e.type==='centro');
+    const c = S.ents.find(e => e.kind==='bld' && e.owner===p && e.type==='centro'); if(!c) continue;   // plaza vacía
     const dx=WORLD/2-c.x, dz=WORLD/2-c.z, d=hyp(dx,dz);
     const cells = goalCells(c.x+dx/d*9, c.z+dz/d*9, 8);
     (mission ? ['recolector','recolector','constructor','infanteria','infanteria','infanteria','infanteria','tanque'] : ['constructor']).forEach((t,i) => addUnit(t,p,cells[i].x,cells[i].z));
@@ -1702,7 +1757,7 @@ function mapaGrande(N, startType, enLugar){
   for(let p=0; p<N; p++){
     const [ux, uz] = giro(u0[0], u0[1], p), bx = Math.round(C + ux*R), bz = Math.round(C + uz*R);
     bases.push({ x:bx, z:bz, ux, uz }); zonas.push({ x:bx, z:bz, r:9 });
-    const q = enLugar ? enLugar[p] : p; addBuilding(startType('centro', q), q, L2F(bx - 1), L2F(bz - 1));
+    const q = enLugar ? enLugar[p] : p; if(!S.vacios.includes(q)) addBuilding(startType('centro', q), q, L2F(bx - 1), L2F(bz - 1));
   }
   S.baseZones = bases.map(b => [b.x-8, b.z-8, b.x+8, b.z+8]);
   // Oasis central (agua) y depósitos grandes a su alrededor
@@ -2312,17 +2367,51 @@ function axle(xs, r, w, y, z, hubColor=0x77736a, tire=RUBBER){
   }
   return a;
 }
+// Disco del rotor en marcha: malla propia (no se fusiona), translúcida y sin sombra
+const MAT_DISCO = new THREE.MeshBasicMaterial({ color:0x1e1c18, transparent:true, opacity:0.13, depthWrite:false, side:THREE.DoubleSide, fog:false });   // sin niebla: con ella se aclaraba
+function discoRotor(r){ const m = new THREE.Mesh(geo('disco' + r, () => new THREE.CircleGeometry(r, 28).rotateX(-Math.PI/2)), MAT_DISCO); m.userData.propio = true; m.position.y = 0.012; return m; }
+// Camioneta pickup: capó adelante, cabina con parabrisas inclinado, caja abierta con barandas y portón, guardabarros sobre las ruedas
+function camioneta(body, P, tc, c){
+  wheels(body, 0.28, 0.24, [-0.6,0.6], [0.74,-0.7]);
+  body.add(box(0.9, 0.14, 2.3, P.dark, 0, 0.26, 0), box(1.1, 0.3, 2.36, c, 0, 0.4, 0));                               // bastidor y carrocería baja
+  body.add(profileZ([[0.42,0],[1.16,0],[1.18,0.04],[1.12,0.1],[0.42,0.14]], 1.06, c, 0, 0.7, 0, 0.03));                // capó
+  body.add(box(0.84, 0.16, 0.03, 0x262420, 0, 0.47, 1.18), box(1.16, 0.1, 0.1, P.metal, 0, 0.36, 1.2));             // parrilla y paragolpes
+  body.add(profileZ([[-0.36,0],[0.44,0],[0.16,0.44],[-0.34,0.46]], 1.04, c, 0, 0.7, 0, 0.03));                        // cabina
+  body.add(tilt(box(0.88, 0.4, 0.03, P.glass, 0, 0.72, 0.31), -0.57), box(0.8, 0.2, 0.03, P.glass, 0, 0.88, -0.37)); // parabrisas y luneta
+  for(const sx of [-1,1]) body.add(box(0.03, 0.22, 0.42, P.glass, sx*0.525, 0.78, -0.05), box(0.1, 0.07, 0.03, 0x2a2a28, sx*0.6, 0.96, 0.36));   // ventanas laterales y espejos
+  body.add(box(0.98, 0.035, 0.52, c, 0, 1.14, -0.09), box(0.8, 0.02, 0.22, tc, 0, 1.17, -0.09));                    // techo con franja del equipo
+  body.add(box(1.0, 0.03, 0.8, P.dark, 0, 0.7, -0.8), box(1.1, 0.26, 0.05, c, 0, 0.7, -1.18));                       // piso de la caja y portón
+  for(const sx of [-1,1]) body.add(box(0.05, 0.26, 0.82, c, sx*0.53, 0.7, -0.8));                                      // barandas
+  for(const z of [0.74, -0.7]) for(const sx of [-1,1]) body.add(box(0.2, 0.05, 0.62, c, sx*0.6, 0.66, z));           // guardabarros
+}
+// Camión de plataforma: cabina adelante, chasis largo y plataforma de tablas con barandas bajas
+function camion(body, P, tc, zs, largo){
+  wheels(body, 0.29, 0.25, [-0.62,0.62], zs);
+  body.add(box(0.95, 0.16, largo, P.dark, 0, 0.3, 0)); cabEquipo(body, 1.15, 0.7, 0.82, P.hull, P.glass, 0.46, largo/2 - 0.45, tc);
+  body.add(box(1.16, 0.1, 0.12, P.metal, 0, 0.36, largo/2 + 0.02), box(0.8, 0.16, 0.03, 0x262420, 0, 0.5, largo/2 - 0.03));   // paragolpes y parrilla
+  const lp = largo - 0.95;
+  body.add(box(1.2, 0.06, lp, WOOD, 0, 0.5, -largo/2 + lp/2));                                                          // plataforma de tablas
+  for(const sx of [-1,1]) body.add(box(0.05, 0.16, lp, WOOD, sx*0.58, 0.56, -largo/2 + lp/2));
+  body.add(box(1.2, 0.16, 0.05, WOOD, 0, 0.56, -largo/2 + 0.02));
+  for(const z of zs) for(const sx of [-1,1]) body.add(box(0.2, 0.05, 0.64, P.hull, sx*0.62, 0.62, z));               // guardabarros
+  return 0.56;   // altura de la plataforma
+}
 function wheels(body, r, w, xs, zs, hubColor){ for(const z of zs) body.add(axle(xs, r, w, 0, z, hubColor)); }
 // Orugas: banda con tacos, ruedas de rodaje animadas y guardabarros
 function tracks(body, len, w, h, gap, color, fender){
+  // Tacos superiores: de cerca, un grupo por oruga que se desplaza un taco y vuelve (la banda parece correr); de lejos, fijos
   for(const sx of [-1,1]){
+    const tread = DETAIL_LO ? body : named(new THREE.Group(), 'tread'); if(tread !== body){ tread.userData.lado = sx; body.add(tread); }
     { const r = h/2, pts = []; for(let i=0; i<=6; i++){ const a = -Math.PI/2 + i*Math.PI/6; pts.push([len/2 - r + Math.cos(a)*r, r + Math.sin(a)*r]); } for(let i=0; i<=6; i++){ const a = Math.PI/2 + i*Math.PI/6; pts.push([-len/2 + r + Math.cos(a)*r, r + Math.sin(a)*r]); }
       body.add(profileZ(pts, w, RUBBER, sx*gap, 0, 0, 0.02)); }   // banda con extremos redondeados
-    for(let z=-len/2+0.12; z<len/2; z+=0.24) body.add(box(w+0.02, 0.05, 0.08, 0x343230, sx*gap, h-0.02, z));   // tacos superiores
+    for(let z=-len/2+0.12; z<len/2 - (DETAIL_LO ? 0 : 0.24); z+=0.24) tread.add(box(w+0.02, 0.05, 0.08, 0x343230, sx*gap, h-0.02, z));   // tacos superiores
     if(fender) body.add(box(w+0.08, 0.07, len+0.1, color, sx*gap, h, 0));
   }
+  body.userData.oruga = true;
+  // Ruedas de rodaje: fijas y fusionadas con el casco (casi no se ven bajo los guardabarros; el avance lo muestran los tacos que corren)
   const n = Math.max(3, Math.round(len/0.5)), rr = h*0.36;
-  for(let i=0; i<n; i++){ const z = -len/2 + 0.25 + i*(len-0.5)/(n-1); body.add(axle([-gap, gap], rr, w+0.04, 0.03, z, 0x8a857a, 0x5a564e)); }
+  for(let i=0; i<n; i++){ const z = -len/2 + 0.25 + i*(len-0.5)/(n-1), a = axle([-gap, gap], rr, w+0.04, 0.03, z, 0x8a857a, 0x5a564e); a.updateMatrix();
+    for(const m of a.children.slice()){ m.updateMatrix(); m.matrix.premultiply(a.matrix); m.matrix.decompose(m.position, m.quaternion, m.scale); body.add(m); } }
 }
 // Pieza de revolución (perfil [radio, altura]) en caché por clave: torso, pelvis, faldón, cascos
 function organ(key, pts, color, x=0, y=0, z=0, sx=1, sy=1, sz=1, seg=10){
@@ -2498,7 +2587,7 @@ function unitModel(e, o, body){
         const hook = named(new THREE.Group(), 'hook'); hook.position.y = -1; winch.add(hook);
         hook.add(box(0.5,0.08,0.5,P.dark,0,-0.08,0), tilt(box(0.03,0.38,0.03,P.metal,-0.22,-0.42,0),0,0,0.45), tilt(box(0.03,0.38,0.03,P.metal,0.22,-0.42,0),0,0,-0.45));
         const cargo = named(new THREE.Group(), 'cargo'); { const bolsa = ball(0.48, ORE, 0, -0.95, 0, 1, 0.75, 1); cargo.add(bolsa, cyl(0.42, 0.06, P.dark, 0, -0.56, 0, 14)); } hook.add(cargo);   // red de carga redondeada
-        const rotor = named(new THREE.Group(), 'rotor'); rotor.position.set(0,0.55,0.1); rotor.add(box(4.2,0.04,0.22,P.metal), box(0.22,0.04,4.2,P.metal), cyl(0.14,0.1,P.dark,0,-0.02,0,10)); body.add(rotor);
+        const rotor = named(new THREE.Group(), 'rotor'); rotor.position.set(0,0.55,0.1); rotor.add(box(4.2,0.03,0.12,P.metal), box(0.12,0.03,4.2,P.metal), cyl(0.12,0.12,P.dark,0,-0.03,0,10), box(0.3,0.04,0.3,P.dark,0,-0.02,0), discoRotor(2.1)); body.add(rotor);   // palas finas, cubo y disco
       } else if(f==='hierro'){    // Camión minero de seis ruedas con tolva
         wheels(body, 0.3, 0.26, [-0.62,0.62], [0.85,-0.25,-0.85]);
         body.add(profileZ([[-1.45,0],[1.3,0],[1.38,0.14],[1.3,0.28],[-1.45,0.28]], 1.3, P.dark, 0, 0.35, -0.1, 0.03));
@@ -2521,19 +2610,35 @@ function unitModel(e, o, body){
         body.add(lamp(1.0,0.05,0.05,P.glow,0,0.5,0.96), cyl(0.18,0.2,P.dark,0,0.82,-0.5,10));
         { const t = named(new THREE.Group(), 'tool'); t.position.set(0,0.92,-0.5); body.add(t);   // brazo robótico con soldador
           t.add(cyl(0.13,0.16,P.dark,0,-0.06,0,12), tilt(box(0.14,0.14,1.2,P.trim,0,0.0,0.42),-0.6), ball(0.1,P.dark,0,0.62,0.78), tilt(box(0.12,0.12,0.8,P.trim,0,0.56,1.08),0.5), lamp(0.12,0.08,0.18,P.glow,0,0.2,1.42)); }
-      } else if(f==='hierro'){    // Topadora de orugas con pala frontal
+      } else if(f==='hierro'){    // Topadora de orugas: capó del motor adelante, cabina con jaula antivuelco atrás, hoja curva con brazos de empuje y escarificador
         tracks(body, 2.0, 0.4, 0.5, 0.62, P.dark, true);
-        body.add(profileZ([[-0.9,0],[0.6,0],[0.75,0.3],[0.6,0.55],[-0.9,0.55]], 1.0, P.hull, 0, 0.35, -0.15, 0.04), profileZ([[-0.62,0],[0.0,0],[-0.08,0.58],[-0.58,0.62]], 0.8, tc, 0, 0.9, 0, 0.03), tilt(box(0.66,0.32,0.03,P.glass,0,1.12,0.02),-0.14), box(0.86,0.05,0.7,P.dark,0,1.52,-0.3));
-        { const t = named(new THREE.Group(), 'tool'); t.position.set(0,0.45,0.55); body.add(t);   // pala que sube y baja
-          t.add(profileZ([[0.5,-0.42],[0.66,-0.42],[0.7,0.2],[0.6,0.24],[0.56,-0.1]], 1.75, P.metal, 0, 0, 0), box(0.1,0.1,0.6,P.dark,-0.4,-0.1,0.25), box(0.1,0.1,0.6,P.dark,0.4,-0.1,0.25), box(1.6,0.05,0.06,0x9a958a,0,-0.42,0.66)); }
-        body.add(cyl(0.08,0.7,P.metal,0.35,0.9,-0.75,8), cyl(0.1,0.05,P.trim,0.35,1.6,-0.75,8));
-      } else {                    // Camión viejo con grúa y herramientas
-        wheels(body, 0.28, 0.24, [-0.6,0.6], [0.75,-0.75]);
-        body.add(box(1.2,0.3,2.3,P.dark,0,0.3,0)); cabEquipo(body, 1.15, 0.7, 0.82, P.hull, P.glass, 0.6, 0.7, tc);
-        body.add(box(1.2,0.25,1.3,P.hull,0,0.6,-0.45), box(0.5,0.35,0.4,WOOD,-0.25,0.85,-0.6), box(0.4,0.25,0.35,0x5f6a3a,0.3,0.85,-0.3));
-        body.add(cyl(0.08,0.9,P.metal,0.35,0.85,-0.85,8));
-        { const t = named(new THREE.Group(), 'tool'); t.position.set(0.35,1.75,-0.85); body.add(t);   // grúa que gira
-          t.add(tilt(box(0.09,0.09,1.4,P.metal,0,-0.2,0.5),-0.6), box(0.03,0.6,0.03,P.metal,0,-0.75,1.05), box(0.14,0.12,0.14,P.dark,0,-0.85,1.05)); }
+        body.add(box(0.86, 0.3, 1.9, P.dark, 0, 0.18, -0.05));                                                            // bastidor entre las orugas
+        body.add(profileZ([[-0.2,0],[0.76,0],[0.84,0.06],[0.84,0.34],[0.72,0.42],[-0.2,0.42]], 0.82, P.hull, 0, 0.48, 0, 0.04));   // capó del motor
+        for(let i=0; i<4; i++) body.add(box(0.6, 0.035, 0.03, 0x1e1d1b, 0, 0.56 + i*0.072, 0.85));                        // parrilla del radiador
+        for(const sx of [-1,1]) for(let i=0; i<4; i++) body.add(box(0.02, 0.2, 0.05, P.dark, sx*0.415, 0.6, 0.1 + i*0.14));   // rejillas laterales
+        body.add(cyl(0.05, 0.56, P.metal, 0.24, 0.9, 0.5, 8), cyl(0.075, 0.035, P.dark, 0.24, 1.46, 0.5, 8));              // escape con tapa
+        body.add(cyl(0.075, 0.18, P.dark, -0.24, 0.9, 0.56, 10), ball(0.075, P.dark, -0.24, 1.08, 0.56, 1, 0.6, 1));       // prefiltro de aire
+        body.add(box(0.94, 0.22, 0.88, P.hull, 0, 0.48, -0.62));                                                          // base de la cabina
+        body.add(box(0.8, 0.54, 0.74, 0x343a3e, 0, 0.7, -0.62), box(0.82, 0.05, 0.76, P.dark, 0, 0.98, -0.62));        // cabina de vidrio ahumado con travesaño
+        for(const sx of [-1,1]) for(const z of [-0.23, -1.0]) body.add(box(0.07, 0.6, 0.07, P.dark, sx*0.42, 0.7, z));    // jaula antivuelco
+        body.add(box(1.0, 0.07, 0.94, P.hull, 0, 1.3, -0.62), box(1.02, 0.07, 0.12, tc, 0, 1.29, -0.16));                  // techo con franja del equipo
+        for(const sx of [-1,1]) body.add(lamp(0.08, 0.05, 0.04, 0xfff2c8, sx*0.3, 1.37, -0.18));                          // focos de trabajo
+        body.add(box(0.9, 0.34, 0.1, P.dark, 0, 0.26, -1.06));                                                            // contrapeso trasero
+        body.add(box(0.62, 0.1, 0.32, P.metal, 0, 0.4, -1.24), tilt(box(0.09, 0.5, 0.11, P.metal, 0, 0.02, -1.36), 0.22), box(0.1, 0.06, 0.14, 0x9a958a, 0, 0.0, -1.3));   // escarificador
+        for(const sx of [-1,1]) body.add(tilt(cyl(0.035, 0.34, P.metal, sx*0.22, 0.38, -1.12, 8), -0.9));               // cilindros del escarificador
+        { const t = named(new THREE.Group(), 'tool'); t.position.set(0, 0.42, 0.05); body.add(t);   // hoja que sube y baja desde los muñones de los brazos
+          t.add(profileZ([[1.1,-0.42],[1.36,-0.42],[1.25,-0.27],[1.19,-0.08],[1.19,0.1],[1.23,0.25],[1.32,0.36],[1.24,0.42],[1.1,0.28],[1.06,0.0],[1.08,-0.3]], 1.95, P.hull, 0, 0, 0, 0.02));   // hoja curva
+          t.add(box(1.95, 0.05, 0.06, 0x9a958a, 0, -0.45, 1.34));                                                          // cuchilla
+          for(const sx of [-1,1]) t.add(box(0.04, 0.8, 0.28, P.dark, sx*0.98, -0.43, 1.2), box(0.09, 0.12, 1.12, P.dark, sx*0.87, -0.14, 0.58));   // cantoneras y brazos de empuje
+          for(const sx of [-1,1]) t.add(tilt(cyl(0.055, 0.26, P.dark, sx*0.3, 0.3, 0.84, 10), -0.72), tilt(cyl(0.028, 0.3, P.metal, sx*0.3, 0.12, 0.98, 8), -0.72));   // cilindros de elevación
+        }
+      } else {                    // Camión viejo de plataforma con grúa giratoria, patas de apoyo y herramientas
+        const yp = camion(body, P, tc, [0.75,-0.75], 2.4);
+        body.add(box(0.46, 0.3, 0.38, WOOD, -0.28, yp, -0.25), box(0.36, 0.22, 0.32, 0x5f6a3a, 0.28, yp, -0.15), cyl(0.09, 0.42, 0x8a3a2a, -0.35, yp, 0.15, 10));   // cajones y garrafa
+        for(const sx of [-1,1]) body.add(tilt(box(0.06, 0.4, 0.06, P.metal, sx*0.66, 0.18, -0.95), 0, 0, sx*0.35), box(0.16, 0.03, 0.16, P.dark, sx*0.75, 0.02, -0.95));   // patas de apoyo
+        body.add(cyl(0.2, 0.12, P.dark, 0.3, yp, -0.85, 12), cyl(0.08, 0.7, P.trim, 0.3, yp + 0.1, -0.85, 8));       // base y columna de la grúa
+        { const t = named(new THREE.Group(), 'tool'); t.position.set(0.3, yp + 0.8, -0.85); body.add(t);   // pluma que gira, con cilindro hidráulico, cable y gancho
+          t.add(tilt(box(0.1,0.1,1.45,P.trim,0,-0.05,0.55),-0.5), tilt(cyl(0.035,0.5,P.metal,0,-0.45,0.25,8),0.9), box(0.12,0.1,0.12,P.dark,0,-0.06,0), box(0.025,0.62,0.025,P.metal,0,-0.08,1.18), box(0.12,0.1,0.1,P.dark,0,-0.2,1.18)); }
       }
       break;
     case 'infanteria': soldier(body, f, P, tc, 'soldado'); body.scale.setScalar(1.4); break;
@@ -2559,24 +2664,28 @@ function unitModel(e, o, body){
         for(const sx of [-1,1]) body.add(profileZ([[-1.1*k,0],[1.0*k,0],[1.2*k,0.16],[-1.15*k,0.16]], 0.1, P.trim, sx*0.62*k, 0.52, 0));   // faldones
         body.add(lamp(0.9*k,0.04,0.04,P.glow,0,0.66,0.95*k));
         const t = turret(0.82); t.add(tilt(cyl(0.58*k,0.36,P.hull,0,0,-0.1,6),0,Math.PI/6), box(0.6*k,0.08,0.4,tc,0,0.36,-0.35), lamp(0.12,0.08,0.08,P.glow,0.3,0.36,0.25));
-        for(const ox of (k>1 ? [-0.17,0.17] : [0])){ const b = barrel(1.9*k,0.075,P.metal); b.position.set(ox,0.18,1.05*k); t.add(b); const m = barrel(0.25,0.11,P.dark); m.position.set(ox,0.18,1.95*k); t.add(m); }
+        const cn = named(new THREE.Group(), 'canon'); t.add(cn);   // el cañón retrocede dentro de la torre al disparar
+        for(const ox of (k>1 ? [-0.17,0.17] : [0])){ const b = barrel(1.9*k,0.072,P.metal); b.position.set(ox,0.18,1.05*k); const sl = barrel(0.7*k,0.088,P.dark); sl.position.set(ox,0.18,0.75*k); const m = barrel(0.22,0.1,P.dark); m.position.set(ox,0.18,1.96*k); cn.add(b, sl, m); }
       } else if(f==='hierro'){    // Casco alto en placas, faldones laterales, torre cuadrada remachada
         tracks(body, 2.3*k, 0.46*k, 0.55, 0.72*k, P.dark, false);
         for(const sx of [-1,1]) body.add(profileZ([[-1.12*k,0],[1.0*k,0],[1.14*k,0.22],[1.0*k,0.42],[-1.12*k,0.42]], 0.1, P.hull, sx*(0.98*k), 0.22, 0, 0.02));
         body.add(profileZ([[-1.05*k,0],[0.9*k,0],[1.12*k,0.28],[0.85*k,0.62],[-0.95*k,0.62],[-1.1*k,0.38]], 1.35*k, P.hull, 0, 0.28, 0), box(1.37*k,0.1,0.6,tc,0,0.9,-0.55));
         for(let i=0; i<6; i++) body.add(ball(0.035,P.metal,-0.55*k+i*0.22*k,0.88,0.82*k));   // remaches del glacis
-        body.add(cyl(0.09,0.5,P.metal,-0.45*k,0.85,-0.95*k,8), cyl(0.09,0.5,P.metal,0.45*k,0.85,-0.95*k,8));
+        for(const sx of [-1,1]){ const dr = cyl(0.12, 0.5*k, 0x3d3a30, sx*0.3*k, 1.02 - 0.25*k, -0.86*k, 12); dr.rotation.z = Math.PI/2; body.add(dr, box(0.03, 0.26, 0.26, P.dark, sx*0.3*k, 0.89, -0.86*k)); }   // bidones de combustible atrás
         const t = turret(0.9); { const dom = lathe([[0.62*k,0],[0.6*k,0.16*k],[0.52*k,0.34*k],[0.36*k,0.46*k],[0.12*k,0.52*k],[0,0.53*k]], P.hull, 0, 0, -0.05, 20); dom.scale.set(1, 1, 1.18); t.add(dom); }   // torre fundida
-        t.add(cyl(0.2*k, 0.34*k, P.dark, 0, 0.08*k, 0.62*k, 12), box(1.0*k,0.06,0.3,tc,0,0.44*k,-0.42)); t.children[t.children.length-2].rotation.x = Math.PI/2;   // mantelete
+        { const mt = cyl(0.2*k, 0.34*k, P.dark, 0, 0.08*k, 0.62*k, 12); mt.rotation.x = Math.PI/2; t.add(mt); }   // mantelete
+        { const bd = cyl(0.632*k, 0.07, tc, 0, 0.03, -0.05, 22); bd.scale.z = 1.18; t.add(bd); }   // banda del equipo en la base de la torre
         for(const sx of [-1,1]) t.add(ball(0.05,P.metal,sx*0.5*k,0.2*k,-0.1));
         t.add(cyl(0.1,0.18,P.dark,0.25,0.5*k,-0.2,8), box(0.05,0.05,0.4,GUN,0.25,0.62*k,0.0));
-        for(const ox of (k>1 ? [-0.2,0.2] : [0])){ const b = barrel(1.4*k,0.11,P.metal); b.position.set(ox,0.25*k,0.95*k); t.add(b); const m = barrel(0.3,0.16,P.dark); m.position.set(ox,0.25*k,1.65*k); t.add(m); }
+        const cn = named(new THREE.Group(), 'canon'); t.add(cn);   // el cañón retrocede dentro de la torre al disparar
+        for(const ox of (k>1 ? [-0.2,0.2] : [0])){ const b = barrel(1.75*k,0.085,P.metal); b.position.set(ox,0.25*k,1.12*k); const ev = barrel(0.34*k,0.125,P.dark); ev.position.set(ox,0.25*k,1.2*k); const m = barrel(0.08,0.1,P.dark); m.position.set(ox,0.25*k,1.97*k); cn.add(b, ev, m); }
       } else {                    // Variante improvisada: casco recuperado con sacos y lonas
         tracks(body, 2.2*k, 0.42*k, 0.5, 0.7*k, P.dark, true);
         body.add(profileZ([[-0.95*k,0],[0.85*k,0],[1.02*k,0.3],[0.8*k,0.55],[-0.95*k,0.55]], 1.2*k, P.hull, 0, 0.3, 0), prism([[-0.5*k,0],[0.5*k,0],[0,0.3]], 0.7, CLOTH, 0, 0.85, -0.55), box(1.22*k,0.1,0.5,tc,0,0.85,0.35));
         const t = turret(0.85); t.add(profileZ([[-0.6*k,0],[0.5*k,0],[0.62*k,0.16*k],[0.38*k,0.42*k],[-0.5*k,0.42*k],[-0.62*k,0.2*k]], 0.95*k, P.trim, 0, 0, -0.1, 0.03), box(0.5,0.14,0.3,0x9a8a5c,-0.35,0.42*k,-0.4));
         for(const sx of [-1,1]) t.add(tilt(box(0.06,0.32*k,0.7*k,0x6b6152,sx*0.5*k,0.04,0.05), 0, 0, sx*0.18));   // placas soldadas a los lados
-        const b = barrel(1.4*k,0.09,GUN); b.position.set(0,0.22*k,0.9*k); t.add(b);
+        const cn = named(new THREE.Group(), 'canon'); t.add(cn);   // el cañón retrocede dentro de la torre al disparar
+        { const b = barrel(1.55*k,0.08,GUN); b.position.set(0,0.22*k,0.98*k); const ev = barrel(0.22*k,0.115,GUN); ev.position.set(0,0.22*k,1.45*k); const m = barrel(0.16,0.12,P.dark); m.position.set(0,0.22*k,1.78*k); cn.add(b, ev, m); }
       }
       if(UNIT_UPS.has('estacionRemota') || UNIT_UPS.has('ametralladora')){ armaTorre(body.getObjectByName('turret'), f, P, k, tc);
         body.add(box(0.36, 0.03, 0.13, 0xf2d16b, 0, f==='atlas' ? 0.83 : 0.91, -0.92*k)); }   // galón dorado: unidad mejorada
@@ -2594,12 +2703,11 @@ function unitModel(e, o, body){
         body.add(profileZ([[-0.95,0],[0.8,0],[1.0,0.28],[0.75,0.55],[-0.95,0.55]], 1.15, P.hull, 0, 0.3, 0, 0.04), box(1.17,0.1,0.6,P.dark,0,0.85,0.5), box(1.19,0.11,0.2,tc,0,0.85,0.66));
         const t = turret(0.85,-0.2); t.add(profileZ([[-0.42,0],[0.38,0],[0.45,0.18],[0.3,0.45],[-0.42,0.45]], 0.95, P.hull, 0, 0, 0, 0.03), ball(0.16, P.glass, 0, 0.3, 0.32, 1.4, 0.8, 1));
         for(const sx of [-0.32,0.32]) for(const sy of [0.12,0.32]){ const b = barrel(1.1,0.045,GUN); b.rotation.x = Math.PI/2-0.6; b.position.set(sx,sy+0.3,0.35); t.add(b); }
-      } else {                    // Camioneta con ametralladora antiaérea doble
-        wheels(body, 0.27, 0.22, [-0.55,0.55], [0.7,-0.7]);
-        body.add(box(1.1,0.35,2.1,P.hull,0,0.3,0)); cabEquipo(body, 1.05, 0.55, 0.78, P.hull, P.glass, 0.65, 0.55, tc);
-        body.add(box(1.12,0.3,1.0,P.trim,0,0.65,-0.5));
-        const t = turret(0.95,-0.5); t.add(cyl(0.12,0.3,P.metal,0,0,0,8), box(0.5,0.08,0.3,0x5f6a3a,0,0.3,-0.1));
-        for(const sx of [-0.12,0.12]){ const b = barrel(1.0,0.04,GUN); b.rotation.x = Math.PI/2-0.7; b.position.set(sx,0.55,0.25); t.add(b); }
+      } else {                    // Camioneta con cañón antiaéreo doble en la caja: afuste giratorio, asientos y cargadores
+        camioneta(body, P, tc, P.hull);
+        const t = turret(0.73,-0.8); t.add(cyl(0.3, 0.08, P.dark, 0, 0, 0, 14), box(0.62, 0.22, 0.44, P.trim, 0, 0.08, 0), box(0.26, 0.2, 0.3, P.dark, 0, 0.3, -0.02));
+        for(const sx of [-1,1]) t.add(box(0.16, 0.05, 0.16, 0x2a2a28, sx*0.36, 0.3, -0.12), box(0.14, 0.18, 0.1, 0x4f5a3a, sx*0.17, 0.5, -0.05));   // asientos y cargadores
+        for(const sx of [-0.1,0.1]){ const b = barrel(1.25,0.032,GUN); b.rotation.x = Math.PI/2-0.7; b.position.set(sx,0.75,0.42); t.add(b); const fl = barrel(0.12,0.05,GUN); fl.rotation.x = Math.PI/2-0.7; fl.position.set(sx,1.13,0.86); t.add(fl); }
       }
       break;
     case 'avion': {               // Caza aerodinámico: fuselaje ahusado, ala en delta en flecha, canards y doble deriva inclinada
@@ -2635,7 +2743,10 @@ function unitModel(e, o, body){
       trenAterrizaje(body, 1.0, 0.85, -0.2, P);
       break; }
     case 'helicoptero': {         // Helicóptero de ataque en tándem con alas cortas y lanzacohetes
-      body.add(ball(0.5,P.hull,0,-0.1,0.25,0.85,0.95,1.9), ball(0.28,P.glass,0,0.15,0.9,0.9,0.8,1.2), ball(0.24,P.glass,0,0.25,0.35,0.9,0.8,1.1));
+      { const fus = lathe([[0.16,0],[0.34,0.25],[0.42,0.8],[0.4,1.35],[0.3,1.8],[0.16,2.1],[0,2.2]], P.hull, 0, -0.1, -0.85, 14); fus.rotation.x = Math.PI/2; fus.scale.set(0.78, 1, 1); body.add(fus); }   // fuselaje angosto
+      const vid = f==='hierro' ? 0x3c4448 : P.glass;   // vidrio oscuro (el de Hierro es ámbar, pensado para ventanas iluminadas)
+      body.add(ball(0.22,vid,0,0.12,0.98,0.82,0.78,1.35), ball(0.25,vid,0,0.3,0.45,0.82,0.85,1.3), box(0.04,0.2,0.04,P.dark,0,0.3,0.74));   // cabinas escalonadas en tándem
+      { const ch = ball(0.11, P.dark, 0, -0.42, 1.08); body.add(ch); const cg = barrel(0.5, 0.025, GUN); cg.position.set(0, -0.45, 1.38); body.add(cg); }   // torreta de mentón con cañón
       { const cola = cyl(0.06, 3.0, P.hull, 0, 0, 0, 10, 0.17); cola.rotation.x = Math.PI/2; cola.position.set(0, 0.0, -1.05); body.add(cola); }   // cola cónica
       body.add(profileZ([[-2.75,0],[-2.25,0],[-2.45,0.62],[-2.72,0.66]], 0.05, tc, 0, -0.05, 0, 0.01), prism([[-0.35,-0.05],[0.35,-0.05],[0.3,0.12],[-0.3,0.12]], 0.04, P.dark, 0, 0.12, -2.35, 0.01));   // deriva en flecha y estabilizador
       body.children[body.children.length-1].rotation.x = -Math.PI/2;
@@ -2645,43 +2756,96 @@ function unitModel(e, o, body){
       body.add(box(0.92,0.06,0.5,P.dark,0,0.3,-0.15), box(0.94,0.07,0.16,tc,0,0.3,-0.15));
       for(const sx of [-1,1]){ body.add(box(0.05,0.05,1.3,P.metal,sx*0.38,-0.62,0.25), box(0.04,0.3,0.04,P.metal,sx*0.38,-0.6,0.6), box(0.04,0.3,0.04,P.metal,sx*0.38,-0.6,-0.1)); }   // patines
       for(const sx of [-0.75,0.75]){ const m = barrel(0.55,0.13,P.metal); m.position.set(sx,-0.25,0.15); body.add(m); }   // lanzacohetes
-      body.add(box(0.05,0.05,0.5,GUN,0,-0.6,0.95), cyl(0.07,0.18,P.metal,0,0.4,0.15,10));
-      const rotor = named(new THREE.Group(), 'rotor'); rotor.position.set(0,0.6,0.15); rotor.add(box(4.4,0.04,0.24,P.metal), box(0.24,0.04,4.4,P.metal)); body.add(rotor);
+      body.add(cyl(0.07,0.2,P.metal,0,0.4,0.15,10));   // mástil del rotor
+      const rotor = named(new THREE.Group(), 'rotor'); rotor.position.set(0,0.6,0.15); rotor.add(box(4.4,0.03,0.13,P.metal), box(0.13,0.03,4.4,P.metal), cyl(0.13,0.12,P.dark,0,-0.03,0,10), discoRotor(2.2)); body.add(rotor);
       break; }
-    case 'tecnico':               // Camioneta artillada (técnica)
-      wheels(body, 0.28, 0.24, [-0.6,0.6], [0.72,-0.72]);
-      body.add(box(1.15,0.35,2.15,P.hull,0,0.3,0), box(1.17,0.32,1.05,P.trim,0,0.65,-0.5)); cabEquipo(body, 1.1, 0.58, 0.84, P.hull, P.glass, 0.65, 0.55, tc);
-      body.add(box(0.3,0.25,0.3,WOOD,-0.35,0.95,-0.85), box(1.2,0.1,0.12,P.metal,0,0.38,1.1));
-      { const t = turret(0.95,-0.45); t.add(cyl(0.08,0.35,P.metal,0,0,0,8), box(0.4,0.3,0.05,P.dark,0,0.35,0.15)); const b = barrel(0.9,0.045,GUN); b.position.set(0,0.42,0.45); t.add(b); }
-      if(UNIT_UPS.has('sinRetroceso')){   // cañón sin retroceso sobre pedestal en la caja de carga, con tobera trasera y galón dorado
-        body.add(box(0.3, 0.03, 0.12, 0xf2d16b, -0.25, 0.98, 0.35));
-        const a = named(new THREE.Group(), 'ametra'); a.position.set(0.36, 0.97, -0.95); body.add(a);
-        a.add(cyl(0.05, 0.38, P.metal, 0, 0, 0, 8), box(0.14, 0.12, 0.3, P.dark, 0, 0.36, 0), box(0.05, 0.08, 0.12, 0x2a2a28, 0.09, 0.56, 0.2));
-        const tubo = barrel(1.35, 0.065, 0x5d6447); tubo.position.set(0, 0.48, 0.1); a.add(tubo);
-        const ven = barrel(0.22, 0.1, 0x3a3631); ven.position.set(0, 0.48, -0.62); a.add(ven);
+    case 'tecnico': {             // Camioneta artillada (técnica): ametralladora pesada sobre pedestal en la caja, con escudo y caja de munición
+      camioneta(body, P, tc, P.hull);
+      body.add(box(1.2, 0.22, 0.06, P.metal, 0, 0.42, 1.24), box(0.06, 0.22, 0.06, P.metal, -0.5, 0.52, 1.22), box(0.06, 0.22, 0.06, P.metal, 0.5, 0.52, 1.22));   // defensa delantera
+      body.add(box(0.3, 0.22, 0.26, WOOD, 0.3, 0.73, -1.0), cyl(0.2, 0.08, RUBBER, -0.32, 0.73, -1.0, 14));        // cajón y rueda de repuesto
+      const xs = UNIT_UPS.has('sinRetroceso') ? -0.12 : 0;
+      { const t = turret(0.73,-0.62); t.position.x = xs; t.add(cyl(0.05,0.46,P.metal,0,0,0,8), box(0.12,0.14,0.42,GUN,0,0.44,0.02), box(0.42,0.3,0.03,P.dark,0,0.44,0.26), box(0.14,0.1,0.18,0x4f5a3a,0.14,0.42,-0.04));
+        const b = barrel(0.95,0.03,GUN); b.position.set(0,0.52,0.7); t.add(b); const fl = barrel(0.12,0.05,GUN); fl.position.set(0,0.52,1.2); t.add(fl); }
+      if(UNIT_UPS.has('sinRetroceso')){   // cañón sin retroceso sobre pedestal en la caja, con tobera trasera y galón dorado
+        body.add(box(0.3, 0.03, 0.12, 0xf2d16b, 0.25, 1.16, -0.25));
+        const a = named(new THREE.Group(), 'ametra'); a.position.set(0.3, 0.73, -1.0); body.add(a);
+        a.add(cyl(0.05, 0.5, P.metal, 0, 0, 0, 8), box(0.14, 0.12, 0.3, P.dark, 0, 0.48, 0), box(0.05, 0.08, 0.12, 0x2a2a28, 0.09, 0.68, 0.2));
+        const tubo = barrel(1.35, 0.065, 0x5d6447); tubo.position.set(0, 0.62, 0.1); a.add(tubo);
+        const ven = barrel(0.22, 0.1, 0x3a3631); ven.position.set(0, 0.62, -0.62); a.add(ven);
       }
-      break;
-    case 'artilleria':            // Camión con rampa de cohetes
-      wheels(body, 0.28, 0.24, [-0.62,0.62], [0.85,-0.2,-0.85]);
-      body.add(box(1.2,0.32,2.4,P.dark,0,0.3,0), box(1.22,0.2,1.4,P.hull,0,0.62,-0.4)); cabEquipo(body, 1.15, 0.64, 0.78, P.hull, P.glass, 0.6, 0.8, tc);
-      { const t = turret(0.82,-0.45); t.add(box(0.5,0.2,0.5,P.metal)); const rack = new THREE.Group(); rack.position.set(0,0.35,0); rack.rotation.x = -0.5; rack.add(box(0.95,0.5,1.4,P.trim,0,0,0)); for(let i=0;i<3;i++) for(let j=0;j<2;j++) rack.add(lamp(0.16,0.16,0.04,0x2a2622,-0.3+i*0.3,0.08+j*0.2,0.7)); t.add(rack); }
-      break;
-    case 'lancha':
-    { const hc = f==='guerrilla' ? P.trim : P.hull;
-      body.add(casco(3.0, 1.05, 0.38, hc, 0, 0.12, 0.2), casco(2.5, 0.86, 0.05, tc, 0, 0.33, 0.12));   // casco y cubierta con franja del equipo
-      body.add(casco(2.1, 0.7, 0.04, 0x8f8a7c, 0, 0.37, 0.05)); }
-      if(f==='atlas') body.add(profileZ([[-0.4,0],[0.32,0],[0.18,0.36],[-0.32,0.38]], 0.62, P.hull, 0, 0.36, -0.1, 0.03), tilt(box(0.56,0.2,0.03,P.glass,0,0.56,0.12),-0.45), lamp(0.5,0.04,0.04,P.glow,0,0.75,-0.1));
-      else if(f==='hierro') body.add(profileZ([[-0.5,0],[0.32,0],[0.22,0.46],[-0.42,0.48]], 0.75, P.dark, 0, 0.36, -0.25, 0.03), box(0.5,0.15,0.03,P.glass,0,0.62,0.04));
-      else body.add(box(0.5,0.3,0.4,CLOTH,0,0.38,-0.45), cyl(0.12,0.4,P.metal,0,0.05,-1.25,8));   // toldo y motor fuera de borda
-      { const t = turret(0.42,0.75); t.add(cyl(0.13,0.16,P.metal,0,0,0,10)); const b = barrel(0.7,0.04,GUN); b.position.set(0,0.12,0.35); t.add(b); }
-      o.boat = true; break;
+      break; }
+    case 'artilleria': {          // Camión lanzacohetes: plataforma giratoria con un haz de 15 tubos elevados, cuna y gatos de apoyo
+      const yp = camion(body, P, tc, [0.85,-0.2,-0.85], 2.5);
+      body.add(box(0.5, 0.26, 0.3, P.dark, 0, yp, -0.1), box(0.36, 0.2, 0.3, 0x4f5a3a, 0.36, yp, -1.05), box(0.36, 0.2, 0.3, 0x4f5a3a, -0.36, yp, -1.05));   // grupo electrógeno y cajas de cohetes
+      for(const sx of [-1,1]) body.add(box(0.07, 0.36, 0.07, P.metal, sx*0.66, 0.16, -1.15), box(0.16, 0.03, 0.16, P.dark, sx*0.66, 0.02, -1.15));   // gatos de apoyo
+      const t = turret(yp + 0.06, -0.62); t.add(cyl(0.34, 0.08, P.dark, 0, 0, 0, 14), box(0.5, 0.22, 0.4, P.trim, 0, 0.08, 0));
+      const haz = new THREE.Group(); haz.position.set(0, 0.36, -0.3); haz.rotation.x = -0.42; t.add(haz);   // elevación del haz de tubos
+      haz.add(box(0.74, 0.04, 1.4, P.dark, 0, -0.07, 0.62), box(0.06, 0.4, 1.3, P.dark, -0.38, -0.05, 0.62), box(0.06, 0.4, 1.3, P.dark, 0.38, -0.05, 0.62));   // cuna
+      for(let i=0; i<5; i++) for(let j=0; j<3; j++){ const b = barrel(1.36, 0.058, j===1 ? P.trim : P.hull); b.position.set(-0.26 + i*0.13, 0.04 + j*0.12, 0.62); haz.add(b); }
+      for(const z of [0.1, 1.15]) haz.add(box(0.78, 0.42, 0.05, P.dark, 0, -0.07, z));                                  // abrazaderas
+      break; }
+    case 'lancha': {
+      // Casco en V con cubierta clara; la quilla queda bajo el agua (el modelo flota 0,08 sobre ella)
+      const hc = f==='guerrilla' ? P.trim : P.hull, H = 0.42, Y = -0.17, cy = z => Y + cubiertaY(3.0, H, z);
+      body.add(...cascoV(3.0, 1.1, H, hc, f==='guerrilla' ? WOOD : 0x8f8a7c, Y, 0, tc));   // con la franja del equipo bajo la borda
+      if(f==='atlas'){            // Patrullera rápida: consola con parabrisas envolvente, arco con radar y dos motores fuera de borda
+        body.add(profileZ([[-0.45,0],[0.3,0],[0.12,0.34],[-0.42,0.36]], 0.7, P.hull, 0, cy(-0.1), -0.1, 0.03), tilt(box(0.62,0.22,0.03,P.glass,0,cy(-0.1)+0.1,0.13),-0.6));
+        body.add(box(0.72, 0.04, 0.5, P.dark, 0, cy(-0.1)+0.36, -0.28), box(0.5, 0.03, 0.2, tc, 0, cy(-0.1)+0.4, -0.28));   // techo con franja
+        for(const sx of [-1,1]) body.add(tilt(box(0.05, 0.62, 0.05, P.metal, sx*0.36, cy(-0.6), -0.62), 0.25));        // arco del radar
+        body.add(box(0.78, 0.05, 0.06, P.metal, 0, cy(-0.6)+0.6, -0.5), cyl(0.12, 0.06, 0xe6ebef, 0, cy(-0.6)+0.65, -0.5, 12), lamp(0.05, 0.04, 0.05, P.glow, 0.3, cy(-0.6)+0.65, -0.5));
+        for(const sx of [-1,1]) body.add(box(0.2, 0.36, 0.22, 0x2a2e33, sx*0.24, Y + 0.12, -1.58), box(0.06, 0.2, 0.06, P.metal, sx*0.24, Y - 0.08, -1.62));   // motores fuera de borda
+      } else if(f==='hierro'){    // Patrullera fluvial blindada: casamata de placas inclinadas y torreta de proa
+        body.add(profileZ([[-0.6,0],[0.25,0],[0.12,0.3],[-0.5,0.34]], 0.78, P.dark, 0, cy(-0.25), -0.25, 0.03));
+        for(const sx of [-1,1]) body.add(tilt(box(0.04, 0.26, 0.7, P.hull, sx*0.4, cy(-0.25), -0.42), 0, 0, -sx*0.25));   // placas inclinadas
+        body.add(box(0.36, 0.05, 0.03, P.glass, 0, cy(-0.25)+0.2, 0.1), box(0.6, 0.06, 0.4, tc, 0, cy(-0.25)+0.32, -0.4));   // tronera y techo del equipo
+        body.add(cyl(0.05, 0.4, P.metal, 0.2, cy(-0.6)+0.3, -0.7, 8), box(0.3, 0.08, 0.5, 0x4a4438, 0, cy(-1.1), -1.1));   // escape y bote de goma plegado
+      } else {                    // Lancha de pesca armada: toldo sobre postes, motor fuera de borda y bidones
+        for(const sx of [-1,1]) for(const zz of [-0.15, -0.75]) body.add(box(0.04, 0.5, 0.04, WOOD, sx*0.36, cy(zz), zz));
+        body.add(tilt(box(0.86, 0.03, 0.78, CLOTH, 0, cy(-0.45)+0.5, -0.45), 0.06));                                   // toldo
+        body.add(box(0.36, 0.22, 0.3, WOOD, -0.18, cy(-0.6), -0.6), cyl(0.09, 0.26, 0x5f6a3a, 0.25, cy(-0.8), -0.8, 10), cyl(0.09, 0.26, 0x8a3a2a, 0.25, cy(-1.05), -1.05, 10));
+        body.add(box(0.24, 0.4, 0.26, 0x2e2b26, 0, Y + 0.1, -1.6), box(0.07, 0.22, 0.07, P.metal, 0, Y - 0.1, -1.66));   // motor fuera de borda
+      }
+      { const t = turret(cy(0.85), 0.85);   // ametralladora de proa con escudo
+        t.add(cyl(0.12, 0.1, P.dark, 0, 0, 0, 12), cyl(0.04, 0.2, P.metal, 0, 0.08, 0, 8), box(0.34, 0.2, 0.03, f==='guerrilla' ? P.dark : P.hull, 0, 0.16, 0.12), box(0.08, 0.08, 0.3, GUN, 0, 0.26, 0.02));
+        const b = barrel(0.6, 0.03, GUN); b.position.set(0, 0.3, 0.45); t.add(b); const fl = barrel(0.08, 0.045, GUN); fl.position.set(0, 0.3, 0.76); t.add(fl); }
+      o.boat = true; break; }
     case 'fragata': {
-      body.add(casco(4.8, 1.55, 0.6, P.hull, 0, 0.18, 0.35), casco(4.1, 1.32, 0.06, tc, 0, 0.5, 0.25), casco(3.6, 1.1, 0.04, 0x8a857a, 0, 0.54, 0.2));   // casco, franja y cubierta
-      body.add(profileZ([[-1.2,0],[0.25,0],[0.05,0.72],[-1.05,0.76]], 1.0, P.trim, 0, 0.55, -0.1, 0.04), tilt(box(0.82,0.14,0.04,P.glass,0,1.08,0.08),-0.3));   // superestructura con puente inclinado
-      if(f==='atlas') body.add(ball(0.32,0xe6ebef,0,1.55,-0.6), cyl(0.05,0.4,P.metal,0,1.25,-0.6,6), lamp(0.5,0.12,0.5,0x2a3a44,0,0.55,1.2));
-      else if(f==='hierro') body.add(box(0.6,0.7,0.6,P.dark,0,1.25,-0.6), cyl(0.15,0.5,P.metal,0,1.25,-1.2,8));
-      else body.add(box(0.8,0.4,0.6,WOOD,0,0.55,-1.4), box(0.5,0.3,0.5,CLOTH,0.2,0.95,-1.4), cyl(0.05,1.6,P.metal,0,1.25,-0.6,6));
-      const t = turret(0.6,1.2); t.add(cyl(0.32,0.12,P.dark,0,0,0,16), tilt(profileZ([[-0.32,0],[0.28,0],[0.2,0.3],[-0.3,0.32]], 0.6, f==='hierro'?P.dark:P.metal, 0, 0.1, 0, 0.03), 0, 0, 0)); const b = barrel(f==='hierro'?1.6:1.4,f==='hierro'?0.1:0.08,GUN); b.position.set(0,0.2,0.8); t.add(b);
+      const H = f==='hierro' ? 0.5 : 0.64, Y = -0.24, LEN = f==='hierro' ? 4.6 : 4.9, W = f==='hierro' ? 1.7 : 1.5, cy = z => Y + cubiertaY(LEN, H, z);
+      body.add(...cascoV(LEN, W, H, f==='guerrilla' ? P.trim : P.hull, f==='guerrilla' ? WOOD : 0x77736a, Y, 0, tc));   // con la franja del equipo bajo la borda
+      let gun = 1.4, gr = 0.08, tz = 1.35;
+      if(f==='atlas'){            // Fragata lanzamisiles furtiva: superestructura en escalones inclinados, mástil integrado con radares planos,
+                                  // celdas de lanzamiento vertical en la proa y cubierta de vuelo en la popa
+        const yb = cy(-0.3);
+        body.add(profileZ([[-1.2,0],[0.5,0],[0.3,0.42],[-1.05,0.46]], 1.1, P.hull, 0, yb, -0.3, 0.03), profileZ([[-0.6,0],[0.25,0],[0.1,0.36],[-0.5,0.38]], 0.8, P.hull, 0, yb+0.44, -0.35, 0.03));
+        body.add(tilt(box(0.66, 0.1, 0.03, P.glass, 0, yb+0.6, -0.05), -0.4));                                           // puente
+        { const m = lathe([[0.3,0],[0.25,0.3],[0.17,0.52],[0.0005,0.52]], P.hull, 0, yb+0.8, -0.5, 4); m.rotation.y = Math.PI/4; body.add(m); }   // mástil integrado (pirámide truncada)
+        body.add(cyl(0.025, 0.4, P.metal, 0, yb+1.32, -0.5, 6), box(0.3, 0.02, 0.02, P.metal, 0, yb+1.55, -0.5));       // antena y verga
+        for(let i=0; i<4; i++){ const a = i*Math.PI/2, rp = box(0.18, 0.18, 0.02, 0x3a4652, Math.sin(a)*0.23, yb+0.92, -0.5 + Math.cos(a)*0.23); rp.rotation.y = a; body.add(rp); }   // radares planos
+        body.add(box(0.5, 0.05, 0.3, tc, 0, yb+0.82, -0.35), lamp(0.06, 0.06, 0.06, P.glow, 0, yb+1.72, -0.5));
+        for(let i=0; i<2; i++) for(let j=0; j<4; j++) body.add(box(0.14, 0.03, 0.14, 0x2a3036, -0.24 + j*0.16, cy(0.72), 0.62 + i*0.17));   // celdas de lanzamiento
+        body.add(box(1.0, 0.012, 0.9, 0x5a5e60, 0, cy(-1.85), -1.85), box(0.5, 0.014, 0.05, 0xe6e2d6, 0, cy(-1.85)+0.005, -1.85), box(0.05, 0.014, 0.5, 0xe6e2d6, 0, cy(-1.85)+0.005, -1.85));   // cubierta de vuelo con marca
+        tz = 1.5; gun = 1.25; gr = 0.06;
+      } else if(f==='hierro'){    // Monitor fluvial: casco bajo y ancho, gran torre de tanque en la proa, casamata y chimenea
+        const yb = cy(-0.6);
+        body.add(profileZ([[-1.0,0],[0.45,0],[0.3,0.4],[-0.9,0.42]], 1.15, P.dark, 0, yb, -0.6, 0.03), box(0.86, 0.38, 0.6, P.hull, 0, yb+0.42, -0.55));
+        body.add(box(0.6, 0.05, 0.03, P.glass, 0, yb+0.62, -0.24), box(0.9, 0.06, 0.62, tc, 0, yb+0.8, -0.55));   // tronera del puente y techo
+        body.add(cyl(0.16, 0.55, 0x2e2b28, 0, yb+0.4, -1.25, 10), cyl(0.18, 0.05, P.metal, 0, yb+0.95, -1.25, 10));      // chimenea
+        { const t2 = named(new THREE.Group(), 'turret2'); t2.position.set(0, cy(-1.9), -1.9); body.add(t2); t2.add(cyl(0.22, 0.16, P.dark, 0, 0, 0, 12)); const b2 = barrel(0.5, 0.03, GUN); b2.position.set(0, 0.12, -0.3); t2.add(b2); }   // ametralladora de popa
+        tz = 1.1; gun = 1.6; gr = 0.1;
+      } else {                    // Pesquero armado: caseta de gobierno, mástil con botalones, redes y cajones
+        const yb = cy(-0.9);
+        body.add(box(0.8, 0.55, 0.7, WOOD, 0, yb, -0.9), box(0.9, 0.05, 0.8, P.trim, 0, yb+0.55, -0.9), box(0.6, 0.14, 0.03, P.glass, 0, yb+0.34, -0.54));   // caseta
+        body.add(cyl(0.05, 1.7, P.metal, 0, cy(0.2), 0.2, 6), tilt(box(0.035, 0.035, 1.1, P.metal, 0, cy(0.2)+1.0, -0.25), 0.55));   // mástil y botalón
+        body.add(box(0.7, 0.2, 0.45, 0x5a5236, 0, cy(-1.8), -1.8), box(0.36, 0.26, 0.36, WOOD, 0.4, cy(-0.2), -0.2), box(0.3, 0.2, 0.3, 0x5f6a3a, -0.4, cy(-0.2), -0.3));   // redes y cajones
+        body.add(box(0.36, 0.03, 0.04, tc, 0, yb+0.6, -0.5));
+        tz = 1.3; gun = 1.3; gr = 0.075;
+      }
+      const t = turret(cy(tz), tz);
+      if(f==='atlas'){ t.add(prism([[-0.3,0],[0.3,0],[0.22,0.26],[-0.22,0.28]], 0.62, P.hull, 0, 0, -0.05, 0.03)); t.children[t.children.length-1].rotation.y = Math.PI/2; }   // torre facetada
+      else if(f==='hierro'){ const dom = lathe([[0.42,0],[0.4,0.14],[0.32,0.3],[0.16,0.38],[0,0.39]], P.hull, 0, 0, -0.05, 18); dom.scale.set(1, 1, 1.15); t.add(dom); t.add(cyl(0.14, 0.24, P.dark, 0, 0.1, 0.38, 10)); t.children[t.children.length-1].rotation.x = Math.PI/2; }
+      else t.add(cyl(0.3, 0.1, P.dark, 0, 0, 0, 14), box(0.5, 0.3, 0.04, P.dark, 0, 0.1, 0.25), box(0.12, 0.12, 0.34, GUN, 0, 0.16, 0));   // cañón sobre pedestal con escudo
+      const cn = named(new THREE.Group(), 'canon'); t.add(cn);
+      { const b = barrel(gun, gr, f==='hierro' ? P.metal : GUN); b.position.set(0, 0.17, 0.3 + gun/2); const m = barrel(0.12, gr*1.35, P.dark); m.position.set(0, 0.17, 0.3 + gun); cn.add(b, m); }
       o.boat = true; break; }
     default:
       body.add(box(1.2,0.8,1.6,P.hull,0,0.2,0), box(1.22,0.12,0.6,tc,0,0.8,0));
@@ -2799,7 +2963,7 @@ const PAL_UNIT = { atlas:{ hull:0xa6a898, dark:0x4c534e, trim:0x767d72, glass:0x
 // Nivel de detalle global de las unidades: simplificado con la cámara alejada (con margen para no alternar) o en calidad Media y Baja
 let LOD_LO = false;
 // Pasa al grupo padre las piezas de los subgrupos sin animación (y los ejes de ruedas), con su transformación aplicada
-const ANIMADOS = new Set(['turret','rotor','rotor2','cargo','star','spin','tool','cable','hook','winch','beam','gatling','leg','ametra','tren','bomba']);   // de lejos la pantorrilla se fusiona con la pierna
+const ANIMADOS = new Set(['turret','rotor','rotor2','cargo','star','spin','tool','cable','hook','winch','beam','gatling','leg','ametra','tren','bomba','tread']);   // de lejos la pantorrilla se fusiona con la pierna
 function flattenStatic(g){
   for(const c of g.children.slice()){
     if(c.isMesh) continue;
@@ -2826,6 +2990,19 @@ function updateLod(){
 // Mejoras de unidad terminadas que cambian el modelo de este tipo (por ejemplo, la ametralladora de los tanques)
 const mejorasUnidad = e => e.owner>=0 && S.players[e.owner] ? Object.keys(MEJORAS).filter(k => MEJORAS[k].unidades && MEJORAS[k].unidades.includes(e.type) && S.players[e.owner].ups[k]===2).sort() : [];
 let UNIT_UPS = new Set();   // mejoras del modelo que se está armando (las consulta unitModel)
+// Vehículos de ruedas (modelo detallado): el eje delantero se divide en una rueda por grupo, cada una con su pivote, para que giren al doblar
+function ejesConDireccion(body){
+  const ejes = []; body.traverse(c => { if(c.name==='axle') ejes.push(c); });
+  if(ejes.length < 2 || body.getObjectByName('tread')) return;
+  const zm = Math.max(...ejes.map(a => a.position.z));
+  for(const a of ejes){ if(a.position.z < 0.15 || a.position.z < zm - 0.05 || !a.children.length) continue;
+    const lados = new Map(); for(const c of a.children) { const sx = c.position.x < 0 ? -1 : 1; if(!lados.has(sx)) lados.set(sx, []); lados.get(sx).push(c); }
+    if(lados.size < 2) continue;
+    for(const hijos of lados.values()){ const xw = hijos[0].position.x, r = named(new THREE.Group(), 'axle');
+      r.position.set(a.position.x + xw, a.position.y, a.position.z); r.rotation.order = 'YXZ'; r.userData.r = a.userData.r; r.userData.dir = true;
+      for(const c of hijos){ c.position.x -= xw; r.add(c); } a.parent.add(r); }
+    a.parent.remove(a); }
+}
 function unitBody(e, o){
   const ups = mejorasUnidad(e), f = S.players[e.owner].faction, key = `${e.type}|${f}|${TEAM[e.owner]}|${TEAM_DARK[e.owner]}|${LOD_LO ? 'lo' : 'hi'}|${ups.join(',')}`;
   if(!UNIT_PROTO.has(key)){
@@ -2835,11 +3012,13 @@ function unitBody(e, o){
     UNIT_UPS = new Set(ups);
     try { TINT = null; unitModel(e, tmp, body); vehicleDetails(e, body, f, PAL[f]); } finally { PAL[f] = keep; UNIT_UPS = new Set(); }
     const veh = VEHICULOS.has(e.type) && !(e.type==='recolector' && f==='guerrilla'), inf = UT(e.owner,e.type).armor==='inf';
+    if(!LOD_LO && !e.air && !tmp.boat && !inf) ejesConDireccion(body);
+    const rueda = !e.air && !tmp.boat && (!!body.userData.oruga || !!body.getObjectByName('axle'));   // deja huellas, polvo y humo de escape
     if(LOD_LO) flattenStatic(body);   // vista alejada: ruedas y piezas fijas en una sola malla (menos llamadas de dibujo)
-    mergeGroup(body, { polvo: e.air ? 0 : veh ? 1 : 0.35, mat: inf ? 'tela' : (veh || UT(e.owner,e.type).naval) ? 'camo' : '', uv: inf ? 2.6 : 0.6 });
+    mergeGroup(body, { polvo: e.air || tmp.boat ? 0 : veh ? 1 : 0.35, mat: inf ? 'tela' : (veh || UT(e.owner,e.type).naval) ? 'camo' : '', uv: inf ? 2.6 : 0.6 });
     DETAIL_LO = false;
     if(LOD_LO && inf) body.traverse(m => { if(m.isMesh) m.castShadow = false; });   // de lejos la sombra de un soldado no se distingue y duplica el dibujo
-    UNIT_PROTO.set(key, { body, boat:!!tmp.boat });
+    UNIT_PROTO.set(key, { body, boat:!!tmp.boat, rueda });
   }
   const p = UNIT_PROTO.get(key), body = p.body.clone();
   o.turret = body.getObjectByName('turret') || null; o.rotor = body.getObjectByName('rotor') || null;
@@ -2850,10 +3029,16 @@ function unitBody(e, o){
   o.fac = f;
   o.axles = []; o.legs = []; o.shins = [];
   body.traverse(c => { if(c.name==='axle') o.axles.push(c); else if(c.name==='leg') o.legs.push(c); else if(c.name==='shin') o.shins.push(c); });
-  o.lote = []; for(const l of o.legs) l.traverse(m => { if(m.isMesh){ m.visible = false; m.userData.lote = true; o.lote.push(m); } });   // las piernas se dibujan por lotes (dibujarLotes)
+  // Todo el modelo se dibuja por lotes (dibujarLotes): una llamada por pieza igual entre todas las unidades en pantalla.
+  // Las mallas quedan ocultas y aportan su matriz animada; las transparentes (disco del rotor) se dibujan solas.
+  o.lote = []; body.traverse(m => { if(m.isMesh && !m.userData.propio && !m.material.transparent){ m.visible = false; m.userData.lote = true; o.lote.push(m); } });
+  o.rad = Math.max(1.5, e.radius*2.4 + (e.air ? 1.5 : 0));   // radio para descartar las unidades fuera de la vista
   if(o.turret) o.turret.userData.base = o.turret.position.clone();
+  o.treads = []; body.traverse(c => { if(c.name==='tread') o.treads.push(c); }); o.tread = o.treads[0] || null; o.canon = body.getObjectByName('canon') || null;
+  o.frente = o.axles.filter(a => a.userData.dir); if(!o.frente.length) o.frente = null;   // ruedas delanteras con dirección (ejesConDireccion)
   o.walk = 0; o.recoil = 0; o.dustT = 0; o.born = S.tick > 1 ? performance.now() : 0;
   if(p.boat) o.boat = true;
+  o.rueda = p.rueda;
   return body;
 }
 
@@ -2880,6 +3065,36 @@ function casco(len, w, h, color, x=0, y=0, z=0){
   const pts = [[-a*0.82, L], [a*0.82, L], [a, L*0.3], [a*0.97, -L*0.15], [a*0.75, -L*0.5], [a*0.4, -L*0.8], [0, -L], [-a*0.4, -L*0.8], [-a*0.75, -L*0.5], [-a*0.97, -L*0.15], [-a, L*0.3]];
   const m = prism(pts, h, color, x, y, z, 0.04); m.rotation.x = -Math.PI/2; return m;
 }
+// Casco de barco con forma: costados acampanados, pantoque y fondo en V, proa afilada que sube (arrufo) y espejo de popa.
+// Secciones transversales a lo largo de Z (proa en +Z); y = 0 es la quilla. Devuelve el casco y la cubierta (en otro color).
+function cascoV(len, w, h, color, cub, y=0, z=0, banda=null){
+  const N = DETAIL_LO ? 7 : 16, key = `cv${len}_${w}_${h}_${N}`, L = len/2;
+  const sec = i => { const t = i/N, u = Math.max(0, (t - 0.5)/0.5);
+    const wd = w/2*(t < 0.5 ? 0.84 + 0.16*Math.sqrt(t/0.5) : Math.sqrt(Math.max(0, 1 - u*u))), yd = h*(1 + 0.3*u*u), yk = h*0.55*Math.pow(Math.max(0, (t - 0.72)/0.28), 1.6);
+    const wc = wd*0.68, yc = yk + (yd - yk)*0.3, zz = -L + t*len;
+    return [[-wd, yd, zz], [-wc, yc, zz], [0, yk, zz], [wc, yc, zz], [wd, yd, zz]]; };
+  const S = []; for(let i=0; i<=N; i++) S.push(sec(i));
+  const lados = geo(key + 'l', () => {   // costados y fondo con normales suaves; espejo de popa aparte (arista viva)
+    const p = [], ix = []; for(const sc of S) for(const v of sc) p.push(...v);
+    for(let i=0; i<N; i++) for(let j=0; j<4; j++){ const a = i*5 + j, b = a + 1, c = a + 5, d = c + 1; ix.push(a, b, c, b, d, c); }
+    const b0 = p.length/3, s0 = S[0]; for(const v of s0) p.push(...v); p.push(0, (s0[0][1] + s0[2][1])/2, -L);
+    for(let j=0; j<5; j++) ix.push(b0 + 5, b0 + (j+1)%5, b0 + j);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); g.setIndex(ix); g.computeVertexNormals(); return g; });
+  const cubierta = geo(key + 'c', () => {
+    const p = []; for(let i=0; i<N; i++){ const a = S[i], b = S[i+1]; p.push(...a[0], ...b[0], ...a[4], ...b[0], ...b[4], ...a[4]); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); g.computeVertexNormals(); return g; });
+  const ms = [new THREE.Mesh(lados, mat(color)), new THREE.Mesh(cubierta, mat(cub))];
+  if(banda!==null) ms.push(new THREE.Mesh(geo(key + 'b', () => {   // franja del equipo bajo la borda: sigue el arrufo y el costado
+    const p = [], q = (v, k) => [v[0]*k, v[1], v[2]], baja = (a, b) => [a[0] + (b[0]-a[0])*0.4, a[1] + (b[1]-a[1])*0.4, a[2]];
+    for(let i=1; i<N-1; i++){ const A = S[i], B = S[i+1];
+      for(const [e, c, sg] of [[0, 1, -1], [4, 3, 1]]){ const a0 = q(A[e], 1.012), a1 = q(baja(A[e], A[c]), 1.012), b0 = q(B[e], 1.012), b1 = q(baja(B[e], B[c]), 1.012);
+        if(sg < 0) p.push(...a0, ...a1, ...b0, ...a1, ...b1, ...b0); else p.push(...a0, ...b0, ...a1, ...a1, ...b0, ...b1); } }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); g.computeVertexNormals(); return g; }), mat(banda)));
+  for(const m of ms){ m.position.set(0, y, z); m.castShadow = true; m.receiveShadow = true; }
+  return ms;
+}
+// Altura de la cubierta del casco con forma en la posición z (para apoyar piezas sobre ella)
+const cubiertaY = (len, h, z) => { const t = z/len + 0.5, u = Math.max(0, (t - 0.5)/0.5); return h*(1 + 0.3*u*u); };
 // Perfil lateral (z, y) extruido a lo ancho (eje X): cascos de vehículos y naves industriales
 function profileZ(pts, width, color, x=0, y=0, z=0, bevel=0.03){ const m = prism(pts, width, color, x, y, z, bevel); m.rotation.y = -Math.PI/2; return m; }
 // Pieza de revolución: lista de [radio, altura]
@@ -3139,6 +3354,8 @@ function buildingModel(e, body){
       body.add(box(0.95,0.11,0.06,0x141210,0,0.58,0.73), box(0.06,0.11,0.8,0x141210,0.73,0.58,0), box(0.06,0.11,0.8,0x141210,-0.73,0.58,0));
       body.add(box(1.0,0.05,0.14,0x5a5650,0,0.66,0.77), box(0.5,0.62,0.06,P.metal,0,0.05,-0.84), lamp(0.08,0.08,0.03,0xff4a3a,0.34,0.6,-0.87));
       sandbags(body, 0, 0, 1.1, 0.5, 2.65, 0, 1); hazard(body, 1.2, 0, 1.22, 0);
+      if(mejorasDe(e).includes('aspilleras')){ body.add(box(0.06,0.11,0.8,0x141210,0,0.58,-0.73), box(0.6,0.05,0.14,0x5a5650,0,0.66,-0.77)); sandbags(body, 0, 0, 1.1, 0.5, 2.65, 0.2, 1); body.add(box(0.36,0.03,0.13,0xf2d16b,0,1.2,-0.4)); }   // aspillera trasera, más sacos y galón
+      ocupantes(body, f, [[-0.2,0.63,0.62,0,1],[0.62,0.63,0.1,Math.PI/2,1],[-0.62,0.63,-0.1,-Math.PI/2,1],[0.25,0.63,0.62,0,1],[0.1,0.63,-0.62,Math.PI,1]]);   // fusiles por las aspilleras
       break;
     case 'minigun': {   // torreta de cañones rotativos con escudo
       body.add(talud(1.45,1.45,0.6,0.22,0x6d6862), cyl(0.46,0.18,P.dark,0,0.6,0,18)); hazard(body, 1.1, 0, 0.05, 0.66);
@@ -3154,6 +3371,7 @@ function buildingModel(e, body){
         { const r = barrel(0.04,0.1,P.dark); r.position.set(0,0,0.78); g.add(r); }
       });
       if(doble) t.add(box(0.26,0.26,0.32,0x4a4a3a,-0.4,0.02,-0.08), box(0.6,0.05,0.05,0xf2d16b,0,0.47,-0.02));
+      if(mejorasDe(e).includes('escudoMinigun')){ for(const sx of [-1,1]) t.add(tilt(box(0.08,0.5,0.55,P.hull,sx*0.5,0.0,0.12),0,sx*0.35,0)); t.add(box(1.05,0.12,0.12,P.dark,0,0.5,0.34), box(0.4,0.04,0.12,0xf2d16b,0,0.57,0.34)); }   // escudo ampliado con alas
       break; }
     case 'bateria': {   // lanzador de misiles con radar de enlace
       body.add(prism([[-0.8,0],[0.8,0],[0.7,0.35],[-0.7,0.35]], 1.6, P.hull, 0, 0, 0, 0.04), box(1.42,0.05,1.42,tc,0,0.35,0), cyl(0.4,0.15,P.dark,0,0.38,0,18));
@@ -3161,6 +3379,7 @@ function buildingModel(e, body){
       body.add(cyl(0.04,1.4,P.metal,-0.6,0.35,-0.6,8), lamp(0.08,0.08,0.08,P.glow,-0.6,1.78,-0.6));
       { const sp = named2('spin', -0.6, 1.6, -0.6); sp.add(box(0.5,0.28,0.05,0xd9dfe3,0,0,0.04), box(0.06,0.06,0.12,P.metal,0,0,-0.03)); }   // radar del enlace de datos
       if(mejorasDe(e).includes('enlace')) body.add(cyl(0.035,2.0,P.metal,0.62,0.35,-0.62,8), box(0.5,0.03,0.03,P.metal,0.62,2.05,-0.62), box(0.03,0.03,0.5,P.metal,0.62,2.2,-0.62), lamp(0.09,0.09,0.09,P.glow,0.62,2.38,-0.62), box(0.3,0.04,0.3,0xf2d16b,0.62,0.35,-0.62));   // enlace ampliado
+      if(mejorasDe(e).includes('radarLargo')){ body.add(cyl(0.05,1.0,P.metal,0.62,0.35,0.62,8)); const pl = new THREE.Mesh(geo('platoRadar', () => new THREE.SphereGeometry(0.42, 12, 6, 0, Math.PI*2, 0, Math.PI/2.6)), mat(0xd9dfe3)); pl.rotation.x = Math.PI*0.62; pl.position.set(0.62, 1.42, 0.62); body.add(pl, box(0.3,0.04,0.3,0xf2d16b,0.62,0.35,0.62)); }   // plato de radar de largo alcance
       const t = named2('turret', 0, 0.53, 0);
       t.add(box(0.36,0.3,0.36,P.dark,0,0,0));
       const rack = new THREE.Group(); rack.position.set(0,0.42,0.05); rack.rotation.x = -0.45; t.add(rack);
@@ -3173,6 +3392,8 @@ function buildingModel(e, body){
       for(const x of [-0.5, 0, 0.5]) body.add(box(0.1,0.34,0.06,WOOD,x,0.02,-0.62));                       // tablones
       for(const [x,z] of [[-0.75,-0.4],[0.75,-0.4],[0,0.75]]) body.add(box(0.05,0.62,0.05,WOOD,x,0,z));
       body.add(tilt(box(1.7,0.03,1.3,0x5f6a3a,0,0.62,0.05),0.08,0,0.05), box(0.3,0.03,0.25,0x6d6b3c,0.4,0.66,-0.3), box(0.45,0.06,0.08,tc,0,0.48,0.82));   // red y distintivo
+      if(mejorasDe(e).includes('trincheraProfunda')){ sandbags(body, 0, 0, 1.12, -0.6, 3.75, 0.02, 1); for(const x of [-0.25, 0.25]) body.add(box(0.1,0.34,0.06,WOOD,x,0.02,0.62)); body.add(box(0.3,0.03,0.12,0xf2d16b,0,0.5,0.86)); }   // parapeto más ancho, tablones y galón
+      ocupantes(body, f, [0.35, 1.57, 2.8, -0.3].map(a => [Math.cos(a)*0.66, 0.4, Math.sin(a)*0.66, Math.PI/2 - a]));   // cabezas y fusiles sobre los sacos
       if(mejorasDe(e).includes('camuflaje')){   // camuflaje mejorado: red amplia con follaje y una fila más de sacos
         body.add(tilt(box(2.1,0.03,1.8,0x55613a,0,0.72,0),0.05,0,-0.04));
         for(const [x,z,c] of [[-0.7,-0.5,0x6b7a3e],[0.6,-0.6,0x4f5a30],[-0.3,0.5,0x6b7a3e],[0.75,0.45,0x5f6a3a],[0.1,0,0x4f5a30]]) body.add(tilt(box(0.45,0.12,0.4,c,x,0.74,z),0.2,x,0.15));
@@ -3279,6 +3500,10 @@ function buildingModel(e, body){
       if(A){ body.add(lathe([[0.8,0],[0.75,0.2],[0.5,0.5],[0.42,1.4],[0.55,1.5],[0,1.55]], P.hull), cyl(0.44,0.08,tc,0,1.0,0,16), lamp(0.08,0.4,0.08,P.glow,0,0.6,0.46)); }
       else if(H){ body.add(talud(1.7,1.7,1.0,0.3,0x6d6862), talud(1.1,1.1,0.5,0.12,P.hull,0,1.0,0), box(1.12,0.08,1.12,tc,0,1.2,0)); hazard(body, 1.4, 0, 0.05, 0.78); }
       else { for(const [x,z] of [[-0.6,-0.6],[0.6,-0.6],[-0.6,0.6],[0.6,0.6]]) body.add(tilt(box(0.1,1.6,0.1,WOOD,x,0,z),z*0.08,0,-x*0.08)); body.add(box(1.4,0.1,1.4,WOOD,0,1.5,0)); sandbags(body, 0, 0, 0.6, 0, 6.28, 1.6, 1); }
+      const ut = mejorasDe(e);
+      if(ut.includes('torreBlindaje')){ if(A) body.add(cyl(0.86, 0.35, P.trim, 0, 0, 0, 20), cyl(0.5, 0.14, P.trim, 0, 1.25, 0, 16)); else if(H) for(const [x,z,w,d] of [[0,0.86,1.5,0.12],[0,-0.86,1.5,0.12],[0.86,0,0.12,1.5],[-0.86,0,0.12,1.5]]) body.add(box(w, 0.7, d, 0x6d6862, x, 0, z)); else sandbags(body, 0, 0, 0.95, 0, 6.28, 0, 2); }   // blindaje o sacos en la base
+      if(ut.includes('torreFuego')) for(let j=0; j<2; j++) body.add(box(0.4, 0.26, 0.3, 0x4f5a3a, -0.55 + j*0.45, A ? 0.05 : 0.1, 0.95), box(0.42, 0.04, 0.32, 0xb8a050, -0.55 + j*0.45, A ? 0.31 : 0.36, 0.95));   // cajas de munición
+      ut.forEach((k, i) => body.add(box(0.3, 0.04, 0.1, 0xf2d16b, -0.2 + i*0.4, A ? 1.12 : H ? 1.3 : 1.62, 0.6)));   // galones dorados
       const t = named2('turret', 0, 1.5, 0);
       if(A){ t.add(ball(0.5, 0xe6ebef, 0, 0.2, 0, 1, 0.7, 1), box(0.7,0.08,0.3,tc,0,0.35,-0.25), lamp(0.25,0.06,0.04,P.glow,0,0.3,0.45)); const b = barrel(1.4,0.08,P.metal); b.position.set(0,0.25,0.9); t.add(b); }
       else if(H){ t.add(box(0.95,0.5,0.95,P.hull), box(0.97,0.08,0.4,tc,0,0.5,-0.25)); const b = barrel(1.2,0.12,P.metal); b.position.set(0,0.3,0.75); t.add(b); const m = barrel(0.25,0.17,P.dark); m.position.set(0,0.3,1.35); t.add(m); }
@@ -3345,6 +3570,7 @@ function buildingModel(e, body){
       break;
     case 'refugioCasa': case 'refugioGas': {   // edificación abandonada ocupable: la misma ruina; con ocupantes, sacos en la entrada y bandera del equipo
       const r = ruinPartes(e.ruinT || 0); r.rotation.y = (e.rot || 0)*Math.PI/2; body.add(r);
+      if(e.owner>=0) ocupantes(r, f, OCUP_RUINA[e.ruinT ? 1 : 0]);   // tropas asomadas en ventanas y puertas
       if(e.owner>=0){ const fx = W*0.38, fz = D*0.38; body.add(box(0.06, 2.4, 0.06, WOOD, fx, 0.1, fz), prism([[0,0],[0.8,0.12],[0.8,0.42],[0,0.55]], 0.03, tc, fx + 0.03, 1.95, fz, 0)); sandbags(body, -fx*0.6, fz*1.05, 0.7, -0.6, 0.6, 0.05, 2); }
       break; }
     case 'pozo': {   // Bombeo de varilla: balancín animado, cabeza de caballo y contrapeso
@@ -3360,7 +3586,7 @@ function buildingModel(e, body){
   if(!small && e.type!=='pozo' && !DETAIL_LO) ambientar(body, e, f, P, tc, s, nLosa);
   // Mejoras terminadas: piezas nuevas y galones dorados en la fachada (una por mejora)
   const ups = mejorasDe(e).filter(k => MEJORAS[k].edificio===e.type);
-  if(ups.length){
+  if(ups.length && !small){   // las defensas pequeñas muestran sus mejoras en su propio modelo
     const esq = (i) => [[h2-0.75, h2-0.75], [-h2+0.75, h2-0.75], [h2-0.75, -h2+0.75], [-h2+0.75, -h2+0.75]][i % 4];
     // Las tecnologías por facción reutilizan las piezas visuales de las mejoras genéricas
     const VIS = { sensores:'optica', perforantes:'municion', cohetes:'municion', misilesGuiados:'enlace', aleacion:'blindaje', diesel:'blindaje', emboscada:'camuflaje', trucados:'montaje', exoesqueleto:'instruccion', estandarte:'instruccion', veterania:'instruccion' };
@@ -3469,6 +3695,8 @@ const BLD_PROTO = new Map();
 // Mejoras que se compran en un edificio pero cambian el aspecto de otro (las tres tecnologías de facción del centro de investigación)
 const MEJORA_APLICA = { doblecanon:'minigun', enlace:'bateria', camuflaje:'trinchera' };
 const mejorasDe = e => e.owner>=0 && S.players[e.owner] ? Object.keys(MEJORAS).filter(k => (MEJORAS[k].edificio===e.type || MEJORA_APLICA[k]===e.type) && S.players[e.owner].ups[k]===2).sort() : [];
+const W0 = e => (e.w||e.n)*CELL, H0 = e => (e.h||e.n)*CELL;   // huella del edificio en unidades del mundo
+const LOTE_BLD = new Set(['torre','bunker','minigun','bateria','trinchera','tunel','planta','pozo']);
 function buildingBody(e, o){
   const f = e.owner>=0 && S.players[e.owner] ? S.players[e.owner].faction : 'neutral';
   const kind = e.type==='superarma' ? BT(e.owner,'superarma').superKind : '';
@@ -3485,6 +3713,11 @@ function buildingBody(e, o){
   o.spin = body.getObjectByName('spin') || null; o.scaffold = body.getObjectByName('scaffold') || null; o.gatling = body.getObjectByName('gatling') || null; o.gatling2 = body.getObjectByName('gatling2') || null;
   o.smoke = body.userData.smoke || null; o.smokeT = Math.random();
   o.luces = []; o.vidrios = []; body.traverse(m => { if(!m.isMesh) return; if(m.material===VCMAT.luz) o.luces.push(m); else if(m.material===WIN_MAT[0]) o.vidrios.push(m); });
+  o.ocup = body.getObjectByName('ocupantes') || null; o.ocupN = -1;
+  // Dibujo por lotes en los edificios que suelen repetirse (defensas, plantas, pozos): los iguales comparten llamadas de dibujo, también en la sombra.
+  // Los únicos (centro, fábrica) se dibujan solos: un lote de una sola instancia no ahorra nada.
+  o.lote = []; if(LOTE_BLD.has(e.type)) body.traverse(m => { if(m.isMesh && !m.userData.propio && !m.material.transparent){ m.visible = false; m.userData.lote = true; o.lote.push(m); } });
+  o.rad = Math.max(W0(e), H0(e))*0.75 + 2.5;
   return body;
 }
 
@@ -3810,34 +4043,83 @@ function ruinBody(t){
 }
 // Piezas sin fusionar de cada ruina (los refugios las agregan a su propio modelo antes de fusionarlo)
 function ruinPartes(t){
-  const g = new THREE.Group(); TINT = null; const PARED = 0xb8a78a, OSC = 0x6b5e4c, OXI = 0x7a4a2a;
-  if(t===0){   // casa de adobe en ruinas: muros incompletos, techo caído y escombros
-    g.add(box(3.4, 0.1, 3.2, 0x9a8a6c, 0, 0, 0));
-    g.add(box(3.2, 1.6, 0.22, PARED, 0, 0.1, -1.4), box(0.22, 1.2, 2.8, PARED, -1.5, 0.1, 0), box(1.2, 1.9, 0.22, PARED, 1.0, 0.1, 1.4), box(0.22, 0.7, 1.4, PARED, 1.5, 0.1, -0.6));
-    g.add(box(0.5, 0.6, 0.24, 0x2a2622, -0.6, 0.6, -1.4), box(0.6, 0.9, 0.24, 0x2a2622, 0.9, 0.1, 1.4));   // hueco de ventana y puerta
-    g.add(tilt(box(2.4, 0.12, 1.8, OSC, -0.2, 0.5, -0.3), 0.35, 0, 0.18), tilt(box(0.12, 0.12, 2.6, 0x5a4026, 0.4, 0.9, -0.2), 0.3, 0, 0.2));   // losa y viga caídas
-    for(const [x, z, r] of [[0.8,-0.4,0.35],[-0.9,0.8,0.3],[0.2,0.9,0.25],[1.3,0.4,0.22]]) g.add(chunk(r, 0x9a8a6c, x, 0.15, z, (x*7|0)&3));
-  } else if(t===1){   // gasolinera abandonada: marquesina, surtidores oxidados y letrero
-    g.add(box(5.6, 0.14, 3.6, 0x77736a, 0, 0, 0));   // losa de concreto
-    for(const [x, z] of [[-1.6,-0.2],[1.6,-0.2],[-1.6,1.2],[1.6,1.2]]) g.add(box(0.18, 2.2, 0.18, 0x8a8478, x, 0.14, z));
-    g.add(tilt(box(4.2, 0.16, 2.2, 0x5f5b54, 0.1, 2.34, 0.5), 0, 0, 0.06), box(4.2, 0.26, 0.08, 0x8a3a2a, 0.1, 2.22, 1.62), box(1.6, 0.04, 1.0, 0x7a4a2a, -0.9, 2.44, 0.2));   // marquesina de chapa con óxido
-    g.add(box(2.2, 1.5, 1.2, PARED, 1.4, 0.14, -1.1), box(2.3, 0.12, 1.3, OSC, 1.4, 1.64, -1.1), box(0.7, 0.5, 0.05, 0x2a2622, 1.2, 0.7, -0.48), box(0.45, 0.95, 0.05, 0x2a2622, 2.1, 0.14, -0.48));   // tienda con ventana y puerta
-    for(const x of [-0.8, 0.8]) g.add(box(0.4, 1.0, 0.3, OXI, x, 0.08, 0), box(0.3, 0.2, 0.32, 0xd8cfb0, x, 0.75, 0));
-    g.add(box(1.4, 1.1, 1.2, PARED, -2.0, 0.08, -1.0), box(0.12, 2.6, 0.12, 0x6b6a62, 2.4, 0.08, 1.4), tilt(box(1.0, 0.6, 0.06, 0xd9a23a, 2.4, 2.4, 1.4), 0, 0.3, 0.12));
-    drums(g, 1.6, -1.2, 2, OXI);
-  } else if(t===2){   // tanque de agua elevado caído
-    g.add(box(3.4, 0.08, 3.2, 0x9a8a6c, 0, 0, 0));
-    const tq = cyl(0.9, 2.2, 0x8a8478, 0, 0, 0, 16); tq.rotation.z = Math.PI/2; tq.position.set(0.2, 0.95, 0.2); g.add(tq);
+  const g = new THREE.Group(); TINT = null; const PARED = 0xb8a78a, OSC = 0x6b5e4c, OXI = 0x7a4a2a, LADRILLO = 0x9a6a4a, VACIO = 0x1e1b18;
+  const m = (w, h, d, x, y, z, c=PARED) => g.add(box(w, h, d, c, x, y, z));
+  if(t===0){   // casa de adobe en ruinas: muros de una pieza con vanos recortados y borde superior quebrado, ladrillos a la vista, vigas, losa caída y escombros
+    m(3.4, 0.1, 3.2, 0, 0, 0, 0x9a8a6c);
+    g.add(muro([[-1.6,0],[1.6,0],[1.6,1.45],[1.2,1.52],[0.9,1.72],[0.5,1.78],[0.1,1.6],[-0.3,1.64],[-0.9,1.74],[-1.3,1.66],[-1.6,1.62]], [[-0.85,0.6,-0.35,1.25]], 0.22, PARED, 0, 0.1, -1.4, 0));   // trasero con ventana
+    g.add(muro([[-1.6,0],[0.4,0],[0.4,1.5],[1.0,1.5],[1.0,0],[1.6,0],[1.6,1.75],[1.1,1.9],[0.6,1.96],[0.1,1.85],[-0.5,1.95],[-1.0,1.9],[-1.6,1.8]], [[-0.9,0.7,-0.4,1.4]], 0.22, PARED, 0, 0.1, 1.4, 0));   // delantero con ventana y puerta
+    g.add(muro([[-1.4,0],[1.4,0],[1.4,0.6],[1.0,0.72],[0.7,1.1],[0.2,1.15],[-0.1,1.5],[-0.6,1.66],[-1.4,1.66]], [], 0.22, PARED, -1.5, 0.1, 0, -Math.PI/2));   // izquierdo roto en escalones
+    g.add(muro([[-1.4,0],[0.3,0],[0.3,0.35],[0.0,0.52],[-0.4,0.76],[-0.9,0.8],[-1.4,0.86]], [], 0.22, PARED, 1.5, 0.1, 0, -Math.PI/2));   // derecho casi derrumbado
+    for(const [x, y, z, ax] of [[-1.5,1.12,0.2,0],[-1.5,0.66,1.0,0],[1.5,0.83,-0.9,0],[0.5,1.82,-1.4,1],[-0.9,1.78,-1.4,1],[0.6,1.98,1.4,1]]) m(ax ? 0.3 : 0.24, 0.09, ax ? 0.24 : 0.3, x, y, z, LADRILLO);   // ladrillos a la vista
+    for(const x of [-0.8, 0.1]) g.add(box(0.1, 0.1, 3.0, 0x5a4026, x, 1.62, 0)); g.add(tilt(box(0.1, 0.1, 2.4, 0x5a4026, 0.9, 1.2, -0.2), 0.32, 0, 0.12));   // vigas
+    g.add(tilt(box(2.2, 0.1, 1.5, OSC, -0.3, 0.55, -0.4), 0.38, 0, 0.16));                                                                            // losa caída
+    for(const [x, z, r] of [[0.8,-0.4,0.35],[-0.9,0.8,0.3],[0.2,0.9,0.25],[1.3,0.4,0.22],[1.8,0.8,0.25],[1.85,-0.9,0.2]]) g.add(chunk(r, 0x9a8a6c, x, 0.15, z, (x*7|0)&3));
+    for(const [x, z] of [[1.75,0.2],[2.0,-0.3],[1.9,0.55]]) m(0.24, 0.09, 0.12, x, 0.1, z, LADRILLO);
+  } else if(t===1){   // gasolinera abandonada: marquesina con un tramo perdido, surtidores con manguera, tienda con ventanal y vidrios rotos, auto abandonado
+    m(5.6, 0.14, 3.6, 0, 0, 0, 0x77736a); m(4.4, 0.015, 0.1, 0, 0.14, 1.55, 0xc9b23a);
+    for(const [x, z] of [[-1.6,-0.2],[1.6,-0.2],[-1.6,1.2],[1.6,1.2]]) m(0.18, 2.2, 0.18, x, 0.14, z, 0x8a8478);
+    g.add(tilt(box(2.4, 0.14, 2.2, 0x5f5b54, -0.95, 2.34, 0.5), 0, 0, 0.04), tilt(box(1.3, 0.14, 2.2, 0x5f5b54, 1.5, 2.3, 0.5), 0, 0, -0.03));   // marquesina con un tramo perdido
+    m(4.2, 0.26, 0.08, 0.1, 2.22, 1.62, 0x8a3a2a); m(1.6, 0.04, 1.0, -0.9, 2.46, 0.2, 0x7a4a2a); g.add(tilt(box(0.8, 0.04, 1.0, 0x6a665e, 0.55, 1.25, 0.65), 0.15, 0.3, 1.15));   // franja, óxido y chapa colgando
+    m(2.2, 1.5, 0.15, 1.4, 0.14, -1.62); m(0.15, 1.5, 1.2, 0.37, 0.14, -1.1); m(0.15, 1.5, 1.2, 2.43, 0.14, -1.1);                                     // tienda: muros
+    m(0.25, 1.5, 0.15, 0.42, 0.14, -0.57); m(1.2, 0.55, 0.15, 1.15, 0.14, -0.57); m(2.0, 0.3, 0.15, 1.4, 1.34, -0.57); m(0.25, 1.5, 0.15, 1.88, 0.14, -0.57);   // ventanal y puerta
+    m(2.35, 0.12, 1.32, 1.4, 1.64, -1.1, OSC); m(1.0, 0.03, 1.0, 1.4, 0.15, -1.1, 0x5a5650);
+    for(const [x, y, w] of [[0.62,1.18,0.18],[1.62,0.75,0.22],[1.7,1.2,0.14]]) g.add(tilt(box(w, 0.14, 0.02, 0x8fa3a8, x, y, -0.55), 0, 0, 0.4));   // vidrios rotos
+    for(const x of [-0.8, 0.8]){ m(0.56, 0.1, 0.38, x, 0.14, 0, 0x6b6a62); m(0.38, 0.95, 0.26, x, 0.24, 0, OXI); m(0.3, 0.18, 0.02, x, 0.85, 0.135, 0xd8cfb0); m(0.42, 0.1, 0.3, x, 1.19, 0, 0x5a4a3a);
+      g.add(tilt(box(0.03, 0.55, 0.03, 0x1e1c1a, x + 0.22, 0.4, 0.05), 0, 0, 0.25), box(0.06, 0.06, 0.14, 0x2a2826, x + 0.3, 0.42, 0.08)); }   // surtidores con manguera
+    { const a = new THREE.Group(); a.position.set(-0.2, 0.14, 1.05); a.rotation.y = 0.35; g.add(a);   // auto abandonado, oxidado y sin ruedas de un lado
+      a.add(box(0.95, 0.32, 1.9, 0x7a5a3e, 0, 0.12, 0), box(0.85, 0.3, 0.9, 0x6a4c34, 0, 0.44, -0.1), box(0.87, 0.18, 0.04, VACIO, 0, 0.5, 0.36), box(0.04, 0.16, 0.6, VACIO, 0.44, 0.52, -0.1), box(0.04, 0.16, 0.6, VACIO, -0.44, 0.52, -0.1));
+      for(const [x, z] of [[-0.42,0.6],[-0.42,-0.6]]){ const r = cyl(0.17, 0.12, RUBBER, x, 0.12, z, 12); r.rotation.z = Math.PI/2; a.add(r); }
+      a.add(box(0.12, 0.08, 0.3, 0x3a3631, 0.42, 0.04, 0.6), box(0.12, 0.08, 0.3, 0x3a3631, 0.42, 0.04, -0.6)); }
+    m(1.4, 1.1, 1.2, -2.0, 0.08, -1.0); m(0.45, 0.85, 0.03, -2.0, 0.1, -0.39, VACIO); corrugated(g, 1.5, 1.3, 0x7a6a52, -2.0, 1.18, -1.0, 0.08);   // depósito con techo de chapa
+    m(0.12, 2.6, 0.12, 2.4, 0.08, 1.4, 0x6b6a62); g.add(tilt(box(1.0, 0.6, 0.06, 0xd9a23a, 2.4, 2.4, 1.4), 0, 0.3, 0.12));                               // letrero
+    drums(g, -2.55, 0.6, 3, OXI);
+    for(let i=0; i<3; i++){ const r = new THREE.Mesh(geo('neumRuina', () => new THREE.TorusGeometry(0.28, 0.1, 6, 12)), mat(0x1e1c1a)); r.rotation.x = Math.PI/2; r.position.set(2.45, 0.2 + i*0.17, 0.6); g.add(r); }
+  } else if(t===2){   // tanque de agua elevado caído: cilindro con tapas, escalera, óxido y patas dobladas
+    m(3.4, 0.08, 3.2, 0, 0, 0, 0x9a8a6c);
+    const tq = cyl(0.9, 2.2, 0x8a8478, 0, 0, 0, 18); tq.rotation.z = Math.PI/2; tq.position.set(0.2, 0.95, 0.2); g.add(tq);
+    for(const sx of [-1,1]){ const tp = lathe([[0.9,0],[0.8,0.18],[0.5,0.3],[0,0.36]], 0x7f796e, 0.2 + sx*1.1, 0.95, 0.2, 18); tp.rotation.z = -sx*Math.PI/2; g.add(tp); }   // tapas
     for(const [x, z, r] of [[-1.2,-1.1,0.4],[1.2,-1.1,-0.6],[-1.2,1.2,0.9]]) g.add(tilt(box(0.12, 2.4, 0.12, OXI, x, 0.05, z), r, 0, r*0.5));   // patas dobladas
+    { const es = new THREE.Group(); es.position.set(1.1, 0.1, 1.1); es.rotation.set(1.2, 0.4, 0); g.add(es); es.add(box(0.04, 2.0, 0.04, OXI, -0.18, 0, 0), box(0.04, 2.0, 0.04, OXI, 0.18, 0, 0)); for(let i=0; i<6; i++) es.add(box(0.36, 0.03, 0.03, OXI, 0, 0.2 + i*0.3, 0)); }   // escalera
     g.add(tilt(box(0.08, 0.08, 2.6, OXI, 0, 0.6, -1.0), 0, 0.5, 0.3), chunk(0.3, 0x8a8478, -0.9, 0.12, 0.6, 2));
-  } else {   // camión quemado detrás de una barricada de sacos y neumáticos
-    g.add(box(3.4, 0.06, 3.2, 0x7a6a52, 0, 0, 0));
-    g.add(tilt(box(1.0, 0.7, 2.4, 0x3a3631, 0.4, 0.25, 0.1), 0, 0.3, 0.12), tilt(box(0.95, 0.65, 0.8, 0x2e2a26, 0.65, 0.6, 1.0), 0, 0.3, 0.12));   // caja y cabina carbonizadas
-    for(const [x, z] of [[-0.1,-0.6],[0.9,-0.4],[0.1,0.9],[1.2,1.1]]){ const r = new THREE.Mesh(geo('neumRuina', () => new THREE.TorusGeometry(0.28, 0.1, 6, 12)), mat(0x1e1c1a)); r.rotation.set(Math.PI/2, 0, 0); r.position.set(x, 0.12, z); g.add(r); }
+    m(1.4, 0.01, 0.9, -0.5, 0.08, 1.0, 0x6b5e4c);   // mancha de humedad
+  } else {   // camión quemado detrás de una barricada de sacos y neumáticos: cabina sin vidrios, caja con costillas y llantas quemadas
+    m(3.4, 0.06, 3.2, 0, 0, 0, 0x7a6a52);
+    const c = new THREE.Group(); c.position.set(0.5, 0.06, 0.1); c.rotation.set(0, 0.3, 0.1); g.add(c);
+    c.add(box(0.8, 0.14, 2.6, 0x2a2622, 0, 0.18, 0), box(1.0, 0.1, 1.5, 0x3a3631, 0, 0.42, -0.45));                                                     // chasis y piso de la caja
+    for(let i=0; i<5; i++) c.add(box(1.0, 0.04, 0.05, 0x3a3631, 0, 0.95, -1.15 + i*0.35)); for(const sx of [-1,1]) c.add(box(0.04, 0.5, 1.5, 0x3a3631, sx*0.48, 0.5, -0.45));   // costillas y barandas
+    c.add(box(0.95, 0.3, 0.55, 0x2e2a26, 0, 0.42, 1.0), box(0.95, 0.5, 0.7, 0x2e2a26, 0, 0.72, 0.45), box(0.8, 0.28, 0.04, VACIO, 0, 0.9, 0.81), box(0.04, 0.24, 0.4, VACIO, 0.48, 0.92, 0.45), box(0.04, 0.24, 0.4, VACIO, -0.48, 0.92, 0.45));   // capó y cabina sin vidrios
+    for(const [x, z] of [[-0.46,0.85],[0.46,0.85],[-0.46,-0.8],[0.46,-0.8]]){ const r = cyl(0.26, 0.16, 0x2a2826, x, 0.26, z, 12); r.rotation.z = Math.PI/2; c.add(r); }   // llantas quemadas
+    for(const [x, z] of [[-0.6,-0.9],[1.3,-1.2],[-1.2,0.3],[1.4,1.2]]){ const r = new THREE.Mesh(geo('neumRuina', () => new THREE.TorusGeometry(0.28, 0.1, 6, 12)), mat(0x1e1c1a)); r.rotation.set(Math.PI/2, 0, 0); r.position.set(x, 0.12, z); g.add(r); }
     sandbags(g, -0.6, 0, 1.3, 1.6, 4.6, 0.05, 2);
+    m(1.2, 0.01, 1.0, 0.6, 0.06, 0.1, 0x2a2622);   // mancha quemada
   }
   return g;
 }
+// Muro de una pieza: contorno (x, y) con borde quebrado y vanos rectangulares [x0, y0, x1, y1], extruido con su grosor (sin ranuras entre piezas)
+function muro(pts, huecos, grosor, color, x, y, z, ry){
+  const key = 'muro' + pts.map(p => p.join(':')).join(',') + '|' + huecos.map(h => h.join(':')).join(',') + '|' + grosor + (DETAIL_LO ? 'lo' : '');
+  const gm = geo(key, () => { const sh = new THREE.Shape(); pts.forEach(([a, b], i) => i ? sh.lineTo(a, b) : sh.moveTo(a, b));
+    for(const [x0, y0, x1, y1] of huecos){ const h = new THREE.Path(); h.moveTo(x0, y0); h.lineTo(x0, y1); h.lineTo(x1, y1); h.lineTo(x1, y0); sh.holes.push(h); }
+    const b = DETAIL_LO ? 0 : 0.015, eg = new THREE.ExtrudeGeometry(sh, { depth:Math.max(0.01, grosor - b*2), bevelEnabled:b > 0, bevelThickness:b, bevelSize:b, bevelSegments:1 });
+    eg.translate(0, 0, -(grosor - b*2)/2); eg.computeVertexNormals(); return eg; });
+  const mm = new THREE.Mesh(gm, mat(color)); mm.position.set(x, y, z); mm.rotation.y = ry; mm.castShadow = true; mm.receiveShadow = true; return mm;
+}
+// Ocupantes visibles en las aberturas de un edificio con guarnición: hombros, cabeza con casco y fusil asomado.
+// lista: [x, y, z, ángulo (el fusil apunta hacia afuera), solo cañón (búnker cerrado)]. El render muestra tantos como haya dentro.
+function ocupantes(parent, f, lista){
+  const g = named(new THREE.Group(), 'ocupantes'); parent.add(g);
+  const casco = f==='atlas' ? 0x8d9aa4 : f==='hierro' ? 0x35322e : 0x5d5a35, ropa = f==='atlas' ? 0x66727c : f==='hierro' ? 0x5a5443 : 0x6d6b3c;
+  for(const [x, y, z, a, solo] of lista){ const p = new THREE.Group(); p.position.set(x, y, z); p.rotation.y = a; g.add(p);
+    if(!solo) p.add(box(0.28, 0.2, 0.16, ropa, 0, -0.22, -0.06), ball(0.072, SKIN, 0, 0.04, 0), ball(0.088, casco, 0, 0.09, -0.005, 1, 0.75, 1.05));
+    const b = barrel(solo ? 0.5 : 0.55, 0.02, GUN); b.position.set(solo ? 0 : 0.07, solo ? 0 : -0.04, solo ? 0.2 : 0.22); p.add(b); }
+  return g;
+}
+// Aberturas de los refugios (casa y gasolinera), en el sistema de la ruina antes de girarla
+const OCUP_RUINA = [
+  [[-0.6,0.95,-1.22,Math.PI],[-0.65,1.0,1.22,0],[1.3,0.78,-0.5,Math.PI/2],[-1.32,1.25,0.4,-Math.PI/2]],
+  [[1.15,0.95,-0.42,0],[2.18,0.9,-0.42,0],[-0.8,0.95,0.32,0],[0.8,0.95,0.32,0],[-2.78,0.85,-1.0,-Math.PI/2],[0.3,0.85,-1.82,Math.PI]]
+];
 function buildRuins(){
   for(const m of RUINAS) scene.remove(m); RUINAS = [];
   for(const r of (S.ruins || [])){ const m = ruinBody(r.t), x = (r.cx + r.w/2)*CELL, z = (r.cz + r.h/2)*CELL;
@@ -4017,14 +4299,56 @@ function addFx(obj, life, kind, extra){
 function particle(g, m, x, y, z, vx, vy, vz, size, life, opt={}){
   if(effects.length > FX_MAX) return;
   const p = new THREE.Mesh(g, m); p.position.set(x, y, z); p.scale.setScalar(size); p.rotation.set(rnd(0,6), rnd(0,6), 0); p.castShadow = !!opt.shadow;
-  addFx(p, life, 'phys', { v:new THREE.Vector3(vx, vy, vz), spin:opt.spin ?? 8, bounce:opt.bounce ?? 0.35, size, own:false, smoke:opt.smoke||0, st:0, floor:terrainH(x + vx*0.4, z + vz*0.4) + 0.04 });
+  p.visible = false;   // se dibuja por lotes con las demás partículas de la misma forma y material
+  addFx(p, life, 'phys', { v:new THREE.Vector3(vx, vy, vz), spin:opt.spin ?? 8, bounce:opt.bounce ?? 0.35, size, own:false, smoke:opt.smoke||0, st:0, floor:terrainH(x + vx*0.4, z + vz*0.4) + 0.04, lote:[p], rad:0.6 });
+}
+// Humo y fuego por lotes: los sprites de puff() y fireball() quedan en la capa 1 (la cámara no los dibuja) y aportan sus datos;
+// tres mallas instanciadas los dibujan de atrás hacia adelante con el aspecto de un sprite (mira a la cámara, gira, se desvanece y recibe niebla)
+const BILL = (() => {
+  const vs = `attribute vec3 aPos; attribute vec3 aDat; attribute vec3 aCol; varying vec2 vUv; varying float vOp; varying vec3 vCol;
+    #include <fog_pars_vertex>
+    void main(){ vec4 mvPosition = viewMatrix * vec4(aPos, 1.0); float c = cos(aDat.y), s = sin(aDat.y); vec2 p = position.xy*aDat.x;
+      mvPosition.xy += vec2(c*p.x - s*p.y, s*p.x + c*p.y); gl_Position = projectionMatrix * mvPosition; vUv = uv; vOp = aDat.z; vCol = aCol;
+      #include <fog_vertex>
+    }`;
+  const fs = `uniform sampler2D map; varying vec2 vUv; varying float vOp; varying vec3 vCol;
+    #include <fog_pars_fragment>
+    void main(){ gl_FragColor = vec4(vCol, vOp)*texture2D(map, vUv);
+      #include <fog_fragment>
+    }`;
+  const lote = (tex, blending, orden, cap) => {
+    const g = new THREE.InstancedBufferGeometry(), q = new THREE.PlaneGeometry(1, 1);
+    g.setIndex(q.index); g.setAttribute('position', q.attributes.position); g.setAttribute('uv', q.attributes.uv);
+    const at = { aPos:new THREE.InstancedBufferAttribute(new Float32Array(cap*3), 3), aDat:new THREE.InstancedBufferAttribute(new Float32Array(cap*3), 3), aCol:new THREE.InstancedBufferAttribute(new Float32Array(cap*3), 3) };
+    for(const k in at){ at[k].setUsage(THREE.DynamicDrawUsage); g.setAttribute(k, at[k]); }
+    g.instanceCount = 0;
+    const mt = new THREE.ShaderMaterial({ uniforms:THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { map:{ value:null } }]), vertexShader:vs, fragmentShader:fs, transparent:true, depthWrite:false, blending, fog:true });
+    mt.uniforms.map.value = tex;
+    const m = new THREE.Mesh(g, mt); m.frustumCulled = false; m.renderOrder = orden; m.visible = false; scene.add(m);
+    return { m, g, at, cap, n:0 };
+  };
+  return { lotes:[lote(TEX.smoke, THREE.NormalBlending, 3, 700), lote(TEX.fire, THREE.NormalBlending, 5, 300), lote(TEX.fire, THREE.AdditiveBlending, 5, 200)], lista:[] };
+})();
+const BILL_V = new THREE.Vector3(), BILL_S = new THREE.Sphere();
+function dibujarHumo(){
+  const L = BILL.lista; L.length = 0;
+  for(const f of effects){ const o = f.obj; if(o.userData.bill === undefined || !o.visible || !o.parent) continue;
+    BILL_S.center.copy(o.position); BILL_S.radius = o.scale.x; if(!LOTE_FR.intersectsSphere(BILL_S)) continue;
+    BILL_V.copy(o.position).applyMatrix4(camera.matrixWorldInverse); o.userData.bz = BILL_V.z; L.push(o); }
+  L.sort((a, b) => a.userData.bz - b.userData.bz);   // de atrás hacia adelante
+  for(const b of BILL.lotes) b.n = 0;
+  for(const o of L){ const b = BILL.lotes[o.userData.bill]; if(b.n >= b.cap) continue; const i = b.n++, mt = o.material, P = b.at.aPos.array, D = b.at.aDat.array, C = b.at.aCol.array;
+    P[i*3] = o.position.x; P[i*3+1] = o.position.y; P[i*3+2] = o.position.z; D[i*3] = o.scale.x; D[i*3+1] = mt.rotation; D[i*3+2] = mt.opacity;
+    C[i*3] = mt.color.r; C[i*3+1] = mt.color.g; C[i*3+2] = mt.color.b; }
+  for(const b of BILL.lotes){ b.g.instanceCount = b.n; b.m.visible = b.n > 0; if(b.n){ for(const k in b.at){ b.at[k].updateRange.count = b.n*3; b.at[k].needsUpdate = true; } } }
 }
 // Bocanada de humo o polvo: sube, se expande y se desvanece
 const PUFF_POOL = [];   // mallas de humo libres para reutilizar
 function puff(x, y, z, size, color, life, rise, op=0.55, dx, dz){
   if(effects.length > FX_MAX) return;
   op = Math.min(0.95, op*1.5);   // el sprite es más translúcido que la antigua esfera
-  const m = PUFF_POOL.pop() || new THREE.Sprite(new THREE.SpriteMaterial({ map:TEX.smoke, transparent:true, depthWrite:false }));   // nube suave que mira a la cámara
+  let m = PUFF_POOL.pop();
+  if(!m){ m = new THREE.Sprite(new THREE.SpriteMaterial({ map:TEX.smoke, transparent:true, depthWrite:false })); m.layers.set(1); m.userData.bill = 0; }   // nube suave que mira a la cámara (se dibuja por lotes)
   m.material.color.setHex(color); m.material.opacity = op; m.material.rotation = rnd(0, 6.28);
   m.position.set(x, y, z); m.scale.setScalar(size*0.4);
   addFx(m, life, 'smoke', { size, rise, op, dx:dx ?? rnd(-0.4,0.4), dz:dz ?? rnd(-0.4,0.4), drag:dx!==undefined, own:false, pooled:true });
@@ -4085,6 +4409,7 @@ function fireball(x, y, z, size, life, delay, vx, vy, vz, core){
   if(effects.length > FX_MAX) return;
   const m = new THREE.Sprite(new THREE.SpriteMaterial({ map:TEX.fire, transparent:true, depthWrite:false, blending:core ? THREE.AdditiveBlending : THREE.NormalBlending }));   // núcleo luminoso o cuerpo de fuego con forma definida
   m.material.rotation = rnd(0, 6.28); m.position.set(x, y, z); m.scale.setScalar(size*0.3); m.visible = !delay; m.renderOrder = 5;   // el fuego se dibuja sobre el humo
+  m.layers.set(1); m.userData.bill = core ? 2 : 1;   // se dibuja por lotes (dibujarHumo)
   addFx(m, life, 'fire', { core:!!core, size, delay:delay||0, v:new THREE.Vector3(vx||0, vy||0, vz||0), spin:rnd(-1.5,1.5) });
 }
 let SHAKE = 0;   // vibración de cámara (solo visual)
@@ -4119,18 +4444,20 @@ function explosion(x, z, size, y){
   // Vibración de cámara para explosiones grandes y cercanas al centro de la vista
   if(size >= 1.8){ const d = Math.hypot(x - cam.x, z - cam.z); SHAKE = Math.min(0.5, SHAKE + size*0.07*Math.max(0, 1 - d/40)); }
 }
+// Piezas de un modelo copiado (restos, cadáveres) que se dibujan por lotes: siguen ocultas y dibujarLotes usa su matriz
+function piezasLote(g){ const l = []; g.traverse(m => { if(m.isMesh && m.userData.lote) l.push(m); }); return l; }
 // Restos: el modelo carbonizado queda en el sitio echando humo y luego se hunde; la torreta sale despedida
 function wreck(o, e){
   const w = o.g.clone(); w.position.copy(o.g.position);
-  w.traverse(m => { if(!m.isMesh) return; if(m.geometry.type==='RingGeometry' || esContorno(m) || m.material===VCMAT.luz || m.material===LUZ_OFF || WIN_MAT.includes(m.material)) m.visible = false; else m.material = CHAR_MAT; });
+  w.traverse(m => { if(!m.isMesh) return; if(m.geometry.type==='RingGeometry' || esContorno(m) || m.material===VCMAT.luz || m.material===LUZ_OFF || WIN_MAT.includes(m.material)){ m.visible = false; m.userData.lote = false; } else m.material = CHAR_MAT; });
   const tur = w.getObjectByName('turret');
   w.updateMatrixWorld(true);
   if(tur && !o.boat){
     const wp = new THREE.Vector3(); tur.getWorldPosition(wp); tur.parent.remove(tur);
     const pivot = new THREE.Group(); pivot.add(tur); tur.position.set(0,0,0); pivot.position.copy(wp); pivot.rotation.y = w.rotation.y;
-    scene.add(pivot); effects.push({ obj:pivot, life:3.2, max:3.2, kind:'phys', v:new THREE.Vector3(rnd(-1.5,1.5), rnd(6,8), rnd(-1.5,1.5)), spin:rnd(3,6), bounce:0.25, size:1, own:false, smoke:1, st:0, keepScale:true, floor:0.4 });
+    scene.add(pivot); effects.push({ obj:pivot, life:3.2, max:3.2, kind:'phys', v:new THREE.Vector3(rnd(-1.5,1.5), rnd(6,8), rnd(-1.5,1.5)), spin:rnd(3,6), bounce:0.25, size:1, own:false, smoke:1, st:0, keepScale:true, floor:0.4, lote:piezasLote(pivot), rad:2 });
   }
-  addFx(w, o.boat ? 3 : 7, 'wreck', { own:false, st:0, boat:!!o.boat });
+  addFx(w, o.boat ? 3 : 7, 'wreck', { own:false, st:0, boat:!!o.boat, lote:piezasLote(w), rad:3 });
 }
 // Infantería abatida. Por una explosión cercana sale despedida, gira y cae lejos; por disparos se dobla y cae hacia un lado.
 // La decisión se toma en el primer cuadro del efecto: así ya se conocen las explosiones del mismo tick.
@@ -4140,8 +4467,8 @@ let RECIENTES = [];            // explosiones recientes en el suelo: { x, z, r, 
 const esContorno = m => { for(const k in OUTLINE_MATS) if(OUTLINE_MATS[k]===m.material) return true; return false; };
 function corpse(o, e){
   const c = o.g.clone(); c.position.copy(o.g.position);
-  c.traverse(m => { if(!m.isMesh) return; if(m.geometry.type==='RingGeometry' || esContorno(m)) m.visible = false; else if(m.userData.lote) m.visible = true; });   // las piernas se dibujan por lotes: el cuerpo caído las muestra
-  addFx(c, 6, 'corpse', { own:false, body:c.children.find(k => k.isGroup), x:e.x, z:e.z, golpe:GOLPE.get(e) || null, decidir:true, t:0, cayo:false });
+  c.traverse(m => { if(m.isMesh && (m.geometry.type==='RingGeometry' || esContorno(m))) m.visible = false; });
+  addFx(c, 6, 'corpse', { own:false, body:c.children.find(k => k.isGroup), x:e.x, z:e.z, golpe:GOLPE.get(e) || null, decidir:true, t:0, cayo:false, lote:piezasLote(c), rad:1.5 });   // el cuerpo caído se dibuja por lotes
 }
 function decidirCaida(f, o){
   const ahora = performance.now(), g = f.golpe; let vx = 0, vz = 0, volar = false;
@@ -4164,9 +4491,9 @@ function cookOff(x, z, s){
 // Derrumbe: el modelo carbonizado se hunde y se ladea entre polvo; debajo queda un montón de escombros que arde y humea
 function derrumbe(o, e){
   const c = o.g.clone(); c.position.copy(o.g.position);
-  c.traverse(m => { if(!m.isMesh) return; if(m.geometry.type==='RingGeometry' || esContorno(m) || m.material===VCMAT.luz || m.material===LUZ_OFF || WIN_MAT.includes(m.material)) m.visible = false; else m.material = CHAR_MAT; });
+  c.traverse(m => { if(!m.isMesh) return; if(m.geometry.type==='RingGeometry' || esContorno(m) || m.material===VCMAT.luz || m.material===LUZ_OFF || WIN_MAT.includes(m.material)){ m.visible = false; m.userData.lote = false; } else m.material = CHAR_MAT; });
   const r = e.n*CELL/2;
-  addFx(c, 2.6, 'derrumbe', { own:false, x0:c.position.x, y0:c.position.y, z0:c.position.z, ax:rnd(-0.14, 0.14), az:rnd(-0.14, 0.14), alto:r*0.6 + 0.6, r, st:0 });
+  addFx(c, 2.6, 'derrumbe', { own:false, x0:c.position.x, y0:c.position.y, z0:c.position.z, ax:rnd(-0.14, 0.14), az:rnd(-0.14, 0.14), alto:r*0.6 + 0.6, r, st:0, lote:piezasLote(c), rad:r*1.6 + 2 });   // el modelo carbonizado se dibuja por lotes
   escombrera(e.x, e.z, (e.w||e.n)*CELL, (e.h||e.n)*CELL);
 }
 const ESCOMBRERAS = new Map(), MAT_ESCOMBRO = addFog(new THREE.MeshLambertMaterial({ vertexColors:true, map:TEX.rock }));
@@ -4264,7 +4591,7 @@ function fall(o, e){
   const c = o.g.clone(); c.position.copy(o.g.position);
   c.traverse(m => { if(m.isMesh && (m.geometry.type==='RingGeometry' || esContorno(m))) m.visible = false; });
   explosion(e.x, e.z, 1.2, o.g.position.y);
-  addFx(c, 4, 'fall', { own:false, v:new THREE.Vector3(Math.sin(o.yaw)*3, 0, Math.cos(o.yaw)*3), st:0, color:S.players[e.owner] ? PAL[S.players[e.owner].faction].hull : 0x777777 });
+  addFx(c, 4, 'fall', { own:false, v:new THREE.Vector3(Math.sin(o.yaw)*3, 0, Math.cos(o.yaw)*3), st:0, color:S.players[e.owner] ? PAL[S.players[e.owner].faction].hull : 0x777777, lote:piezasLote(c), rad:4 });
 }
 const SFX_ALIAS = { antitanque:'cohete', minigun:'rifle', misilsam:'misil' };   // armas nuevas con sonido y trazador existentes
 const MUZZLE = { ametralladora:0.55, sinretroceso:0.75, antitanque:0.95, minigun:1.25, misilsam:0.6, canon:2.1, torre:1.4, aa:1.3, misil:0.9, obus:2.3, cohete:0.9, rifle:0.7, heroe:0.95, ametralla:0.8, canonaval:2.2 };
@@ -4340,18 +4667,27 @@ hooks = {
     sfx(w, u.x, u.z, facTir);
     if(w==='bomba'){ soltarBomba(u, tg); return; }
     if(SFX.motor && (u.owner===LOCAL || tg.owner===LOCAL || Math.hypot(u.x-cam.x, u.z-cam.z) < cam.dist)) SFX.motor.combate(0.06);
-    const y0 = u.air ? AIR_Y : w==='ametralladora' ? 1.55 : w==='sinretroceso' ? 1.45 : w==='torre' ? 2.1 : u.kind==='bld' ? (u.type==='trinchera' ? 0.6 : 1.2) : w==='canon' ? 1.2 : w==='antitanque' ? 1.1 : 0.8, y1 = tg.air ? AIR_Y : tg.kind==='bld' ? 1.5 : 0.6;
+    // Altura del disparo sobre el relieve (o sobre el agua en los barcos); los ocupantes de casas y gasolineras disparan desde distintas ventanas
+    const suelo = e => e.air ? 0 : e.kind==='unit' && UT(e.owner, e.type).naval ? WATER_Y + 0.1 : terrainH(e.x, e.z);
+    const y0 = u.air ? AIR_Y : suelo(u) + (w==='ametralladora' ? 1.55 : w==='sinretroceso' ? 1.45 : w==='torre' ? 2.1 : u.kind==='bld' ? (u.type==='trinchera' ? 0.6 : u.type==='bunker' ? 0.75 : u.type==='refugioCasa' ? (Math.random() < 0.5 ? 0.95 : 1.5) : 1.15) : w==='canon' ? 1.2 : w==='antitanque' ? 1.1 : 0.8);
+    const y1 = tg.air ? AIR_Y : suelo(tg) + (tg.kind==='bld' ? 1.5 : 0.6);
     // Boca del arma: según la orientación de la torre (o del cuerpo) y el largo del cañón
     const o = meshes.get(u.id), q = fxQ();
     const sec = (w==='ametralladora' || w==='sinretroceso') && o && o.ametra;   // arma secundaria: sale de su propio montaje
-    const yaw = sec ? o.yaw + (o.turret && o.ametra.parent===o.turret ? o.turret.rotation.y : 0) + o.ametra.rotation.y : o && o.turret ? (u.kind==='bld' ? o.turret.rotation.y : o.yaw + o.turret.rotation.y) : o ? o.yaw : Math.atan2(tg.x-u.x, tg.z-u.z);
-    const fx = Math.sin(yaw), fz = Math.cos(yaw), len = u.air ? 0.6 : (MUZZLE[w] || 0.8), mx = u.x + fx*len, mz = u.z + fz*len;
+    // Edificio con guarnición (búnker, trinchera, refugios): los ocupantes disparan en todas direcciones, por la abertura del lado que mira al blanco
+    const guar = u.kind==='bld' && !(o && o.turret);
+    const yaw = sec ? o.yaw + (o.turret && o.ametra.parent===o.turret ? o.turret.rotation.y : 0) + o.ametra.rotation.y : guar ? Math.atan2(tg.x-u.x, tg.z-u.z) : o && o.turret ? (u.kind==='bld' ? o.turret.rotation.y : o.yaw + o.turret.rotation.y) : o ? o.yaw : Math.atan2(tg.x-u.x, tg.z-u.z);
+    const fx = Math.sin(yaw), fz = Math.cos(yaw);
+    let mx, mz;
+    if(guar){ const hw = (u.w||u.n)*CELL/2, hh = (u.h||u.n)*CELL/2, t = Math.min(hw/Math.max(1e-3, Math.abs(fx)), hh/Math.max(1e-3, Math.abs(fz)))*0.9, j = rnd(-0.35, 0.35)*Math.min(hw, hh);
+      mx = u.x + fx*t - fz*j; mz = u.z + fz*t + fx*j; }   // punto del contorno hacia el blanco, corrido a lo largo de la pared (varios tiradores)
+    else { const len = u.air ? 0.6 : (MUZZLE[w] || 0.8); mx = u.x + fx*len; mz = u.z + fz*len; }
     const big = w==='canon' || w==='obus' || w==='canonaval' || w==='torre' || w==='sinretroceso';
     const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(mx, y0, mz), new THREE.Vector3(tg.x, y1, tg.z)]);
     if(MISIL_TIPO[w]){ g.dispose(); puff(mx, y0, mz, w==='antitanque' ? 1.0 : 0.7, MISIL_TIPO[w].humo, 1.3, 0.3, 0.5); if(w==='antitanque') puff(u.x - fx*0.9, y0, u.z - fz*0.9, 0.9, 0xc8bca8, 1.0, 0.2, 0.45); }   // humo del lanzamiento y contrafuego
     else addFx(new THREE.Line(g, (tracerMat[w] || tracerMat[SFX_ALIAS[w]] || tracerMat.rifle).clone()), w==='rifle' || w==='aa' || w==='minigun' || w==='ametralladora' ? 0.08 : 0.2, 'tracer');
     flash(mx, y0, mz, big ? 0.6 : 0.2, big ? 0xffc670 : 0xfff0b0, big ? 0.1 : 0.05);
-    if(o && !sec) o.recoil = 1;
+    if(o && !sec){ o.recoil = 1; o.patada = 1; }
     if(w==='sinretroceso') puff(u.x - fx*1.4, y0, u.z - fz*1.4, 1.1, 0xc8bca8, 1.0, 0.2, 0.5);   // chorro de gases hacia atrás
     if(big){
       if(q >= 0.6) lightFlash(mx, y0 + 0.5, mz, 1.6, 0xffc070, 0.09);                          // la boca ilumina el entorno
@@ -4698,13 +5034,14 @@ function syncMeshes(alpha, dt, time){
         o.cerca = o.alt - suelo < 1.2;   // en tierra o a punto de tocarla
       }
       o.g.position.set(x, e.air ? (UT(e.owner,e.type).hover ? AIR_Y + Math.sin(time*2+e.id)*0.15 : o.alt + (e.fase || e.parked ? 0 : Math.sin(time*2+e.id)*0.15)) : o.boat ? WATER_Y + 0.08 + Math.sin(time*1.6+e.id)*0.05 : terrainH(x, z), z); o.g.rotation.y = o.yaw;
-      if(o.boat) o.body.rotation.z = Math.sin(time*1.3+e.id)*0.04;
+      if(o.boat){ o.body.rotation.z = Math.sin(time*1.3+e.id)*0.04; const vb = Math.sqrt(dx*dx + dz*dz)*TICK_HZ;
+        o.body.rotation.x += (-Math.min(0.09, vb*0.022) + Math.sin(time*1.05 + e.id*0.7)*0.018 - o.body.rotation.x)*Math.min(1, dt*3); }
       if(avion){
         const k4 = Math.min(1, dt*4);
         // Balanceo en vuelo: el bombardero, pesado, se mece más y más despacio que el caza
         const bal = o.cerca ? 0 : e.type==='bombardero' ? 1 : 0.5;
         const meceZ = bal*(Math.sin(time*0.7 + e.id)*0.07 + Math.sin(time*1.9 + e.id*2.3)*0.02), meceX = bal*Math.sin(time*0.55 + e.id*1.3)*0.025;
-        o.body.rotation.z += ((o.cerca ? 0 : Math.max(-0.7, Math.min(0.7, o.yawRate*0.32))) + meceZ - o.body.rotation.z)*k4;   // alabeo en los giros; nivelado en tierra
+        o.body.rotation.z += ((o.cerca ? 0 : Math.max(-0.7, Math.min(0.7, -o.yawRate*0.32))) + meceZ - o.body.rotation.z)*k4;   // alabeo hacia adentro de la curva; nivelado en tierra
         o.body.rotation.x += (Math.max(-0.28, Math.min(0.1, -o.vz*0.09)) + meceX - o.body.rotation.x)*k4;                     // morro arriba al subir
         if(o.ring) o.ring.position.y = o.suelo - 0.26 - o.g.position.y;
         if(o.tren) o.tren.visible = o.cerca || o.alt < AIR_Y - 1.5;
@@ -4714,7 +5051,7 @@ function syncMeshes(alpha, dt, time){
         if(e.fase!=='pista') o.toco = false;
         if(e.fase==='carrera' && o.cerca && OPTIONS.calidad!=='baja'){ o.dustT = (o.dustT||0) - dt; if(o.dustT <= 0){ o.dustT = 0.08/fxQ(); puff(x - Math.sin(o.yaw)*1.1, o.suelo - 0.1, z - Math.cos(o.yaw)*1.1, 0.6, 0xc8ad7c, 0.9, 0.2, 0.32); } }
       }
-      if(e.air && o.rotor){ const k = Math.min(1, dt*3); o.body.rotation.x += ((moving ? 0.14 : 0) - o.body.rotation.x)*k; o.body.rotation.z += (Math.max(-0.3, Math.min(0.3, o.yawRate*0.15)) - o.body.rotation.z)*k; }   // morro abajo al avanzar
+      if(e.air && o.rotor){ const k = Math.min(1, dt*3); o.body.rotation.x += ((moving ? 0.14 : 0) - o.body.rotation.x)*k; o.body.rotation.z += (Math.max(-0.3, Math.min(0.3, -o.yawRate*0.15)) - o.body.rotation.z)*k; }   // morro abajo al avanzar; se ladea hacia adentro de la curva
       if(o.rotor) o.rotor.rotation.y += dt*25;
       if(o.star) o.star.rotation.y += dt*2;
       o.body.position.y = !o.tool && (e.working!=null || (e.order && e.order.type==='capture' && e.capT>0)) ? Math.abs(Math.sin(time*12))*0.12 : 0;
@@ -4740,7 +5077,8 @@ function syncMeshes(alpha, dt, time){
         if(loading && o.cargo) o.cargo.visible = e.htimer < Math.round(1.2*TICK_HZ);   // el contenedor aparece al engancharlo
       } else if(e.type==='recolector' && o.cargo && e.hstate==='loading') o.cargo.visible = e.htimer < Math.round(1.2*TICK_HZ);
       // Sin blanco, la torreta vigila despacio a un lado y al otro
-      if(o.turret){ const aim = tg ? Math.atan2(tg.x-e.x, tg.z-e.z) : o.yaw + (moving ? 0 : Math.sin(time*0.25 + e.id*1.7)*0.45); o.turret.rotation.y = lerpAngle(o.turret.rotation.y, aim-o.yaw, Math.min(1, dt*8)); }
+      if(o.turret){ const aim = tg ? Math.atan2(tg.x-e.x, tg.z-e.z) : o.yaw + (moving ? 0 : Math.sin(time*0.25 + e.id*1.7)*0.45); const vt = e.type==='pesado' ? 2.2 : e.type==='artilleria' ? 2 : e.type==='tanque' ? 3.4 : e.type==='antiaereo' ? 5 : 7;   // torres pesadas, más lentas
+        o.turret.rotation.y = lerpAngle(o.turret.rotation.y, aim-o.yaw, Math.min(1, dt*vt)); }
       if(o.ametra){ const t2 = e.tg2!=null ? S.byId.get(e.tg2) : null, base = o.yaw + (o.turret && o.ametra.parent===o.turret ? o.turret.rotation.y : 0);   // arma secundaria: apunta a su propio blanco
         o.ametra.rotation.y = lerpAngle(o.ametra.rotation.y, t2 && !t2.dead ? Math.atan2(t2.x-e.x, t2.z-e.z) - base : 0, Math.min(1, dt*10)); }
       if(o.cargo && e.hstate!=='loading') o.cargo.visible = e.carry>0;
@@ -4748,48 +5086,64 @@ function syncMeshes(alpha, dt, time){
       // Animaciones según la distancia recorrida en este cuadro: ruedas, orugas y pasos
       const step = o.lx===undefined ? 0 : Math.hypot(x-o.lx, z-o.lz); o.lx = x; o.lz = z;
       if(step > 0 && step < 3){ if(o.axles) for(const a of o.axles) a.rotation.x += step/a.userData.r; o.walk += step*5.5;
-        if(o.axles && o.axles.length && !e.air && !o.boat && OPTIONS.calidad!=='baja'){ o.trackD = (o.trackD||0) + step; if(o.trackD > 0.55){ o.trackD = 0; stampTrack(x, z, o.yaw, e.radius*0.55); } } }
+        if(o.rueda && OPTIONS.calidad!=='baja'){ o.trackD = (o.trackD||0) + step; if(o.trackD > 0.55){ o.trackD = 0; stampTrack(x, z, o.yaw, e.radius*0.55); } } }
+      if(o.treads && o.treads.length && step < 3){ const gw = (o.yawRate||0)*dt*0.7;   // la banda de arriba corre; al girar, la oruga exterior más rápido (en el sitio, en sentidos opuestos)
+        for(const t of o.treads){ const d = (t.userData.d||0) + step - t.userData.lado*gw; t.userData.d = ((d % 0.24) + 0.24) % 0.24; t.position.z = t.userData.d; } }
+      if(o.frente){ const gd = Math.max(-0.45, Math.min(0.45, (o.yawRate||0)*0.2)); for(const a of o.frente) a.rotation.y += (gd - a.rotation.y)*Math.min(1, dt*8); }
       if(o.legs && o.legs.length===2){
-        const sw = moving ? Math.sin(o.walk)*0.62 : 0, kk = Math.min(1, dt*14);
+        const gira = !moving && Math.abs(o.yawRate||0) > 0.5; if(gira) o.walk += dt*Math.min(6, Math.abs(o.yawRate))*2.2;   // al girar parado, pasos cortos en el lugar
+        const anda = moving || gira, sw = anda ? Math.sin(o.walk)*(moving ? 0.62 : 0.3) : 0, kk = Math.min(1, dt*14);
         o.legs[0].rotation.x += (sw - o.legs[0].rotation.x)*kk; o.legs[1].rotation.x += (-sw - o.legs[1].rotation.x)*kk;
         if(o.shins && o.shins.length===2){   // la rodilla se dobla cuando la pierna pasa hacia adelante con el pie en el aire
-          const b0 = moving ? Math.max(0, Math.sin(o.walk + 1.2))*1.05 : 0, b1 = moving ? Math.max(0, Math.sin(o.walk + 1.2 + Math.PI))*1.05 : 0;
+          const b0 = anda ? Math.max(0, Math.sin(o.walk + 1.2))*(moving ? 1.05 : 0.6) : 0, b1 = anda ? Math.max(0, Math.sin(o.walk + 1.2 + Math.PI))*(moving ? 1.05 : 0.6) : 0;
           o.shins[0].rotation.x += (b0 - o.shins[0].rotation.x)*kk; o.shins[1].rotation.x += (b1 - o.shins[1].rotation.x)*kk;
         }
         const sc = o.body.scale.x || 1, bob = moving ? Math.abs(Math.cos(o.walk))*0.028*sc : 0, lean = moving ? 0.07 : 0;
         o.body.position.y += bob; o.body.rotation.x += (lean - o.body.rotation.x)*kk;   // rebote del paso e inclinación al avanzar
+        o.body.rotation.z += ((moving ? Math.sin(o.walk)*0.035 : 0) - o.body.rotation.z)*kk;   // el peso pasa de un pie al otro
       }
       if(!e.air && !o.boat && !pie && o.body){
         const L = Math.max(0.7, e.radius*1.1), W = L*0.7, sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
         const hF = terrainH(x + sy*L, z + cy*L), hB = terrainH(x - sy*L, z - cy*L), hR = terrainH(x + cy*W, z - sy*W), hL = terrainH(x - cy*W, z + sy*W);
         const vel = dt > 0 ? step/dt : 0; o.acc = (o.acc||0) + (((vel - (o.vel||0))/Math.max(dt, 0.001)) - (o.acc||0))*Math.min(1, dt*5); o.vel = vel;
         const cabeceo = Math.atan2(hB - hF, 2*L) + Math.max(-0.05, Math.min(0.05, -o.acc*0.012)), alabeo = Math.atan2(hR - hL, 2*W);
-        const vib = moving ? Math.sin(time*38 + e.id)*0.006 : Math.sin(time*24 + e.id)*0.002, k = Math.min(1, dt*8);
-        o.body.rotation.x += (cabeceo + vib - o.body.rotation.x)*k; o.body.rotation.z += (alabeo - o.body.rotation.z)*k;
+        const vib = moving ? Math.sin(time*38 + e.id)*0.006 : Math.sin(time*24 + e.id)*0.002;
+        // Suspensión: resorte amortiguado hacia la inclinación del relieve (rebota un poco al arrancar y frenar).
+        // De ruedas: la carrocería se inclina hacia afuera en las curvas. Al disparar, el casco se levanta de adelante y se ladea
+        // en contra del tiro (según hacia dónde apunta la torre y con más fuerza cuanto mayor es el calibre).
+        if(o.patada){ const ta = o.turret ? o.turret.rotation.y : 0, f2 = e.type==='artilleria' ? 1.1 : e.type==='pesado' ? 0.75 : e.type==='tanque' ? 0.55 : 0.16; o.pv = (o.pv||0) - Math.cos(ta)*f2; o.rv = (o.rv||0) + Math.sin(ta)*f2*0.6; o.patada = 0; }
+        const curva = Math.max(-0.08, Math.min(0.08, (o.yawRate||0)*(o.vel||0)*(o.tread ? 0.004 : 0.012)));   // hacia afuera de la curva
+        if(o.ps === undefined){ o.ps = cabeceo; o.rs = alabeo; o.pv = o.pv||0; o.rv = o.rv||0; }
+        for(let t = Math.min(dt, 0.1); t > 1e-4; t -= 0.02){ const h = Math.min(t, 0.02);
+          o.pv += ((cabeceo - o.ps)*55 - o.pv*8.5)*h; o.ps += o.pv*h;
+          o.rv += ((alabeo + curva - o.rs)*55 - o.rv*8.5)*h; o.rs += o.rv*h; }
+        o.body.rotation.x = o.ps + vib; o.body.rotation.z = o.rs;
       }
       // Infantería: respiración en reposo y retroceso del arma al disparar
       if(pie && o.body){ if(!moving) o.body.scale.y = (o.body.scale.x||1)*(1 + Math.sin(time*2.2 + e.id)*0.012); else o.body.scale.y = o.body.scale.x||1;
         if(o.recoil > 0 && !o.turret){ o.body.rotation.x -= o.recoil*0.1; o.recoil = Math.max(0, o.recoil - dt*7); } }
       if(o.rotor2) o.rotor2.rotation.x += dt*32;
       if(o.spin) o.spin.rotation.y += dt*2.5;
-      // Retroceso del cañón: la torre retrocede sobre su propio eje y vuelve
+      // Retroceso: de cerca retrocede el cañón; de lejos (cañón fusionado con la torre), la torre
       if(o.turret && o.turret.userData.base){
         o.recoil = Math.max(0, (o.recoil||0) - dt*5);
-        const b = o.turret.userData.base, r = o.recoil*o.recoil*0.24, a = o.turret.rotation.y;
+        const b = o.turret.userData.base, r = o.recoil*o.recoil*(o.canon ? 0.02 : 0.07), a = o.turret.rotation.y;
+        if(o.canon) o.canon.position.z = -o.recoil*o.recoil*0.3;   // el cañón retrocede en su cuna y vuelve a su lugar
         o.turret.position.set(b.x - Math.sin(a)*r, b.y, b.z - Math.cos(a)*r);
       }
       // Vehículo muy dañado: humo negro
       if(e.hp < e.maxhp*0.35 && !o.legs.length && OPTIONS.calidad!=='baja'){ o.hurtT = (o.hurtT||0) - dt; if(o.hurtT <= 0){ o.hurtT = 0.3/fxQ(); puff(x, (e.air ? AIR_Y : 0.8), z, 0.45, 0x2e2a26, 1.3, 0.8, 0.45); } }
       // Escape de los motores: humo oscuro en Hierro (diésel) y gris en la Guerrilla; Atlas es eléctrico. Solo cerca de la cámara.
-      if(!e.air && !o.boat && o.axles && o.axles.length && o.fac!=='atlas' && OPTIONS.calidad==='alta' && Math.abs(x - cam.x) < cam.dist && Math.abs(z - cam.z) < cam.dist){
+      if(o.rueda && o.fac!=='atlas' && OPTIONS.calidad==='alta' && Math.abs(x - cam.x) < cam.dist && Math.abs(z - cam.z) < cam.dist){
         o.escT = (o.escT||0) - dt*(moving ? 1 : 0.35);
         if(o.escT <= 0){ o.escT = 0.38; const L = e.radius*0.85, sy = Math.sin(o.yaw), cy = Math.cos(o.yaw);
           puff(x - sy*L + cy*0.3, terrainH(x, z) + 1.0, z - cy*L - sy*0.3, 0.32, o.fac==='hierro' ? 0x2e2b28 : 0x77706a, 1.2, 0.7, 0.32); }
       }
       // Polvo detrás de los vehículos terrestres y estela de los barcos
-      if(moving && !e.air && (o.boat || (o.axles && o.axles.length)) && OPTIONS.calidad!=='baja'){
+      if(moving && !e.air && (o.boat || o.rueda) && OPTIONS.calidad!=='baja'){
         o.dustT -= dt;
-        if(o.dustT <= 0){ o.dustT = 0.14/fxQ(); const bx = x - Math.sin(o.yaw)*1.2, bz = z - Math.cos(o.yaw)*1.2;
+        if(o.dustT <= 0 && !(LOD_LO && effects.length > FX_MAX*0.5)){ o.dustT = (LOD_LO ? 0.4 : 0.14)/fxQ();   // de lejos, menos bocanadas y sin ocupar más de la mitad del tope de efectos
+          const bx = x - Math.sin(o.yaw)*1.2, bz = z - Math.cos(o.yaw)*1.2;
           puff(bx + rnd(-0.4,0.4), 0.15, bz + rnd(-0.4,0.4), o.boat ? 0.5 : 0.6, o.boat ? 0xe8f0f2 : 0xc8ad7c, 0.9, 0.3, o.boat ? 0.45 : 0.32); }
       }
     } else if(e.kind==='depot'){
@@ -4805,6 +5159,7 @@ function syncMeshes(alpha, dt, time){
       o.wasBuilt = e.built;
       if(o.pop){ const k = (performance.now() - o.pop)/350; if(k >= 1){ o.pop = 0; o.g.scale.setScalar(1); } else o.g.scale.setScalar(1 + Math.sin(k*Math.PI)*0.05); }
       const off = e.built && e.owner>=0 && ((S.power[e.owner] && S.power[e.owner].low && BT(e.owner,e.type).power < 0) || e.offUntil > S.tick);
+      if(o.ocup){ const n = e.gar ? e.gar.length : 0; if(o.ocupN !== n){ o.ocupN = n; o.ocup.children.forEach((c, i) => c.visible = i < n); } }   // tropas a la vista según los ocupantes
       if(o.off !== off && o.luces){ o.off = off; for(const m of o.luces) m.material = off ? LUZ_OFF : VCMAT.luz; for(const m of o.vidrios) m.material = WIN_MAT[off ? 1 : 0]; }
       if(o.spin && e.built && !off) o.spin.rotation.y += dt*(e.type==='astillero' ? 0.4 : 1.6);   // antenas y radares se detienen sin energía
       if(o.gatling && e.lastFire!==undefined && S.tick - e.lastFire < 8){ o.gatling.rotation.z += dt*28; if(o.gatling2) o.gatling2.rotation.z -= dt*28; }
@@ -4904,9 +5259,16 @@ function pick(sx, sy){
 }
 const METRICS = { cmds:0, frames:0, time:0 };
 function issue(c){ c.p = LOCAL; METRICS.cmds++; queueCmd(c); }
-let aMove = false, areaMode = false;
-const btnAMove = $('btnAMove'), btnArea = $('btnArea');
-function setAMove(v){ aMove = v; btnAMove.classList.toggle('on', v); }
+let aMove = false, areaMode = false, defMode = false;
+const btnAMove = $('btnAMove'), btnArea = $('btnArea'), btnDefend = $('btnDefend');
+function setAMove(v){ aMove = v; btnAMove.classList.toggle('on', v); if(v && defMode) setDefend(false); }
+function setDefend(v){ defMode = v; btnDefend.classList.toggle('on', v); if(v && aMove) setAMove(false); }
+// Defender un área: las unidades toman puestos alrededor del punto y solo enfrentan a los enemigos que entran (el radio crece con el grupo)
+function defendAt(sx, sy){
+  const units = selectedEnts().filter(e => e.kind==='unit' && e.owner===LOCAL), g = groundAt(sx, sy); if(!units.length || !g) return;
+  issue({ t:'defend', ids:units.map(u => u.id), x:g.x, z:g.z }); hablar('mover', units); sfx('ack');
+  groundRing(g.x, g.z, 5 + Math.min(5, Math.floor(units.length/4)), 0x4f8dff, 1.4, 'pulse'); orderMarker(g.x, g.z, 0x4f8dff);
+}
 function setArea(v){ areaMode = v; btnArea.classList.toggle('on', v); }
 let toastT = 0;
 function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2000); }
@@ -5021,6 +5383,7 @@ function primaryTap(sx, sy, isTouch, shift){
   if(targeting){ setAimAt(sx, sy); updateAim(); firePower(); return; }
   if(placing){ setGhostAt(sx, sy); if(!isTouch) tryPlace(); return; }
   const tgt = pick(sx, sy);
+  if(defMode){ setDefend(false); defendAt(sx, sy); return; }
   if(aMove){ setAMove(false); commandAt(sx, sy, true); return; }
   if(tgt && tgt.owner===LOCAL){
     const now = performance.now();
@@ -5067,7 +5430,7 @@ ov.addEventListener('pointerdown', e => {
   }
   if(e.button===0) drag = { mode:'box', sx:e.clientX, sy:e.clientY, moved:false, touch:false };
   else if(e.button===1){ e.preventDefault(); drag = { mode:'pan', sx:e.clientX, sy:e.clientY, camX:cam.x, camZ:cam.z, moved:true, touch:false }; }
-  else if(e.button===2){ if(aMove) setAMove(false); commandAt(e.clientX, e.clientY, false); }
+  else if(e.button===2){ if(aMove) setAMove(false); if(defMode) setDefend(false); commandAt(e.clientX, e.clientY, false); }
 });
 ov.addEventListener('pointermove', e => {
   if(e.pointerType!=='touch'){ if(placing) setGhostAt(e.clientX, e.clientY); if(targeting) setAimAt(e.clientX, e.clientY); }
@@ -5103,8 +5466,9 @@ addEventListener('keydown', e => {
   if(wasd && !e.ctrlKey && !e.metaKey && !e.altKey){ keys.add(wasd); e.preventDefault(); return; }
   const k = e.key.toLowerCase();
   if(k==='q' && selectedEnts().some(u => u.kind==='unit' && u.owner===LOCAL)) setAMove(true);
+  else if(k==='g' && selectedEnts().some(u => u.kind==='unit' && u.owner===LOCAL)) setDefend(true);
   else if(k==='x') stopSelected();
-  else if(e.key==='Escape'){ if(targeting) cancelTargeting(); else if(placing) cancelPlacing(); else if(aMove) setAMove(false); else if(selected.size) selected.clear(); else toggleGameMenu(); }
+  else if(e.key==='Escape'){ if(targeting) cancelTargeting(); else if(placing) cancelPlacing(); else if(aMove) setAMove(false); else if(defMode) setDefend(false); else if(selected.size) selected.clear(); else toggleGameMenu(); }
   else if(e.key==='F10'){ e.preventDefault(); toggleGameMenu(); }
   else if(grupoTecla(e)) {}
   else if(e.key===' '){ const s = selectedEnts(); if(s.length){ cam.x = s.reduce((a,u)=>a+u.x,0)/s.length; cam.z = s.reduce((a,u)=>a+u.z,0)/s.length; } e.preventDefault(); }
@@ -5134,6 +5498,7 @@ document.addEventListener('fullscreenchange', () => { try { if(document.fullscre
 function stopSelected(){ const ids = selectedEnts().filter(e => e.kind==='unit' && e.owner===LOCAL).map(e => e.id); if(ids.length) issue({ t:'stop', ids }); }
 btnAMove.addEventListener('click', () => { if(selectedEnts().some(u => u.kind==='unit' && u.owner===LOCAL)) setAMove(!aMove); else toast('Seleccione unidades primero'); });
 btnArea.addEventListener('click', () => setArea(!areaMode));
+btnDefend.addEventListener('click', () => { if(selectedEnts().some(u => u.kind==='unit' && u.owner===LOCAL)) setDefend(!defMode); else toast('Seleccione unidades primero'); });
 $('btnStop').addEventListener('click', stopSelected);
 $('btnClear').addEventListener('click', () => { selected.clear(); setAMove(false); cancelPlacing(); cancelTargeting(); });
 let paused = false;
@@ -5372,7 +5737,7 @@ function renderPanel(){
     else estado = curTarget(u) ? 'En combate' : u.order ? 'En marcha' : 'En posición';
     let h = `<div class="title">${swatch(u.owner)}${t.nombre}</div><div class="sub"><span title="Vida">${ic('vida', 'Vida')}${Math.ceil(u.hp)} / ${u.maxhp}</span> · ${estado}</div>${hpBar(u)}`;
     if(t.weapon){
-      h += `<div class="tags"><span>Alcance ${t.range}</span><span>Daño ${t.dmg}</span>${u.air ? `<span>Munición ${u.ammo} / ${t.ammo}</span>` : `<span>Rango ${['recluta','veterano','élite','héroe'][u.vet]}</span>${u.vet ? `<span class="hot">Daño +${25*u.vet} % · Vida +${20*u.vet} %</span>` : ''}`}<span>Bajas ${u.kills}</span>`;
+      h += `<div class="tags"><span>Alcance ${t.range}</span><span>Daño ${t.dmg}</span>${u.air ? `<span>Munición ${u.ammo} / ${t.ammo}</span>` : `<span>Rango ${['recluta','veterano','élite','héroe'][u.vet]}</span>${u.vet ? `<span class="hot">Daño +${25*u.vet} % · Vida +${20*u.vet} %</span>` : ''}`}<span>Bajas ${u.kills}</span>${u.order && u.order.type==='defend' ? '<span>Defiende un área</span>' : ''}`;
       if(u.owner===LOCAL && hordeActive(u, true)) h += `<span class="hot">Horda +25 %</span>`;
       if(t.capture) h += `<span>Captura pozos</span>`;
       if(t.stealth) h += `<span${stealthed(u)?' class="hot"':''}>${stealthed(u) ? 'Camuflado' : 'Visible 3 s tras disparar'}</span>`;
@@ -5730,7 +6095,7 @@ function showTransmission(text){
 // ======================= RED (lockstep con reloj de servidor) =======================
 const RETURN_URL = safeUrl(params.get('return'));
 // Versión del protocolo de la sala: debe coincidir con la del servidor (una página antigua en caché no puede entrar)
-const PROTO_SALA = 2;
+const PROTO_SALA = 3;
 const NET = { plazas:2, modo:'todos', ws:null, online:false, started:false, slot:0, queue:[], lastPkt:0, ping:null, pingT:null, sentResult:false, names:['',''], room:'', ended:null, overAt:0, faction:null };
 document.addEventListener('click', e => { const b = e.target.closest('#onPlazas button, #onModo button'); if(!b) return;
   if(b.dataset.np){ NET.plazas = +b.dataset.np; document.querySelectorAll('#onPlazas button').forEach(x => x.classList.toggle('on', x===b)); $('onModoRow').hidden = NET.plazas <= 2; }
@@ -5777,7 +6142,9 @@ function onNet(m){
       const colOk = lista(m.colores, v => Number.isInteger(v) && v >= 0 && v < 8), nivOk = lista(m.niveles, v => ['facil','normal','dificil'].includes(v));
       const iaOk = m.ia === undefined || (Array.isArray(m.ia) && m.ia.length < nj && new Set(m.ia).size === m.ia.length && m.ia.every(i => Number.isInteger(i) && i >= 0 && i < nj && i !== m.slot));
       const crOk = m.creditos === undefined || (Number.isInteger(m.creditos) && m.creditos >= 500 && m.creditos <= 20000);
-      if(!Number.isInteger(m.seed) || ![2,4,6,8].includes(nj) || !Number.isInteger(m.slot) || m.slot < 0 || m.slot >= nj || !eqOk || !posOk || !colOk || !nivOk || !iaOk || !crOk
+      const vacOk = m.vacios === undefined || m.vacios === null || (Array.isArray(m.vacios) && (nj > 2 || !m.vacios.length) && m.vacios.length <= nj - 2 && new Set(m.vacios).size === m.vacios.length
+        && m.vacios.every(i => Number.isInteger(i) && i >= 0 && i < nj && i !== m.slot && !(Array.isArray(m.ia) && m.ia.includes(i))));
+      if(!Number.isInteger(m.seed) || ![2,4,6,8].includes(nj) || !Number.isInteger(m.slot) || m.slot < 0 || m.slot >= nj || !eqOk || !posOk || !colOk || !nivOk || !iaOk || !crOk || !vacOk
          || !m.factions.every(f => FACTIONS[f]) || (m.map && (nj > 2 || mapError(m.map))) || !Array.isArray(m.log)){ toast('Mensaje de inicio inválido del servidor'); break; }
       LOCAL = m.slot; NET.online = true; NET.started = true; NET.ended = null; NET.sentResult = false; NET.overAt = 0;
       NET.names = m.factions.map((_, i) => Array.isArray(m.names) ? String(m.names[i] || 'Jugador ' + (i+1)).slice(0, 24) : 'Jugador ' + (i+1));
@@ -5785,7 +6152,7 @@ function onNet(m){
       $('room').hidden = true; $('menu').hidden = true; $('netwait').hidden = true;
       SFX.hush = true;
       CURRENT_TEAMS = Array.isArray(m.equipos) ? m.equipos : null;
-      ESC_SIG = { pos:Array.isArray(m.pos) ? m.pos : null, colores:Array.isArray(m.colores) ? m.colores : null };
+      ESC_SIG = { pos:Array.isArray(m.pos) ? m.pos : null, colores:Array.isArray(m.colores) ? m.colores : null, vacios:Array.isArray(m.vacios) ? m.vacios : null };
       startGame(m.seed, 'online', m.factions, Array.isArray(m.ia) ? m.ia : [], m.map || null, null, Array.isArray(m.niveles) ? m.niveles : 'normal', m.creditos || 3000);
       NET.queue = [];
       if(m.log && m.log.length){ const t0=performance.now(); for(const pkt of m.log) applyNetTick(pkt); updateFog(0, true); toast(`Partida recuperada: ${m.log.length} ticks en ${Math.round(performance.now()-t0)} ms`); }
@@ -5796,6 +6163,8 @@ function onNet(m){
     case 'paused': $('netwait').hidden = false; $('netwaitTxt').textContent = m.reason; break;
     case 'resumed': $('netwait').hidden = true; break;
     case 'retirado': if(Number.isInteger(m.slot) && NET.names) toast(`${String(NET.names[m.slot] || 'Un jugador').slice(0, 24)} quedó fuera de la partida (${m.motivo==='rendicion' ? 'se rindió' : 'abandono'})`); break;
+    case 'iaMando': if(Number.isInteger(m.slot) && NET.names){ const n = String(NET.names[m.slot] || 'Un jugador').slice(0, 24);
+      toast(m.on ? `${n} sigue desconectado: la IA toma su mando hasta que vuelva.` : `${n} volvió y retoma su mando.`); } break;
     case 'pong': NET.ping = Math.round(performance.now() - m.ts);
       NET.pings = Array.isArray(m.pings) && m.pings.length <= 8 ? m.pings.map(v => Number.isInteger(v) && v >= 0 && v < 60000 ? v : null) : null; break;
     case 'desync': NET.ended = { winner:-1, reason:'desincronizacion' }; if(!S.over){ S.over = true; S.winner = -1; } break;
@@ -5835,11 +6204,11 @@ function renderRoom(m){
     const fac = sel('fac', (ia ? opt('aleatoria', 'Aleatoria', p.faction) : '') + Object.entries(FACTIONS).map(([k, F]) => opt(k, F.nombre, p.faction)).join(''), !listo && (ia ? anf : propio), 'Facción');
     const eq = dosJ ? '' : `<td>${sel('eq', opt(0, 'Solo', p.eq) + [1,2,3,4].map(t => opt(t, 'Equipo ' + t, p.eq)).join(''), ok, 'Equipo')}</td>`;
     const dif = ia ? sel('dif', opt('facil', 'Fácil', p.dif) + opt('normal', 'Normal', p.dif) + opt('dificil', 'Difícil', p.dif), ok, 'Dificultad') : '<span class="sub">—</span>';
-    const est = ia ? 'IA' : !p.connected ? 'desconectado' : p.ready ? 'listo' : 'esperando';
+    const est = ia ? 'IA' : !p.connected ? 'desconectado' : p.anf ? 'creador' : p.ready ? 'listo' : 'esperando';
     return `<tr data-p="${i}"${cls}><td><span class="sw" style="background:${colorCss(p.color)}"></span>${nombre}</td><td>${fac}</td>${eq}`
       + `<td>${sel('color', COLORES_JUG.map((c, k) => opt(k, c, p.color)).join(''), ok, 'Color')}</td><td>${dif}</td>`
       + `<td>${sel('pos', opt(-1, 'Al azar', p.pos) + [...Array(N).keys()].map(l => opt(l, 'Lugar ' + (l+1), p.pos)).join(''), ok, 'Lugar de aparición')}</td>`
-      + `<td class="est${p.ready || ia ? ' ok' : ''}">${est}</td></tr>`;
+      + `<td class="est${p.ready || ia || p.anf ? ' ok' : ''}">${est}</td></tr>`;
   }).join('');
   $('roomThEq').hidden = dosJ;
   // Facción propia con las tarjetas (la tabla también la tiene)
@@ -5863,12 +6232,22 @@ function renderRoom(m){
   // Encabezado, avisos y botones
   const ias = P.filter(p => p && p.tipo==='ia').length, personas = P.filter(p => p && p.tipo!=='ia').length, libres = P.filter(p => !p).length;
   $('roomPlazas').textContent = dosJ ? 'Uno contra uno' : `${N} plazas · ${personas} ${personas===1 ? 'persona' : 'personas'}${ias ? ` · ${ias} IA` : ''}${libres ? ` · ${libres} ${libres===1 ? 'abierta' : 'abiertas'}` : ''}`;
-  const inicia = dosJ ? 'La partida inicia cuando ambos marcan «Listo».' : 'La partida inicia cuando todos marcan «Listo».';
+  const inicia = anf ? 'Cuando los demás marquen «Listo», pulse «Iniciar partida».' : 'Marque «Listo»: el creador inicia la partida.';
   $('roomIntro').textContent = (anf ? (dosJ ? 'Arme la partida: mapa, recursos y hora del día. ' : 'Arme la partida: mapa, recursos, hora del día y jugadores IA. ')
                                     : (dosJ ? 'Elija su facción, color y lugar; el creador arma el resto. ' : 'Elija su facción, equipo, color y lugar; el creador arma el resto. ')) + inicia;
   $('btnRoomClose').hidden = !anf;   // solo el creador de la sala puede cerrarla
-  $('btnReady').textContent = listo ? 'Cancelar listo' : 'Listo';
-  if(performance.now() > SALA.errorHasta) roomMsg(libres ? `Faltan ${libres} ${libres===1 ? 'jugador' : 'jugadores'}. Comparta el código de sala${anf && !dosJ ? ' o agregue jugadores IA' : ''}.` : listo ? 'Esperando a los demás jugadores.' : '');
+  // El creador inicia cuando los demás marcaron «Listo»; en salas de más de 2, las plazas abiertas quedan vacías (sin base)
+  const pend = P.filter(p => p && p.tipo!=='ia' && !p.anf && !(p.ready && p.connected)).length;
+  const bandos = new Set(P.map((p, i) => !p ? null : p.eq > 0 ? 'e' + p.eq : 's' + i).filter(Boolean)).size;
+  const puede = personas >= 2 && !pend && bandos >= 2 && !(dosJ && libres);
+  $('btnReady').dataset.accion = anf ? 'iniciar' : listo ? 'cancelar' : 'listo';
+  $('btnReady').textContent = anf ? 'Iniciar partida' : listo ? 'Cancelar listo' : 'Listo';
+  $('btnReady').disabled = anf && !puede;
+  const aviso = anf ? (personas < 2 ? `Se necesita al menos otro jugador: comparta el código de sala${dosJ ? '' : ' (las plazas restantes pueden ser IA o quedar vacías)'}.`
+      : pend ? `Esperando que ${pend === 1 ? 'un jugador marque' : pend + ' jugadores marquen'} «Listo».` : bandos < 2 ? 'Debe haber al menos dos bandos: cambie el equipo de algún jugador.'
+      : libres ? `Puede iniciar: ${libres === 1 ? 'la plaza abierta quedará vacía' : 'las ' + libres + ' plazas abiertas quedarán vacías'}, con sus recursos libres.` : 'Todo listo: pulse «Iniciar partida».')
+    : dosJ && libres ? 'Esperando al rival.' : listo ? 'Esperando a que el creador inicie la partida.' : 'Marque «Listo» cuando esté preparado.';
+  if(performance.now() > SALA.errorHasta) roomMsg(aviso);
 }
 // ======================= LISTA DE JUGADORES =======================
 // Botón de la barra superior (tecla J): facción, equipo, estado y ping de cada jugador. En línea, el servidor informa
@@ -5877,11 +6256,11 @@ const enPie = p => S.ents.some(e => !e.dead && e.kind==='bld' && e.owner===p && 
 function renderListaJugadores(){
   if($('listaJug').hidden || !S.players) return;
   const est = NET.online && NET.estado && Array.isArray(NET.estado.players) ? NET.estado.players : [], pings = NET.online && Array.isArray(NET.pings) ? NET.pings : [];
-  $('listaJugRows').innerHTML = S.players.map((pl, p) => {
+  $('listaJugRows').innerHTML = S.players.map((pl, p) => { if(S.vacios && S.vacios.includes(p)) return '';
     const ia = S.aiPlayers.includes(p), sp = est[p], col = Array.isArray(CURRENT_COLORES) && Number.isInteger(CURRENT_COLORES[p]) ? CURRENT_COLORES[p] : p;
     const nombre = NET.online ? NET.names[p] : REC && REC.names ? REC.names[p] : '';
     const eq = S.players.filter(q => q.team === pl.team).length > 1 ? 'Equipo ' + (pl.team + 1) : 'Solo';
-    const vivo = enPie(p), estado = !vivo ? 'eliminado' : sp && sp.fuera ? 'se retiró' : sp && sp.connected === false ? 'desconectado' : ia ? 'IA' : 'en juego';
+    const vivo = enPie(p), estado = !vivo ? 'eliminado' : sp && sp.fuera ? 'se retiró' : sp && sp.iaMando ? 'mando IA (desconectado)' : sp && sp.connected === false ? 'desconectado' : ia ? 'IA' : 'en juego';
     const ms = !NET.online || ia || !vivo ? null : p===LOCAL ? NET.ping : pings[p];
     const cls = !Number.isInteger(ms) ? '' : ms < 120 ? 'bien' : ms < 250 ? 'medio' : 'mal';
     return `<tr class="${p===LOCAL ? 'yo' : ''}"><td><span class="sw" style="background:${colorCss(col)}"></span>${esc(String(nombre || 'Jugador ' + (p + 1)))}${p===LOCAL ? ' (usted)' : ''}</td>`
@@ -5920,7 +6299,7 @@ let soloSlot = 0, soloPlayers = 2, soloEquipos = false, soloDiff = 'normal', CUR
 // Cada jugador elige facción, equipo, color, dificultad (la IA) y lugar de aparición. El jugador local es siempre el 1.
 // La partida usa la misma semilla que la vista previa: el mapa que se ve es el que se juega.
 const ESC = { n:2, sel:0, semilla:20261004 + Math.floor(Math.random()*1e6), jug:[] };
-let ESC_SIG = null, CURRENT_POS = null;   // configuración de la próxima partida (escaramuza o repetición) y lugares de la actual
+let ESC_SIG = null, CURRENT_POS = null, CURRENT_VACIOS = null;   // configuración de la próxima partida (escaramuza o repetición) y lugares de la actual
 const escJugador = p => ({ fac: p===0 ? soloFaction : 'aleatoria', eq:0, color:p, dif:'normal', pos:-1 });
 function escAsegurar(){
   while(ESC.jug.length < 8) ESC.jug.push(escJugador(ESC.jug.length)); ESC.jug[0].fac = soloFaction; if(ESC.sel >= ESC.n) ESC.sel = 0;
@@ -6108,7 +6487,7 @@ $('btnOnline').addEventListener('click', () => {
   if(room.length < 3){ menuMsg('El código de sala debe tener al menos 3 caracteres', true); return; }
   netConnect(url, room, name, null);
 });
-$('btnReady').addEventListener('click', () => netSend({ t:'ready', ready:$('btnReady').textContent==='Listo' }));
+$('btnReady').addEventListener('click', () => { const a = $('btnReady').dataset.accion; if(a==='iniciar') netSend({ t:'iniciar' }); else netSend({ t:'ready', ready:a!=='cancelar' }); });
 $('btnRoomClose').addEventListener('click', () => { if(!confirm('¿Cerrar la sala? Los demás jugadores saldrán de ella.')) return; NET.cerrando = true; netSend({ t:'close' }); });
 $('btnLeave').addEventListener('click', () => { const ws = NET.ws; NET.ws = null; if(ws) ws.close(); if(RETURN_URL){ location.href = RETURN_URL; return; } $('room').hidden = true; $('menu').hidden = false; menuMsg(''); });
 // Salir durante la espera o la reconexión de una partida en línea: vuelve al lobby (si se entró desde el sitio) o al menú
@@ -6127,7 +6506,7 @@ $('btnNetSalir').addEventListener('click', () => {
 // Una repetición guarda semilla, facciones, jugadores IA y las órdenes por tick. La simulación determinista hace el resto.
 let REC = null, REPLAY = null;
 function replayData(){
-  return { formato:'frente-arido-repeticion', v:SIM_VERSION, seed:S.seed, factions:S.players.map(p => p.faction), ai:S.aiPlayers.slice(),
+  return { formato:'frente-arido-repeticion', v:SIM_VERSION, seed:S.seed, factions:S.players.map(p => p.faction), ai:(S.aiInicial || S.aiPlayers).slice(), vacios:S.vacios || [],
            names:REC ? REC.names : ['Jugador 1','Jugador 2'], local:REC ? REC.local : 0, map:CURRENT_MAP, mission:S.mission ? S.mission.def : null, aiLevel:CURRENT_LEVEL, creditos:CURRENT_CREDITS, equipos:S.players.map(p => p.team), posiciones:S.posiciones, colores:CURRENT_COLORES, fecha:new Date().toISOString(), ticks:S.tick, winner:S.winner, log:S.log };
 }
 function downloadReplay(){
@@ -6144,7 +6523,7 @@ function startReplay(d){
   REPLAY = { d, log, idx:0, speed:1, paused:false, total:d.ticks || (log.length ? log[log.length-1][0]+1 : 0), done:false };
   if(d.map && mapError(d.map)){ menuMsg('La repetición contiene un mapa inválido', true); REPLAY = null; return; }
   CURRENT_TEAMS = Array.isArray(d.equipos) ? d.equipos : null;
-  ESC_SIG = { pos:Array.isArray(d.posiciones) ? d.posiciones : null, colores:Array.isArray(d.colores) ? d.colores : null };
+  ESC_SIG = { pos:Array.isArray(d.posiciones) ? d.posiciones : null, colores:Array.isArray(d.colores) ? d.colores : null, vacios:Array.isArray(d.vacios) ? d.vacios : null };
   startGame(d.seed, 'replay', d.factions, d.ai || [], d.map || null, d.mission || null, d.aiLevel || 'normal', d.creditos || 3000);
   document.body.classList.add('replay'); $('replaybar').hidden = false; setView('all');
   if(d.v !== SIM_VERSION) toast(`Repetición de la versión ${d.v}. Puede no reproducirse igual en la ${SIM_VERSION}.`);
@@ -6242,6 +6621,7 @@ function startGame(seed, mode, factions, aiList, map, mission, aiLevel, creditos
   const sig = ESC_SIG; ESC_SIG = null;
   if(mode==='solo' || mode==='mision') CURRENT_TEAMS = sig && Array.isArray(sig.equipos) ? sig.equipos : null;
   CURRENT_POS = sig && Array.isArray(sig.pos) ? sig.pos : null; CURRENT_COLORES = sig && Array.isArray(sig.colores) ? sig.colores : null;
+  CURRENT_VACIOS = sig && Array.isArray(sig.vacios) ? sig.vacios : null;
   aplicarColores(CURRENT_COLORES);
   ELIMINADO = false;
   CURRENT_MAP = map !== undefined ? map : (mode==='solo' ? soloMap : null);
@@ -6249,7 +6629,7 @@ function startGame(seed, mode, factions, aiList, map, mission, aiLevel, creditos
   CURRENT_CREDITS = creditos || (mode==='solo' ? soloCredits : 3000);
   applyAmbiente(mode==='mision' && mission ? (MISSION_LIGHT[MISSION_UI.id] || 'dia') : mode==='solo' ? (soloLight==='aleatoria' ? ['dia','atardecer','noche'][Math.floor(Math.random()*3)] : soloLight) : mode==='online' ? (NET.luz || 'dia') : 'dia');
   // En línea, los jugadores IA de la sala los juega la simulación en todos los clientes (la misma para todos)
-  newGame(seed, mode==='online' ? (aiList || []) : (mode==='replay' || mode==='mision') ? aiList : fac.map((_, p) => p).filter(p => p!==LOCAL), fac, fac.length > 2 ? null : CURRENT_MAP, mission || null, CURRENT_LEVEL, CURRENT_CREDITS, CURRENT_TEAMS, CURRENT_POS);
+  newGame(seed, mode==='online' ? (aiList || []) : (mode==='replay' || mode==='mision') ? aiList : fac.map((_, p) => p).filter(p => p!==LOCAL), fac, fac.length > 2 ? null : CURRENT_MAP, mission || null, CURRENT_LEVEL, CURRENT_CREDITS, CURRENT_TEAMS, CURRENT_POS, CURRENT_VACIOS);
   GAME_MODE = mode;
   ajustarMundo();
   preloadIcons(S.players[LOCAL].faction);   // íconos generados de la facción, si existen
@@ -6272,6 +6652,8 @@ function startGame(seed, mode, factions, aiList, map, mission, aiLevel, creditos
 const CONSEJOS = [
   'Ctrl + número forma un grupo; el número lo selecciona y la doble pulsación centra la cámara.',
   'Q y un clic: atacar-mover. Las unidades disparan a todo lo que encuentran en el camino.',
+  'G y un clic: defender un área. Las unidades enfrentan a quien entra y vuelven a su puesto.',
+  'Las torres, búnkeres, trincheras, miniguns y baterías tienen mejoras propias: selecciónelas para comprarlas.',
   'Los constructores sin órdenes reparan solos los edificios dañados que tienen cerca.',
   'Los tanques no son eficaces contra la infantería: la mejora de ametralladora de la fábrica lo corrige.',
   'Los aviones ociosos aterrizan y se rearman en su hangar; el bombardero suelta una sola bomba por salida.',
@@ -6304,7 +6686,9 @@ function precompileShaders(){
     new THREE.Mesh(FXG.chip, FXM.spark), new THREE.Mesh(FXG.casing, FXM.brass), new THREE.Mesh(FXG.chip, CHAR_MAT)
   ];
   for(const m of muestras){ m.position.set(WORLD/2, -50, WORLD/2); scene.add(m); }
+  for(const b of BILL.lotes) b.m.visible = true;   // humo y fuego por lotes
   try { renderer.compile(scene, camera); } catch(e){}
+  for(const b of BILL.lotes) b.m.visible = b.n > 0;
   for(const m of muestras){ scene.remove(m); if(m.material !== FXM.spark && m.material !== FXM.brass && m.material !== CHAR_MAT) m.material.dispose(); }
 }
 $('btnRestart').addEventListener('click', () => {
@@ -6368,21 +6752,32 @@ function nuevoLote(m, cap, prev){
 function dibujarLotes(){
   for(const l of LOTES.values()) l.n = 0;
   camera.updateMatrixWorld(); LOTE_M.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); LOTE_FR.setFromProjectionMatrix(LOTE_M);
-  LOTE_S.radius = 1.5;
   for(const o of meshes.values()){
     if(!o.lote || !o.lote.length || !o.g.visible || !o.g.parent || !o.body.visible) continue;
-    LOTE_S.center.copy(o.g.position); if(!LOTE_FR.intersectsSphere(LOTE_S)) continue;
+    LOTE_S.center.copy(o.g.position); LOTE_S.radius = o.rad || 1.5; if(!LOTE_FR.intersectsSphere(LOTE_S)) continue;
+    o.g.updateMatrixWorld(true);   // una sola pasada por unidad
     for(const m of o.lote){
-      if(m.parent && !m.parent.visible) continue;
-      m.updateWorldMatrix(true, false);
-      const k = m.geometry.id + '|' + m.material.id + '|' + (m.castShadow ? 1 : 0);
-      let l = LOTES.get(k);
-      if(!l) LOTES.set(k, l = nuevoLote(m, 64));
-      else if(l.n >= l.cap) LOTES.set(k, l = nuevoLote(m, l.cap*2, l));
-      l.im.setMatrixAt(l.n++, m.matrixWorld);
+      let p = m.parent, ve = true; while(p && p !== o.g){ if(!p.visible){ ve = false; break; } p = p.parent; }   // carga, tren, bomba: grupos que se ocultan
+      if(!ve) continue;
+      enLote(m);
     }
   }
+  // Efectos que son modelos o partículas: cadáveres, restos, aeronaves derribadas y partículas físicas
+  for(const f of effects){
+    if(!f.lote || !f.obj.parent) continue;
+    LOTE_S.center.copy(f.obj.position); LOTE_S.radius = f.rad || 1.5; if(!LOTE_FR.intersectsSphere(LOTE_S)) continue;
+    f.obj.updateMatrixWorld(true);
+    for(const m of f.lote) enLote(m);
+  }
   for(const l of LOTES.values()){ l.im.count = l.n; l.im.visible = l.n > 0; l.im.instanceMatrix.needsUpdate = true; }
+}
+// Agrega una malla a su lote (misma geometría, material y sombra)
+function enLote(m){
+  const k = m.geometry.id + '|' + m.material.id + '|' + (m.castShadow ? 1 : 0);
+  let l = LOTES.get(k);
+  if(!l) LOTES.set(k, l = nuevoLote(m, 64));
+  else if(l.n >= l.cap) LOTES.set(k, l = nuevoLote(m, l.cap*2, l));
+  l.im.setMatrixAt(l.n++, m.matrixWorld);
 }
 // Sombra de contacto: una mancha suave bajo cada unidad en tierra, inclinada según el relieve. Asienta las unidades en la arena
 // (la sombra del sol cae a un lado). Una sola malla instanciada para todas; no se usa en calidad Baja ni en barcos y aeronaves en vuelo.
@@ -6408,7 +6803,7 @@ function sombrasContacto(){
   C.im.count = k; C.im.visible = k > 0; C.im.instanceMatrix.needsUpdate = true;
 }
 function renderFrame(){
-  sombrasContacto(); dibujarLotes();
+  sombrasContacto(); dibujarLotes(); dibujarHumo();
   if(OPTIONS.calidad !== 'alta'){ renderer.setRenderTarget(null); renderer.render(scene, camera); return; }
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   if(!POST.ready || POST.w !== size.x || POST.h !== size.y) postInit(size.x, size.y);

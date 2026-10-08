@@ -6,7 +6,7 @@ Contexto del proyecto para Claude Code. Se carga automáticamente al abrir esta 
 
 - RTS para navegador: three.js r128 (cliente), Node.js con `ws` (servidor de partidas) y Laravel 11/12 (lobby, progreso, Elo).
 - Autor y responsable: Mg. Luis Guillermo Oviedo Ochoa, profesor de Ingeniería Informática (UNIPAZ), desarrollador Laravel.
-- Versión actual: **0.9.8** (`SIM_VERSION`). Grilla fina de 0,5 unidades (`SUBC = 4`); datos de diseño (mapas, misiones, bases) en celdas de 2 unidades convertidas con `L2F`. Próxima: 1.0 (ajustes del piloto con estudiantes).
+- Versión actual: **0.9.9** (`SIM_VERSION`). Grilla fina de 0,5 unidades (`SUBC = 4`); datos de diseño (mapas, misiones, bases) en celdas de 2 unidades convertidas con `L2F`. Próxima: 1.0 (ajustes del piloto con estudiantes).
 - Historial de versiones y decisiones: @docs/DECISIONES.md
 
 ## Convenciones obligatorias
@@ -67,7 +67,8 @@ node pruebas/auditoria-determinismo.js          # determinismo y repeticiones
 node pruebas/prueba-campania.js 6000            # 12 misiones y entrenamiento
 node pruebas/prueba-seguridad.js                # seguridad del servidor
 node pruebas/prueba-lockstep-n.js 4 2400 equipos   # partida en línea de N jugadores con un abandono
-node pruebas/prueba-lockstep-n.js 6 2400 ia        # personas contra jugadores IA en línea (sala armada)
+node pruebas/prueba-lockstep-n.js 6 2400 ia        # personas contra IA, con una plaza vacía; quien se va queda a cargo de la IA
+node pruebas/prueba-lockstep-n.js 4 2400 vuelve    # quien se desconecta vuelve después de que la IA tomó su mando
 node pruebas/prueba-huellas.js                  # compara con huellas-base.json (refactorizar sin cambiar resultados)
 node pruebas/prueba-huellas.js guardar          # nueva línea base (solo tras un cambio de simulación intencional)
 node pruebas/generar-iconos.js                  # actualiza public/juego/img/iconos.json tras agregar íconos

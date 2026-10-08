@@ -191,10 +191,10 @@
             </div>
             <h3 class="etiqueta" style="margin-top:34px">Novedades de la versión {{ config('game.version') }}</h3>
             <div class="novedades">
-                <div class="novedad"><h3>Escaramuza a medida</h3><p>Vista previa del mapa y, para cada jugador, facción, equipo, color, dificultad y lugar de aparición.</p></div>
-                <div class="novedad"><h3>Bombardero</h3><p>Un ala volante de Atlas suelta una sola bomba de gran poder y vuelve a su hangar.</p></div>
-                <div class="novedad"><h3>Aeródromo con hangares</h3><p>Los aviones aterrizan por la pista, se guardan en su hangar y despegan al recibir una orden.</p></div>
-                <div class="novedad"><h3>Armas secundarias</h3><p>Ametralladoras para los tanques y cañón sin retroceso para los técnicos, con mejoras en la fábrica.</p></div>
+                <div class="novedad"><h3>Salas en línea a medida</h3><p>Jugadores IA, mapa, recursos y lugares de aparición. El creador inicia la partida, aunque queden plazas libres.</p></div>
+                <div class="novedad"><h3>Mando por IA</h3><p>Si un jugador se desconecta, a los 30 segundos la IA toma su mando hasta que vuelva. La tecla J muestra los jugadores y su ping.</p></div>
+                <div class="novedad"><h3>Defensa de áreas</h3><p>Con la tecla G las unidades defienden un área y vuelven a su puesto. Torres, búnkeres y trincheras con mejoras propias.</p></div>
+                <div class="novedad"><h3>Desierto y unidades renovados</h3><p>Barcos, camionetas y helicópteros rediseñados. Vehículos con suspensión, orugas en marcha y retroceso del cañón, y combates más fluidos.</p></div>
             </div>
         </div>
     </section>

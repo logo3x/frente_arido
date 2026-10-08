@@ -9,7 +9,7 @@ const MAP = mapArg ? JSON.parse(fs.readFileSync(mapArg, 'utf8')) : null;
 const TARGET = Number(ticksArg), DROP = dropArg ? Number(dropArg) : -1;
 const api = new Function(sim + '\nreturn { S, newGame, simTick, stateHash, UT, BT, FACTIONS, POWERS, setLocal: v => { LOCAL = v; } };')();
 const { S } = api;
-let IA_SLOTS = [];   // plazas que juega la IA (las simula este cliente igual que los demás)
+let IA_SLOTS = [], iniciado = false;   // plazas que juega la IA (las simula este cliente igual que los demás)
 let ws, slot = -1, started = false, dropped = false, finished = false, hashes = 0, rnd = 1;
 const rand = () => (rnd = (rnd * 48271) % 2147483647) / 2147483647;   // aleatorio propio del cliente (no afecta el determinismo)
 function out(o){ process.stdout.write(JSON.stringify(o) + '\n'); }
@@ -19,16 +19,22 @@ function connect(){
   // RECONECTAR=1: si el servidor se reinicia, el cliente vuelve a conectarse y recibe el registro de la partida
   if(process.env.RECONECTAR) ws.on('close', () => { if(!finished && !dropped) setTimeout(connect, 700); else if(!finished && dropped && ws.readyState===3) setTimeout(connect, 700); });
   // PLAZAS y MODO: salas de más de 2 jugadores (en desarrollo el servidor los toma del mensaje)
-  ws.on('open', () => ws.send(JSON.stringify({ t:'join', proto:2, room, name, plazas:Number(process.env.PLAZAS) || 2, modo:process.env.MODO || 'todos' })));
+  ws.on('open', () => ws.send(JSON.stringify({ t:'join', proto:3, room, name, plazas:Number(process.env.PLAZAS) || 2, modo:process.env.MODO || 'todos' })));
   ws.on('message', d => {
     const m = JSON.parse(d);
     if(m.t === 'joined'){ slot = m.slot; if(!started){ if(factionArg) ws.send(JSON.stringify({ t:'faction', f:factionArg })); if(MAP && slot===0) ws.send(JSON.stringify({ t:'map', map:MAP }));
       // IA="3,4,5": el anfitrión (plaza 0) convierte esas plazas en jugadores IA; IA_NIVEL fija su dificultad
       if(slot===0 && process.env.IA) for(const pl of process.env.IA.split(',').map(Number)){ ws.send(JSON.stringify({ t:'slot', slot:pl, k:'tipo', v:'ia' })); if(process.env.IA_NIVEL) ws.send(JSON.stringify({ t:'slot', slot:pl, k:'dif', v:process.env.IA_NIVEL })); }
       ws.send(JSON.stringify({ t:'ready', ready:true })); } }
+    // El creador (plaza 0 en desarrollo) lanza la partida cuando están las ESPERAR personas y las demás marcaron «Listo»
+    else if(m.t === 'room' && !started && !iniciado && m.players[slot] && m.players[slot].anf){
+      const hs = m.players.filter(p => p && p.tipo === 'humano'), esperar = Number(process.env.ESPERAR) || (m.plazas - (process.env.IA ? process.env.IA.split(',').length : 0));
+      if(hs.length >= esperar && hs.every(p => p.anf || (p.ready && p.connected))){ iniciado = true; ws.send(JSON.stringify({ t:'iniciar' })); }
+    }
+    else if(m.t === 'iaMando') out({ ev:'iaMando', name, slot:m.slot, on:m.on });
     else if(m.t === 'start'){
       IA_SLOTS = Array.isArray(m.ia) ? m.ia : [];
-      api.setLocal(m.slot); api.newGame(m.seed, IA_SLOTS, m.factions, m.map || null, null, m.niveles || 'normal', m.creditos || 3000, m.equipos || null, m.pos || null); if(!m.log.length) out({ ev:'start', name, factions:m.factions, map:m.map ? m.map.nombre : 'Estándar' }); started = true; rnd = 7 + m.slot * 1000;
+      api.setLocal(m.slot); api.newGame(m.seed, IA_SLOTS, m.factions, m.map || null, null, m.niveles || 'normal', m.creditos || 3000, m.equipos || null, m.pos || null, m.vacios || null); if(!m.log.length) out({ ev:'start', name, factions:m.factions, map:m.map ? m.map.nombre : 'Estándar' }); started = true; rnd = 7 + m.slot * 1000;
       for(const pkt of m.log) step(pkt);
       if(m.log.length) out({ ev:'replay', name, ticks:m.log.length, tick:S.tick });
     }
@@ -47,7 +53,7 @@ function step(pkt){
   api.simTick();
   if(S.tick % 30 === 0){ ws.send(JSON.stringify({ t:'hash', n:S.tick, h:api.stateHash() })); hashes++; }
   if(S.tick % 20 === 0 && ws.readyState === 1) play();
-  if(S.tick === DROP && !dropped){ dropped = true; out({ ev:'drop', name, tick:S.tick }); ws.terminate(); if(process.env.NO_VOLVER){ finished = true; out({ ev:'done', name, slot, tick:S.tick, hash:0, hashes, fuera:true }); setTimeout(() => process.exit(0), 200); return; } setTimeout(connect, 1500); return; }
+  if(S.tick === DROP && !dropped){ dropped = true; out({ ev:'drop', name, tick:S.tick }); ws.terminate(); if(process.env.NO_VOLVER){ finished = true; out({ ev:'done', name, slot, tick:S.tick, hash:0, hashes, fuera:true }); setTimeout(() => process.exit(0), 200); return; } setTimeout(connect, Number(process.env.VOLVER_MS) || 1500); return; }   // VOLVER_MS: demora en volver
   if(S.tick >= TARGET || S.over){ finished = true; if(S.over) ws.send(JSON.stringify({ t:'result', winner:S.winner })); out({ ev:'done', name, slot, tick:S.tick, hash:api.stateHash(), hashes, over:S.over, winner:S.winner, ents:S.ents.length, ia:IA_SLOTS.length, iaEnts:S.ents.filter(e => IA_SLOTS.includes(e.owner) && !e.dead).length, poderes:Object.keys(S.players[slot].unlocked).length, rango:S.players[slot].rank, pozos:S.ents.filter(e=>e.type==='pozo'&&e.owner===slot).length, aviones:S.ents.filter(e=>e.air).length }); setTimeout(() => { ws.close(); process.exit(0); }, 300); }
 }
 // Órdenes de prueba variadas: producir, mover, atacar-mover, construir

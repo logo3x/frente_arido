@@ -9,7 +9,8 @@
  *   GAME_SECRET     Clave compartida con Laravel. Sin ella, modo desarrollo (sin token)
  *   RESULT_WEBHOOK  URL de Laravel para reportar resultados (opcional)
  *   TICK_MS         Duración del tick en ms (por defecto 66.67 = 15 Hz)
- *   RECONNECT_MS    Espera máxima de reconexión antes de declarar abandono (60000)
+ *   RECONNECT_MS    Sin ninguna persona conectada, espera antes de terminar la partida sin resultado (60000)
+ *   IA_MANDO_MS     Espera antes de que la IA tome el mando de un jugador desconectado (30000)
  *   ALLOWED_ORIGINS Orígenes permitidos separados por coma (por ejemplo https://juego.ejemplo.co). Vacío: sin restricción
  *   MAX_CONN_IP     Conexiones simultáneas por IP (20)
  *   MAX_ROOMS       Salas simultáneas en el servidor (500)
@@ -33,15 +34,16 @@ const SECRET = process.env.GAME_SECRET || '';
 const WEBHOOK = process.env.RESULT_WEBHOOK || '';
 const TICK_MS = Number(process.env.TICK_MS) || 1000 / 15;
 const RECONNECT_MS = Number(process.env.RECONNECT_MS) || 60000;
+const IA_MANDO_MS = Number(process.env.IA_MANDO_MS) || 30000;
 const HASH_EVERY = 30;
-const SIM_VERSION = '0.9.8';
+const SIM_VERSION = '0.9.9';
 const MAX_CMDS_PER_TICK = 40;
-const CMD_TYPES = new Set(['move', 'amove', 'attack', 'harvest', 'stop', 'build', 'cancel', 'rally', 'place', 'repair', 'cancelBuild', 'capture', 'unlock', 'power', 'enter', 'exit', 'super', 'upgrade']);
+const CMD_TYPES = new Set(['move', 'amove', 'attack', 'harvest', 'stop', 'build', 'cancel', 'rally', 'place', 'repair', 'cancelBuild', 'capture', 'unlock', 'power', 'enter', 'exit', 'super', 'upgrade', 'defend']);
 const PLAZAS = new Set([2, 4, 6, 8]);   // jugadores por sala (las de más de 2 usan el mapa continental)
 const FACTIONS = new Set(['atlas', 'hierro', 'guerrilla']);
 const DEFAULT_FACTION = ['atlas', 'hierro', 'guerrilla'];
 // Versión del protocolo de la sala: el cliente la envía al ingresar. Una página antigua guardada en caché debe recargarse.
-const PROTO = 2;
+const PROTO = 3;
 // Configuración de la sala (como en la escaramuza): recursos iniciales, hora del día y dificultad de la IA
 const CREDITOS = new Set([1000, 3000, 5000, 10000]);
 const LUCES = new Set(['dia', 'atardecer', 'noche', 'aleatoria']);
@@ -95,14 +97,16 @@ function roomState(room) {
   return { t: 'room', room: room.code, started: room.started,
     mapName: room.map ? room.map.nombre : null, map: previo && room.players.length <= 2 && room.map ? room.map : null,
     plazas: room.players.length, modo: room.modo, cfg: { creditos: room.cfg.creditos, luz: room.cfg.luz, semilla: room.cfg.semilla },
-    players: room.players.map((p, i) => p ? { slot: i, tipo: p.ia ? 'ia' : 'humano', name: nombreDe(p), ready: !!p.ready, connected: !!(p.ia || p.connected),
+    players: room.players.map((p, i) => p ? { slot: i, tipo: p.ia ? 'ia' : p.vacio ? 'vacio' : 'humano', name: nombreDe(p), iaMando: !!p.iaMando, ready: !!p.ready, connected: !!(p.ia || p.connected),
       faction: p.faction, eq: p.eq || 0, color: Number.isInteger(p.color) ? p.color : i, pos: Number.isInteger(p.pos) ? p.pos : -1, dif: p.ia ? p.dif : null,
       team: room.inicio ? room.inicio.equipos[i] : null, fuera: !!p.fuera, anf: !!p.anf } : null) };
 }
-const nombreDe = p => p.ia ? 'IA · ' + NOMBRE_NIVEL[p.dif] : p.name;
-const esHumano = p => !!p && !p.ia;
+const nombreDe = p => p.ia ? 'IA · ' + NOMBRE_NIVEL[p.dif] : p.vacio ? 'Vacío' : p.name;
+const esHumano = p => !!p && !p.ia && !p.vacio;
 const humanos = room => room.players.map((p, i) => i).filter(i => esHumano(room.players[i]));
 const humanosActivos = room => humanos(room).filter(i => !room.players[i].fuera);
+// Personas conectadas y en juego: son las que envían huellas y resultado (la IA y los desconectados no)
+const conectados = room => humanosActivos(room).filter(i => room.players[i].connected);
 const nuevaSemilla = () => crypto.randomInt(1, 2147483646);
 // Equipo de cada plaza en la partida (resuelto al empezar); antes de empezar, el número de plaza
 const equipoDe = (room, i) => room.inicio ? room.inicio.equipos[i] : i;
@@ -124,8 +128,9 @@ function getRoom(code, plazas = 2, modo = 'todos') {
   }
   return r;
 }
-// Las plazas de IA siempre cuentan como conectadas: la simulación las juega en todos los clientes
-function bothConnected(room) { return room.players.every(p => p && (p.ia || p.connected || p.fuera)); }
+// La partida avanza si hay al menos una persona conectada y nadie está esperando reconexión: las plazas de IA, vacías,
+// retiradas o con el mando en manos de la IA no detienen el reloj
+function bothConnected(room) { return room.players.every(p => p && (p.ia || p.vacio || p.connected || p.fuera || p.iaMando)) && conectados(room).length > 0; }
 const activos = room => room.players.map((p, i) => i).filter(i => room.players[i] && !room.players[i].fuera);
 // Partida de más de 2: el jugador que se va o se rinde pierde sus fuerzas (orden «rendir» que el servidor inserta) y la partida sigue
 function retirar(room, slot, motivo) {
@@ -141,7 +146,7 @@ function retirar(room, slot, motivo) {
 // y todos los clientes reciben lo mismo. Equipo 0 en una plaza es «solo»: recibe un número de equipo propio.
 function resolverInicio(room) {
   const P = room.players, N = P.length;
-  const factions = P.map(p => FACTIONS.has(p.faction) ? p.faction : DEFAULT_FACTION[crypto.randomInt(DEFAULT_FACTION.length)]);
+  const factions = P.map(p => p.vacio ? 'atlas' : FACTIONS.has(p.faction) ? p.faction : DEFAULT_FACTION[crypto.randomInt(DEFAULT_FACTION.length)]);
   const usados = new Set(P.filter(p => p.eq > 0).map(p => p.eq - 1)); let libre = 0;
   const eqs = P.map(p => { if (p.eq > 0) return p.eq - 1; while (usados.has(libre)) libre++; usados.add(libre); return libre; });
   const pos = P.map(p => Number.isInteger(p.pos) && p.pos >= 0 && p.pos < N ? p.pos : -1);
@@ -150,29 +155,34 @@ function resolverInicio(room) {
   for (let i = 0; i < N; i++) if (pos[i] < 0) pos[i] = libres.pop();
   const luz = room.cfg.luz === 'aleatoria' ? ['dia', 'atardecer', 'noche'][crypto.randomInt(3)] : room.cfg.luz;
   return { seed: room.cfg.semilla, factions, equipos: eqs, pos, colores: P.map((p, i) => Number.isInteger(p.color) ? p.color : i),
-           ia: P.map((p, i) => i).filter(i => P[i].ia), niveles: P.map(p => p.ia ? p.dif : 'normal'), creditos: room.cfg.creditos, luz, names: P.map(nombreDe) };
+           ia: P.map((p, i) => i).filter(i => P[i].ia), vacios: P.map((p, i) => i).filter(i => P[i].vacio), niveles: P.map(p => p.ia ? p.dif : 'normal'),
+           creditos: room.cfg.creditos, luz, names: P.map(nombreDe) };
 }
-// Motivo por el que la sala no puede empezar (null si puede)
+// Motivo por el que el creador no puede iniciar todavía (null si puede). En salas de más de 2, las plazas abiertas quedan vacías.
 function errorInicio(room) {
-  if (room.players.some(p => !p)) return 'Faltan jugadores.';
-  if (humanos(room).length < 2) return 'La partida en línea necesita al menos dos jugadores.';
-  if (new Set(room.players.map((p, i) => p.eq > 0 ? 'e' + p.eq : 's' + i)).size < 2) return 'Debe haber al menos dos bandos: cambie el equipo de algún jugador.';
+  if (room.players.length <= 2 && room.players.some(p => !p)) return 'Falta el rival.';
+  const hs = humanos(room);
+  if (hs.length < 2) return 'La partida en línea necesita al menos dos jugadores.';
+  if (hs.some(i => !room.players[i].anf && !(room.players[i].ready && room.players[i].connected))) return 'Faltan jugadores por marcar «Listo».';
+  if (new Set(room.players.map((p, i) => !p ? null : p.eq > 0 ? 'e' + p.eq : 's' + i).filter(Boolean)).size < 2) return 'Debe haber al menos dos bandos: cambie el equipo de algún jugador.';
   return null;
 }
-function intentarInicio(room) {
-  if (room.started || room.players.some(p => !p) || !room.players.every(p => p.ia || (p.ready && p.connected))) return;
-  const error = errorInicio(room);
-  if (error) { for (const p of room.players) if (esHumano(p)) p.ready = false; broadcast(room, { t: 'error', msg: error }); broadcast(room, roomState(room)); return; }
+// El creador lanza la partida cuando los demás marcaron «Listo»
+function onIniciar(ws) {
+  const room = ws.room, yo = room && room.players[ws.slot]; if (!room || room.started || !yo) return;
+  if (!yo.anf) return send(ws, { t: 'error', msg: 'Solo el creador inicia la partida.' });
+  const error = errorInicio(room); if (error) return send(ws, { t: 'error', msg: error });
   startRoom(room);
 }
 // Mensaje de inicio: el mismo para todos salvo la plaza propia. log: ticks ya jugados (reconexión)
 function mensajeInicio(room, slot, log) {
   const I = room.inicio;
-  return { t: 'start', seed: I.seed, slot, names: I.names, factions: I.factions, equipos: I.equipos, pos: I.pos, colores: I.colores, ia: I.ia, niveles: I.niveles,
+  return { t: 'start', seed: I.seed, slot, names: I.names, factions: I.factions, equipos: I.equipos, pos: I.pos, colores: I.colores, ia: I.ia, vacios: I.vacios || [], niveles: I.niveles,
            creditos: I.creditos, luz: I.luz, map: room.players.length > 2 ? null : room.map || null, log };
 }
 function startRoom(room) {
   room.started = true; clearTimeout(room.cfgTimer);
+  room.players = room.players.map(p => p || { vacio: true, connected: true, ready: true });   // plazas abiertas: lugares vacíos
   room.inicio = resolverInicio(room);
   room.seed = room.inicio.seed; room.factions = room.inicio.factions;
   room.players.forEach((p, slot) => { if (esHumano(p)) send(p.ws, mensajeInicio(room, slot, [])); });
@@ -215,7 +225,7 @@ async function reportResult(room, winner, reason) {
     ia: I.ia.length,                                            // partida con IA: Laravel no cambia el Elo
     jugadores: hs.map(i => ({ uid: room.players[i].id, slot: i, team: equipoDe(room, i), fuera: !!room.players[i].fuera })),
     // Repetición compacta: solo los ticks con órdenes. El cliente la reproduce con la misma semilla y la misma configuración.
-    replay: { formato: 'frente-arido-repeticion', v: SIM_VERSION, seed: room.seed, factions: room.factions, equipos: equipos(room), ai: I.ia, aiLevel: I.niveles,
+    replay: { formato: 'frente-arido-repeticion', v: SIM_VERSION, seed: room.seed, factions: room.factions, equipos: equipos(room), ai: I.ia, vacios: I.vacios || [], aiLevel: I.niveles,
               creditos: I.creditos, posiciones: I.pos, colores: I.colores, map: room.map || null,
               names: I.names, ticks: room.tick, winner, log: room.log.filter(p => p.c.length).map(p => [p.n, p.c]) },
     players: hs.map(i => room.players[i].id)
@@ -240,7 +250,8 @@ function saveRooms() {
   for (const room of rooms.values()) {
     if (!room.started || room.ended || room.savedTick === room.tick) continue;
     const data = { v: 2, code: room.code, seed: room.seed, factions: room.factions, map: room.map || null, tick: room.tick, log: room.log, modo: room.modo, inicio: room.inicio,
-                   players: room.players.map(p => p.ia ? { ia: true, dif: p.dif, faction: p.faction } : { id: p.id, name: p.name, faction: p.faction, fuera: !!p.fuera, anf: !!p.anf }) };
+                   players: room.players.map(p => p.ia ? { ia: true, dif: p.dif, faction: p.faction } : p.vacio ? { vacio: true }
+                     : { id: p.id, name: p.name, faction: p.faction, fuera: !!p.fuera, anf: !!p.anf, iaMando: !!p.iaMando }) };
     const tmp = roomFile(room.code) + '.tmp';
     try { fs.writeFileSync(tmp, JSON.stringify(data)); fs.renameSync(tmp, roomFile(room.code)); room.savedTick = room.tick; }
     catch (e) { log('no se pudo guardar la sala', room.code, clean(e.message)); }
@@ -258,17 +269,15 @@ function restoreRooms() {
       const room = getRoom(d.code);
       Object.assign(room, { seed: d.seed, factions: d.factions, map: d.map, tick: d.tick, log: d.log, started: true, savedTick: d.tick, modo: d.modo === 'equipos' ? 'equipos' : 'todos',
         players: d.players.map(p => p.ia ? { ia: true, dif: NIVELES.has(p.dif) ? p.dif : 'normal', faction: p.faction, ready: true, connected: true }
-                                         : { id: p.id, name: p.name, faction: p.faction, ws: null, ready: true, connected: false, fuera: !!p.fuera, anf: !!p.anf }) });
+                                  : p.vacio ? { vacio: true, connected: true, ready: true }
+                                  : { id: p.id, name: p.name, faction: p.faction, ws: null, ready: true, connected: false, fuera: !!p.fuera, anf: !!p.anf, iaMando: !!p.iaMando }) });
       // Formato 1 (versión anterior): sin IA, lugares y colores por posición, equipos según el modo
       const N = room.players.length, eqV1 = i => room.modo === 'equipos' ? Math.floor(i / (N / 2)) : i;
       room.inicio = d.v === 2 && d.inicio ? d.inicio : { seed: d.seed, factions: d.factions, equipos: room.players.map((_, i) => eqV1(i)), pos: null, colores: null,
         ia: [], niveles: null, creditos: 3000, luz: 'dia', names: room.players.map(p => p.name) };
-      room.abandonTimer = setTimeout(() => {
-        if (room.ended || bothConnected(room)) return;
-        if (room.players.length > 2){ room.players.forEach((p, i) => { if (!p.connected) retirar(room, i, 'abandono'); }); if (!room.timer && !room.ended) room.timer = setInterval(() => stepRoom(room), TICK_MS); return; }
-        const alive = room.players.findIndex(p => p.connected);
-        finalize(room, alive, alive >= 0 ? 'abandono' : 'reinicio');
-      }, RECONNECT_MS);
+      // Quien no vuelve en IA_MANDO_MS queda a cargo de la IA (si ya lo estaba, sigue así); si no vuelve nadie, termina sin resultado
+      room.players.forEach((p, i) => { if (esHumano(p) && !p.fuera && !p.iaMando) p.timerIa = setTimeout(() => tomarMando(room, i), IA_MANDO_MS); });
+      room.abandonTimer = setTimeout(() => { if (!room.ended && !conectados(room).length) finalize(room, -1, 'reinicio'); }, RECONNECT_MS);
       log(`sala ${room.code}: restaurada en el tick ${room.tick}, esperando a los jugadores`);
     } catch (e) { log('archivo de sala descartado:', clean(f), clean(e.message)); }
   }
@@ -309,7 +318,11 @@ function onJoin(ws, m) {
   if (slot >= 0) {                                              // reconexión
     const p = room.players[slot];
     if (p.connected && p.ws !== ws) { try { p.ws.close(4000, 'Sesión reemplazada'); } catch {} }
-    p.ws = ws; p.connected = true; if (auth.anf) p.anf = true;
+    p.ws = ws; p.connected = true; if (auth.anf) p.anf = true; clearTimeout(p.timerIa); p.iaPendiente = false;
+    if (room.started && p.iaMando) {                          // vuelve: la IA le devuelve el mando en el próximo tick
+      p.iaMando = false; room.pending.push({ t: 'iaDeja', p: slot }); broadcast(room, { t: 'iaMando', slot, on: false });
+      log(`sala ${room.code}: ${p.name} retoma su mando`);
+    }
   } else {
     if (room.started) return send(ws, { t: 'error', msg: 'La partida ya comenzó' });
     slot = room.players.findIndex(p => !p);
@@ -322,10 +335,8 @@ function onJoin(ws, m) {
   send(ws, { t: 'joined', room: code, slot });
   if (room.started) {
     send(ws, mensajeInicio(room, slot, room.log));
-    if (bothConnected(room)) {
-      clearTimeout(room.abandonTimer); broadcast(room, { t: 'resumed' });
-      if (!room.timer) room.timer = setInterval(() => stepRoom(room), TICK_MS);   // sala restaurada tras un reinicio
-    }
+    room.players.forEach((q, i) => { if (q && q.iaPendiente) tomarMando(room, i); });   // esperaban a que volviera alguien
+    reanudar(room);
     log(`sala ${code}: ${name} se reconectó en el tick ${room.tick}`);
   }
   broadcast(room, roomState(room));
@@ -334,7 +345,6 @@ function onReady(ws, m) {
   const room = ws.room; if (!room || room.started) return;
   const p = room.players[ws.slot]; p.ready = m.ready !== false;
   broadcast(room, roomState(room));
-  intentarInicio(room);
 }
 function onFaction(ws, m) {
   const room = ws.room; if (!room || room.started || !FACTIONS.has(m.f)) return;
@@ -422,7 +432,7 @@ function onHash(ws, m) {
   let h = room.hashes.get(m.n); if (!h) { h = {}; room.hashes.set(m.n, h); }
   if (!Number.isFinite(m.h)) return;
   h[ws.slot] = m.h >>> 0;
-  const act = humanosActivos(room);                             // la IA no envía huellas: la calculan todos los clientes
+  const act = conectados(room);                                 // la IA y los desconectados no envían huellas
   if (act.every(i => h[i] !== undefined)) {
     room.hashes.delete(m.n);
     if (act.some(i => h[i] !== h[act[0]])) {
@@ -443,7 +453,7 @@ function onResult(ws, m) {
   if (!Number.isInteger(m.winner) || m.winner < -1 || m.winner >= room.players.length) return;
   room.results[ws.slot] = m.winner;
   clearInterval(room.timer);                                   // la simulación ya terminó en todos los clientes
-  const r = room.results, act = humanosActivos(room);
+  const r = room.results, act = conectados(room);
   if (act.every(i => r[i] !== undefined)) { const ok = act.every(i => r[i] === r[act[0]]); finalize(room, ok ? r[act[0]] : -1, ok ? 'victoria' : 'discrepancia'); }
   else if (!room.endTimer) room.endTimer = setTimeout(() => finalize(room, m.winner, 'victoria'), 5000);
 }
@@ -481,13 +491,30 @@ function onClose(ws) {
   }
   if (room.ended) return;
   p.connected = false;
-  broadcast(room, { t: 'paused', reason: `${p.name} se desconectó. Esperando reconexión.` });
+  const slot = ws.slot;
+  if (!p.fuera) {
+    broadcast(room, { t: 'paused', reason: `${p.name} se desconectó. Si no vuelve en ${Math.round(IA_MANDO_MS/1000)} s, la IA toma su mando hasta que regrese.` });
+    clearTimeout(p.timerIa); p.timerIa = setTimeout(() => tomarMando(room, slot), IA_MANDO_MS);
+  }
   broadcast(room, roomState(room));
   log(`sala ${room.code}: ${p.name} desconectado en el tick ${room.tick}`);
-  clearTimeout(room.abandonTimer);
-  const slot = ws.slot;
-  if (room.players.length > 2) { clearTimeout(p.timerFuera); p.timerFuera = setTimeout(() => { if (!p.connected && !room.ended) retirar(room, slot, 'abandono'); }, RECONNECT_MS); return; }
-  room.abandonTimer = setTimeout(() => { if (!p.connected) finalize(room, 1 - ws.slot, 'abandono'); }, RECONNECT_MS);
+  // Sin ninguna persona conectada la partida espera; si nadie vuelve en RECONNECT_MS, termina sin resultado
+  if (!conectados(room).length) { clearTimeout(room.abandonTimer); room.abandonTimer = setTimeout(() => { if (!room.ended && !conectados(room).length) finalize(room, -1, 'abandono'); }, RECONNECT_MS); }
+}
+// La IA de la simulación toma el mando de un jugador desconectado: la orden «iaToma» viaja en el flujo de ticks (mismo tick en todos)
+function tomarMando(room, slot) {
+  const p = room.players[slot]; if (room.ended || !esHumano(p) || p.connected || p.fuera || p.iaMando) return;
+  if (!conectados(room).length) { p.iaPendiente = true; return; }   // nadie conectado: se decide cuando vuelva alguien
+  p.iaMando = true; p.iaPendiente = false; room.pending.push({ t: 'iaToma', p: slot });
+  broadcast(room, { t: 'iaMando', slot, on: true }); broadcast(room, roomState(room));
+  log(`sala ${room.code}: la IA toma el mando de ${p.name}`);
+  reanudar(room);
+}
+// Reanuda el reloj si nadie espera reconexión (también la primera vez tras un reinicio del servidor)
+function reanudar(room) {
+  if (room.ended || !bothConnected(room)) return;
+  clearTimeout(room.abandonTimer); broadcast(room, { t: 'resumed' });
+  if (!room.timer) room.timer = setInterval(() => stepRoom(room), TICK_MS);
 }
 
 // ---------- Servidor ----------
@@ -578,6 +605,7 @@ function route(ws, m) {
       case 'faction': return onFaction(ws, m);
       case 'slot': return onSlot(ws, m);
       case 'cfg': return onCfg(ws, m);
+      case 'iniciar': return onIniciar(ws);
       case 'map': return onMap(ws, m);
       case 'cmd': return onCmd(ws, m);
       case 'hash': return onHash(ws, m);
