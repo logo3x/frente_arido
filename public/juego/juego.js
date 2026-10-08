@@ -1989,7 +1989,7 @@ function updateSun(cx, cz, dist){
 // ======================= CICLO DE LUZ =======================
 // Ambientes visuales (no afectan la simulación): cielo, sol, color de fondo y tono del posprocesado.
 const AMBIENTES = {
-  dia:       { cielo:0xf6eedd, suelo:0x7a6248, iCielo:0.6,  sol:[-60,95,35], cSol:0xffe6c0, iSol:0.82, fondo:0x1d2220, tono:[1.03,1.0,0.96] },
+  dia:       { cielo:0xe2e8ee, suelo:0x7a6248, iCielo:0.62, sol:[-60,95,35], cSol:0xffe4bc, iSol:0.86, fondo:0x1d2220, tono:[1.03,1.0,0.96] },
   atardecer: { cielo:0xffc89a, suelo:0x6a4636, iCielo:0.55, sol:[-95,42,30], cSol:0xff9a52, iSol:0.95, fondo:0x2a1d18, tono:[1.1,0.95,0.84] },
   noche:     { cielo:0x50608a, suelo:0x262830, iCielo:0.42, sol:[40,80,-60], cSol:0x9fb4e0, iSol:0.32, fondo:0x0b0f16, tono:[0.82,0.9,1.12], bengalas:true }
 };
@@ -2030,7 +2030,7 @@ function updateFlashLights(dt){ for(const f of FLASH_LIGHTS){ if(f.life > 0){ f.
 
 // Niebla de guerra: textura 64×64 muestreada en el shader de cada material por posición de mundo
 const MUNDO_U = { value:WORLD };
-const NUBES_U = { value:0.18 };   // intensidad de las sombras de nubes (0 en calidad Baja)   // tamaño del mundo para los sombreadores (cambia con el mapa)
+const NUBES_U = { value:0.13 };   // intensidad de las sombras de nubes (0 en calidad Baja)   // tamaño del mundo para los sombreadores (cambia con el mapa)
 // Niebla con un texel por unidad del mundo: basta para el sombreado y cuesta 4 veces menos que una por celda de 0,5
 let FOGN = WORLD, fogData = new Uint8Array(FOGN*FOGN*4), fogCur = new Float32Array(FOGN*FOGN);
 let fogTex = new THREE.DataTexture(fogData, FOGN, FOGN, THREE.RGBAFormat);
@@ -2059,7 +2059,7 @@ function addFog(m){
         if(uNubes > 0.0){
           vec2 nw = vFogUv*uMundo*0.035 + vec2(uTiempoN*0.012, uTiempoN*0.007);
           float nb = nubeR(nw)*0.65 + nubeR(nw*2.1 + 3.7)*0.35;
-          gl_FragColor.rgb *= 1.0 - uNubes*smoothstep(0.5, 0.76, nb);
+          gl_FragColor.rgb *= 1.0 - uNubes*smoothstep(0.44, 0.86, nb);
         }
         #include <fog_fragment>`);   // sombras de nubes que avanzan despacio con el viento
   };
@@ -2146,18 +2146,36 @@ const TEX = {
     x.fillStyle = 'rgba(20,18,16,0.25)';
     for(let i=0; i<30; i++){ x.beginPath(); x.arc(rnd()*n, rnd()*n, 0.8+rnd()*1.6, 0, 7); x.fill(); }   // impactos y picaduras
   }, 7),
-  // Arena: granos, guijarros y ondas de viento
+  // Arena: grano fino, ondas de viento suaves (bandas de luz y sombra deformadas por ruido; en calidad Alta también dan el relieve)
+  // y guijarros sueltos. Todo se repite sin costuras: el ruido es continuo y las ondas completan su ciclo en la baldosa.
   sand: canvasTex(512, (x, n, rnd) => {
-    grainPixels(x, n, rnd, 196, 255, 0.8);
-    x.strokeStyle = 'rgba(120,90,50,0.10)'; x.lineWidth = 2;
-    for(let k=0; k<46; k++){ const y0 = rnd()*n, amp = 3+rnd()*5, ph = rnd()*6.28; x.beginPath(); for(let px=0; px<=n; px+=8){ const y = y0 + Math.sin(px/n*6.28*3+ph)*amp; px ? x.lineTo(px, y) : x.moveTo(px, y); } x.stroke(); }
-    for(let i=0; i<420; i++){ const r = 0.6+rnd()*1.8, g = rnd(); x.fillStyle = g < 0.5 ? `rgba(90,70,45,${0.25+rnd()*0.3})` : `rgba(255,248,230,${0.2+rnd()*0.3})`; x.beginPath(); x.arc(rnd()*n, rnd()*n, r, 0, 7); x.fill(); }
+    grainPixels(x, n, rnd, 200, 255, 0.75);
+    const img = x.getImageData(0, 0, n, n), d = img.data, w1 = noiseField(n, 4, rnd), w2 = noiseField(n, 10, rnd), amp = noiseField(n, 3, rnd);
+    for(let py=0; py<n; py++) for(let px=0; px<n; px++){
+      const fase = (py + (w1(px, py) - 0.5)*80 + (w2(px, py) - 0.5)*16)/n*6.2832*26, sn = Math.sin(fase), neg = Math.max(0, -sn);
+      const k = 1 + (0.014 + 0.022*amp(px, py))*sn - 0.012*neg*neg, i = (py*n + px)*4;   // cresta clara, valle algo más oscuro
+      d[i] = Math.min(255, d[i]*k); d[i+1] = Math.min(255, d[i+1]*k*0.995); d[i+2] = Math.min(255, d[i+2]*k*0.985);
+    }
+    x.putImageData(img, 0, 0);
+    for(let i=0; i<260; i++){ const r = 0.5 + rnd()*1.3, g = rnd();
+      x.fillStyle = g < 0.3 ? `rgba(105,82,52,${0.16+rnd()*0.2})` : g < 0.45 ? `rgba(150,92,58,${0.14+rnd()*0.18})` : `rgba(255,250,236,${0.16+rnd()*0.26})`;
+      x.beginPath(); x.arc(rnd()*n, rnd()*n, r, 0, 7); x.fill(); }
   }, 11),
-  // Roca: manchas grandes y grietas oscuras
+  // Roca: arenisca en estratos horizontales (la geometría de las rocas lleva la altura en v), grano, líneas de estrato,
+  // grietas verticales cortas y chorreado oscuro (barniz del desierto). Las ondas cierran su ciclo en el ancho: sin costuras.
   rock: canvasTex(256, (x, n, rnd) => {
-    grainPixels(x, n, rnd, 170, 255, 1);
-    x.strokeStyle = 'rgba(40,30,20,0.35)'; x.lineWidth = 1.2;
-    for(let i=0; i<18; i++){ let px = rnd()*n, py = rnd()*n; x.beginPath(); x.moveTo(px, py); for(let s=0; s<6; s++){ px += (rnd()-0.5)*30; py += rnd()*20; x.lineTo(px, py); } x.stroke(); }
+    grainPixels(x, n, rnd, 172, 248, 1);
+    const ola = (px, y, k) => Math.sin(px/n*6.2832*2 + y*0.37)*1.6*k + Math.sin(px/n*6.2832*5 + y)*0.6*k;
+    for(let y = 0; y < n; ){ const h = 3 + rnd()*13, t = rnd();
+      x.fillStyle = t < 0.42 ? `rgba(62,42,26,${0.07+rnd()*0.11})` : t < 0.78 ? `rgba(255,240,214,${0.07+rnd()*0.13})` : `rgba(160,78,38,${0.08+rnd()*0.10})`;
+      x.beginPath(); x.moveTo(0, y + ola(0, y, 1)); for(let px=8; px<=n; px+=8) x.lineTo(px, y + ola(px, y, 1));
+      for(let px=n; px>=0; px-=8) x.lineTo(px, y + h + ola(px, y + h, 1)); x.closePath(); x.fill();
+      if(rnd() < 0.55){ x.strokeStyle = `rgba(48,32,20,${0.18+rnd()*0.14})`; x.lineWidth = 0.8 + rnd()*0.8; x.beginPath(); x.moveTo(0, y + ola(0, y, 1)); for(let px=8; px<=n; px+=8) x.lineTo(px, y + ola(px, y, 1)); x.stroke(); }
+      y += h; }
+    x.strokeStyle = 'rgba(40,28,18,0.30)'; x.lineWidth = 1;
+    for(let i=0; i<26; i++){ let px = rnd()*n, py = rnd()*n; const l = 5 + rnd()*16; x.beginPath(); x.moveTo(px, py); for(let s2=0; s2<3; s2++){ px += (rnd()-0.5)*4; py += l/3; x.lineTo(px, py); } x.stroke(); }   // grietas verticales
+    for(let i=0; i<22; i++){ const px = rnd()*n, py = rnd()*n, l = 12 + rnd()*40, g = x.createLinearGradient(0, py, 0, py + l);
+      g.addColorStop(0, 'rgba(58,40,28,0.20)'); g.addColorStop(1, 'rgba(58,40,28,0)'); x.fillStyle = g; x.fillRect(px, py, 2 + rnd()*5, l); }   // chorreado oscuro
   }, 13),
   // Agua: ondas claras que se desplazan
   water: canvasTex(256, (x, n, rnd) => {
@@ -2272,6 +2290,8 @@ function ball(r,color,x=0,y=0,z=0,sx=1,sy=1,sz=1){ const m = new THREE.Mesh(DETA
 function tilt(m, rx=0, ry=0, rz=0){ m.rotation.set(rx,ry,rz); return m; }
 function named(g, name){ g.name = name; return g; }
 // Cabina con capó y parabrisas inclinado: perfil lateral extruido a lo ancho, más el vidrio inclinado
+// Cabina con una franja del color del equipo en el techo (se ve desde la cámara) en lugar de pintarla entera
+function cabEquipo(body, w, h, d, color, glass, y, z, tc){ cab(body, w, h, d, color, glass, y, z); body.add(box(w*0.84, 0.035, d*0.34, tc, 0, y + h - 0.012, z - d*0.24)); }
 function cab(body, w, h, d, color, glass, y, z){
   body.add(profileZ([[-d/2,0],[d/2,0],[d/2,h*0.36],[d*0.42,h*0.44],[d*0.2,h*0.5],[d*0.04,h*0.86],[-d*0.08,h*0.97],[-d*0.3,h],[-d/2+0.02,h*0.98],[-d/2,h*0.92]], w, color, 0, y, z, 0.04));
   body.add(tilt(box(w*0.84, h*0.44, 0.03, glass, 0, y+h*0.5, z+d*0.1), -0.62));                  // parabrisas
@@ -2482,7 +2502,7 @@ function unitModel(e, o, body){
       } else if(f==='hierro'){    // Camión minero de seis ruedas con tolva
         wheels(body, 0.3, 0.26, [-0.62,0.62], [0.85,-0.25,-0.85]);
         body.add(profileZ([[-1.45,0],[1.3,0],[1.38,0.14],[1.3,0.28],[-1.45,0.28]], 1.3, P.dark, 0, 0.35, -0.1, 0.03));
-        cab(body, 1.24, 0.82, 0.86, P.hull, P.glass, 0.6, 0.85); body.add(box(1.26,0.1,0.42,tc,0,1.42,0.66));
+        cab(body, 1.24, 0.82, 0.86, P.hull, P.glass, 0.6, 0.85); body.add(box(1.26,0.1,0.42,P.hull,0,1.42,0.66), box(1.28,0.11,0.16,tc,0,1.42,0.66));
         body.add(box(1.36,0.18,0.12,P.metal,0,0.4,1.33), box(0.9,0.3,0.06,0x1e1e1c,0,0.62,1.31));
         body.add(cyl(0.07,0.75,P.metal,0.55,1.1,0.45,8), cyl(0.09,0.06,P.trim,0.55,1.82,0.45,8));
         body.add(profileZ([[-0.82,0],[0.82,0],[0.95,0.64],[-0.98,0.64]], 1.34, P.trim, 0, 0.63, -0.6), box(1.2,0.06,1.7,P.dark,0,1.24,-0.6), box(1.38,0.1,0.1,tc,0,1.18,-1.5));
@@ -2497,7 +2517,7 @@ function unitModel(e, o, body){
     case 'constructor':
       if(f==='atlas'){            // Plataforma de ingeniería con brazo robótico
         wheels(body, 0.26, 0.22, [-0.6,0.6], [0.65,-0.65], P.trim);
-        body.add(profileZ([[-0.95,0],[0.8,0],[1.0,0.18],[0.82,0.42],[-0.92,0.42]], 1.25, P.hull, 0, 0.3, 0, 0.04), box(1.27,0.08,1.2,tc,0,0.72,-0.2), ball(0.42, P.glass, 0, 0.72, 0.5, 1.05, 0.7, 0.8));
+        body.add(profileZ([[-0.95,0],[0.8,0],[1.0,0.18],[0.82,0.42],[-0.92,0.42]], 1.25, P.hull, 0, 0.3, 0, 0.04), box(1.27,0.08,1.2,P.trim,0,0.72,-0.2), box(1.29,0.09,0.34,tc,0,0.72,-0.55), ball(0.42, P.glass, 0, 0.72, 0.5, 1.05, 0.7, 0.8));
         body.add(lamp(1.0,0.05,0.05,P.glow,0,0.5,0.96), cyl(0.18,0.2,P.dark,0,0.82,-0.5,10));
         { const t = named(new THREE.Group(), 'tool'); t.position.set(0,0.92,-0.5); body.add(t);   // brazo robótico con soldador
           t.add(cyl(0.13,0.16,P.dark,0,-0.06,0,12), tilt(box(0.14,0.14,1.2,P.trim,0,0.0,0.42),-0.6), ball(0.1,P.dark,0,0.62,0.78), tilt(box(0.12,0.12,0.8,P.trim,0,0.56,1.08),0.5), lamp(0.12,0.08,0.18,P.glow,0,0.2,1.42)); }
@@ -2509,7 +2529,7 @@ function unitModel(e, o, body){
         body.add(cyl(0.08,0.7,P.metal,0.35,0.9,-0.75,8), cyl(0.1,0.05,P.trim,0.35,1.6,-0.75,8));
       } else {                    // Camión viejo con grúa y herramientas
         wheels(body, 0.28, 0.24, [-0.6,0.6], [0.75,-0.75]);
-        body.add(box(1.2,0.3,2.3,P.dark,0,0.3,0)); cab(body, 1.15, 0.7, 0.82, tc, P.glass, 0.6, 0.7);
+        body.add(box(1.2,0.3,2.3,P.dark,0,0.3,0)); cabEquipo(body, 1.15, 0.7, 0.82, P.hull, P.glass, 0.6, 0.7, tc);
         body.add(box(1.2,0.25,1.3,P.hull,0,0.6,-0.45), box(0.5,0.35,0.4,WOOD,-0.25,0.85,-0.6), box(0.4,0.25,0.35,0x5f6a3a,0.3,0.85,-0.3));
         body.add(cyl(0.08,0.9,P.metal,0.35,0.85,-0.85,8));
         { const t = named(new THREE.Group(), 'tool'); t.position.set(0.35,1.75,-0.85); body.add(t);   // grúa que gira
@@ -2564,19 +2584,19 @@ function unitModel(e, o, body){
     case 'antiaereo':
       if(f==='atlas'){            // 6x6 con radar y lanzador de misiles
         wheels(body, 0.26, 0.22, [-0.6,0.6], [0.7,0,-0.7], P.trim);
-        body.add(profileZ([[-1.05,0],[0.85,0],[1.1,0.2],[0.9,0.45],[-1.0,0.45]], 1.2, P.hull, 0, 0.3, 0, 0.04), ball(0.5, P.glass, 0, 0.72, 0.62, 0.95, 0.55, 0.62), box(1.22,0.08,0.8,tc,0,0.75,-0.3));
+        body.add(profileZ([[-1.05,0],[0.85,0],[1.1,0.2],[0.9,0.45],[-1.0,0.45]], 1.2, P.hull, 0, 0.3, 0, 0.04), ball(0.5, P.glass, 0, 0.72, 0.62, 0.95, 0.55, 0.62), box(1.22,0.08,0.8,P.trim,0,0.75,-0.3), box(1.24,0.09,0.26,tc,0,0.75,-0.58));
         const t = turret(0.8,-0.3); t.add(cyl(0.45,0.14,P.dark,0,0,0,16), tilt(profileZ([[-0.35,0],[0.35,0],[0.3,0.5],[-0.3,0.5]], 0.8, P.hull, 0, 0.14, 0, 0.03),-0.5));
         for(const sx of [-0.2,0.2]) for(const sy of [0.35,0.55]) t.add(lamp(0.12,0.12,0.04,P.glow,sx,sy,0.27));
         t.add(cyl(0.03,0.5,P.metal,-0.45,0.1,-0.3,6));
         { const sp = named(new THREE.Group(), 'spin'); sp.position.set(-0.45,0.62,-0.3); sp.add(tilt(cyl(0.3,0.04,P.trim,0,0,0,16),0.6), lamp(0.05,0.05,0.05,P.glow,0,0.05,0.1)); t.add(sp); }
       } else if(f==='hierro'){    // Orugas con cuatro cañones automáticos
         tracks(body, 2.0, 0.4, 0.5, 0.65, P.dark, true);
-        body.add(profileZ([[-0.95,0],[0.8,0],[1.0,0.28],[0.75,0.55],[-0.95,0.55]], 1.15, P.hull, 0, 0.3, 0, 0.04), box(1.17,0.1,0.6,tc,0,0.85,0.5));
+        body.add(profileZ([[-0.95,0],[0.8,0],[1.0,0.28],[0.75,0.55],[-0.95,0.55]], 1.15, P.hull, 0, 0.3, 0, 0.04), box(1.17,0.1,0.6,P.dark,0,0.85,0.5), box(1.19,0.11,0.2,tc,0,0.85,0.66));
         const t = turret(0.85,-0.2); t.add(profileZ([[-0.42,0],[0.38,0],[0.45,0.18],[0.3,0.45],[-0.42,0.45]], 0.95, P.hull, 0, 0, 0, 0.03), ball(0.16, P.glass, 0, 0.3, 0.32, 1.4, 0.8, 1));
         for(const sx of [-0.32,0.32]) for(const sy of [0.12,0.32]){ const b = barrel(1.1,0.045,GUN); b.rotation.x = Math.PI/2-0.6; b.position.set(sx,sy+0.3,0.35); t.add(b); }
       } else {                    // Camioneta con ametralladora antiaérea doble
         wheels(body, 0.27, 0.22, [-0.55,0.55], [0.7,-0.7]);
-        body.add(box(1.1,0.35,2.1,P.hull,0,0.3,0)); cab(body, 1.05, 0.55, 0.78, tc, P.glass, 0.65, 0.55);
+        body.add(box(1.1,0.35,2.1,P.hull,0,0.3,0)); cabEquipo(body, 1.05, 0.55, 0.78, P.hull, P.glass, 0.65, 0.55, tc);
         body.add(box(1.12,0.3,1.0,P.trim,0,0.65,-0.5));
         const t = turret(0.95,-0.5); t.add(cyl(0.12,0.3,P.metal,0,0,0,8), box(0.5,0.08,0.3,0x5f6a3a,0,0.3,-0.1));
         for(const sx of [-0.12,0.12]){ const b = barrel(1.0,0.04,GUN); b.rotation.x = Math.PI/2-0.7; b.position.set(sx,0.55,0.25); t.add(b); }
@@ -2622,7 +2642,7 @@ function unitModel(e, o, body){
       { const tr = named(new THREE.Group(), 'rotor2'); tr.position.set(0.07,0.32,-2.5); tr.add(box(0.03,0.7,0.08,P.metal,0,-0.35,0), box(0.03,0.08,0.7,P.metal,0,-0.04,0)); body.add(tr); }
       { const ala = prism([[-0.85,-0.18],[0.85,-0.12],[0.85,0.1],[-0.85,0.18]], 0.05, P.dark, 0, -0.15, 0.15, 0.01); ala.rotation.x = -Math.PI/2; body.add(ala); }   // alas cortas finas
       for(const sx of [-1,1]){ const nac = lathe([[0.13,0],[0.15,0.2],[0.14,0.55],[0.09,0.7],[0.07,0.72]], P.hull, sx*0.24, 0.32, 0.45, 12); nac.rotation.x = -Math.PI/2; body.add(nac); }   // toberas de los motores
-      body.add(box(0.92,0.06,0.5,tc,0,0.3,-0.15));
+      body.add(box(0.92,0.06,0.5,P.dark,0,0.3,-0.15), box(0.94,0.07,0.16,tc,0,0.3,-0.15));
       for(const sx of [-1,1]){ body.add(box(0.05,0.05,1.3,P.metal,sx*0.38,-0.62,0.25), box(0.04,0.3,0.04,P.metal,sx*0.38,-0.6,0.6), box(0.04,0.3,0.04,P.metal,sx*0.38,-0.6,-0.1)); }   // patines
       for(const sx of [-0.75,0.75]){ const m = barrel(0.55,0.13,P.metal); m.position.set(sx,-0.25,0.15); body.add(m); }   // lanzacohetes
       body.add(box(0.05,0.05,0.5,GUN,0,-0.6,0.95), cyl(0.07,0.18,P.metal,0,0.4,0.15,10));
@@ -2630,7 +2650,7 @@ function unitModel(e, o, body){
       break; }
     case 'tecnico':               // Camioneta artillada (técnica)
       wheels(body, 0.28, 0.24, [-0.6,0.6], [0.72,-0.72]);
-      body.add(box(1.15,0.35,2.15,P.hull,0,0.3,0), box(1.17,0.32,1.05,P.trim,0,0.65,-0.5)); cab(body, 1.1, 0.58, 0.84, tc, P.glass, 0.65, 0.55);
+      body.add(box(1.15,0.35,2.15,P.hull,0,0.3,0), box(1.17,0.32,1.05,P.trim,0,0.65,-0.5)); cabEquipo(body, 1.1, 0.58, 0.84, P.hull, P.glass, 0.65, 0.55, tc);
       body.add(box(0.3,0.25,0.3,WOOD,-0.35,0.95,-0.85), box(1.2,0.1,0.12,P.metal,0,0.38,1.1));
       { const t = turret(0.95,-0.45); t.add(cyl(0.08,0.35,P.metal,0,0,0,8), box(0.4,0.3,0.05,P.dark,0,0.35,0.15)); const b = barrel(0.9,0.045,GUN); b.position.set(0,0.42,0.45); t.add(b); }
       if(UNIT_UPS.has('sinRetroceso')){   // cañón sin retroceso sobre pedestal en la caja de carga, con tobera trasera y galón dorado
@@ -2643,7 +2663,7 @@ function unitModel(e, o, body){
       break;
     case 'artilleria':            // Camión con rampa de cohetes
       wheels(body, 0.28, 0.24, [-0.62,0.62], [0.85,-0.2,-0.85]);
-      body.add(box(1.2,0.32,2.4,P.dark,0,0.3,0), box(1.22,0.2,1.4,P.hull,0,0.62,-0.4)); cab(body, 1.15, 0.64, 0.78, tc, P.glass, 0.6, 0.8);
+      body.add(box(1.2,0.32,2.4,P.dark,0,0.3,0), box(1.22,0.2,1.4,P.hull,0,0.62,-0.4)); cabEquipo(body, 1.15, 0.64, 0.78, P.hull, P.glass, 0.6, 0.8, tc);
       { const t = turret(0.82,-0.45); t.add(box(0.5,0.2,0.5,P.metal)); const rack = new THREE.Group(); rack.position.set(0,0.35,0); rack.rotation.x = -0.5; rack.add(box(0.95,0.5,1.4,P.trim,0,0,0)); for(let i=0;i<3;i++) for(let j=0;j<2;j++) rack.add(lamp(0.16,0.16,0.04,0x2a2622,-0.3+i*0.3,0.08+j*0.2,0.7)); t.add(rack); }
       break;
     case 'lancha':
@@ -3617,11 +3637,14 @@ function buildVegetation(){
   const bulto = (r, sx, sy, sz, sem, sw=8, sh=6) => { const g = new THREE.SphereGeometry(r, sw, sh), p = g.attributes.position;
     for(let i=0; i<p.count; i++){ const x = p.getX(i), y = p.getY(i), z = p.getZ(i), nx = x/r, ny = y/r, nz = z/r, k = 1 + 0.14*Math.sin(nx*2.6 + sem)*Math.cos(nz*2.2 + sem*1.7) + 0.08*Math.sin(ny*3.1 + sem*2.3) + 0.04*Math.sin((nx + nz)*6 + sem*0.7); p.setXYZ(i, x*k*sx, y*k*sy, z*k*sz); }
     g.computeVertexNormals(); return g.toNonIndexed(); };
-  // Arbusto del desierto: matas irregulares con ramitas secas
-  const sg = geo('arbusto2', () => { const p = [];
-    for(const [x, y, z, r, sem] of [[0,0.2,0,0.31,1],[0.22,0.15,0.12,0.23,2],[-0.2,0.14,-0.12,0.22,3],[0.05,0.13,-0.25,0.19,4],[-0.12,0.18,0.22,0.18,5]])
-      p.push(tinte(bulto(r, 1, 0.75, 1, sem, 7, 5).translate(x, y, z), 0x6b6a40, 0xa3a065, -0.1, 0.45));
-    for(let k=0; k<6; k++){ const a = k*1.05, t = new THREE.CylinderGeometry(0.008, 0.016, 0.42, 3).toNonIndexed(); t.rotateZ(0.7); t.rotateY(a); t.translate(Math.cos(a)*0.22, 0.32, -Math.sin(a)*0.22); p.push(tinte(t, 0x5a4a34)); }
+  // Arbusto del desierto: mata baja e irregular (lóbulos de distintos verdes, más secos los de afuera) con tres ramitas claras
+  // que asoman. Antes, seis ramitas oscuras en estrella se veían desde arriba como las costillas de una calabaza.
+  const sg = geo('arbusto3', () => { const p = [];
+    for(const [x, y, z, r, sem, c0, c1] of [[0,0.17,0,0.27,1,0x5c6036,0x979a5c],[0.21,0.13,0.1,0.21,2,0x686a40,0xa6a368],[-0.19,0.12,-0.1,0.2,3,0x6e6944,0xaca277],
+        [0.06,0.11,-0.24,0.18,4,0x585b34,0x909459],[-0.12,0.15,0.21,0.17,5,0x76704a,0xb2a87a],[0.26,0.08,-0.16,0.13,6,0x6b6a40,0xa3a065],[-0.27,0.08,0.13,0.12,7,0x7a6f48,0xb8ab7e]])
+      p.push(tinte(bulto(r, 1, 0.7, 1, sem, 6, 4).translate(x, y, z), c0, c1, -0.08, 0.42));
+    for(const [a, inc, l] of [[0.6, 0.5, 0.46], [2.5, 0.6, 0.4], [4.4, 0.45, 0.5]]){ const t = new THREE.CylinderGeometry(0.006, 0.013, l, 3).toNonIndexed();
+      t.translate(0, l/2, 0); t.rotateZ(inc); t.rotateY(a); t.translate(Math.cos(a)*0.08, 0.12, -Math.sin(a)*0.08); p.push(tinte(t, 0x8a7a5e, 0xb8a888, 0.1, 0.55)); }
     return fusion(p); });
   // Palmera: tronco curvo con anillos, hojas largas que caen y racimo de cocos
   const palmaG = geo('palmera2', () => { const p = [], seg = 7;
@@ -3740,7 +3763,7 @@ function buildWater(){
   waterMesh.position.y = WATER_Y; waterMesh.receiveShadow = true; waterMesh.renderOrder = 1; scene.add(waterMesh);
 }
 function smoothRockGeo(v, detail){
-  return geo('rocaSuave' + v + '_' + detail, () => {
+  return geo('rocaSuave2_' + v + '_' + detail, () => {
     const base = new THREE.IcosahedronGeometry(1, detail), p = base.attributes.position, ids = new Map(), verts = [], index = [];
     for(let i=0; i<p.count; i++){ const key = `${p.getX(i).toFixed(4)},${p.getY(i).toFixed(4)},${p.getZ(i).toFixed(4)}`; let id = ids.get(key); if(id === undefined){ id = verts.length/3; ids.set(key, id); verts.push(p.getX(i), p.getY(i), p.getZ(i)); } index.push(id); }
     const uv = [];
@@ -3750,23 +3773,30 @@ function smoothRockGeo(v, detail){
       if(y < 0) y *= 0.5; else if(y > 0.6) y = 0.6 + (y - 0.6)*0.55;                 // base plana y cima algo achatada
       verts[i] = x*k; verts[i+1] = y*k; verts[i+2] = z*k; uv.push((x + z*0.7)*0.6, y*0.6);
     }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(index); g.computeVertexNormals();
+    // Color por vértice: la base (en contacto con la arena) más oscura y la cima, expuesta al sol, más clara
+    const col = []; for(let i=0; i<verts.length; i+=3){ const t = Math.max(0, Math.min(1, (verts[i+1] + 0.3)/0.95)), c = 0.6 + 0.45*t*t*(3 - 2*t); col.push(c, c*0.985, c*0.96); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(index); g.computeVertexNormals();
     return g;
   });
 }
 function buildRocks(){
   if(rocksMesh){ for(const m of rocksMesh) scene.remove(m); }
   // Tres variantes de roca suave; cada roca usa la de su índice. Asientan sobre el relieve (mesetas incluidas).
-  if(!matCache.has('roca')) matCache.set('roca', addFog(new THREE.MeshLambertMaterial({ color:0x9a8872, map:TEX.rock })));
+  if(!matCache.has('rocaV')) matCache.set('rocaV', addFog(new THREE.MeshLambertMaterial({ color:0xa8957b, map:TEX.rock, vertexColors:true })));   // con color por vértice: solo para estas rocas
   const detail = OPTIONS.calidad==='baja' ? 1 : 2, grupos = [[], [], []];
   S.rocks.forEach((r, i) => grupos[i % 3].push(r));
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3();
   rocksMesh = grupos.map((lista, v) => {
-    const mesh = new THREE.InstancedMesh(smoothRockGeo(v, detail), matCache.get('roca'), Math.max(1, lista.length));
+    const mesh = new THREE.InstancedMesh(smoothRockGeo(v, detail), matCache.get('rocaV'), Math.max(1, lista.length));
     // Rocas del interior de un grupo: pequeñas, para que se vea la cima de la meseta; las del borde, grandes
     const roca = (cx, cz) => cx>=0 && cz>=0 && cx<GRID && cz<GRID && S.rockGrid[idx(cx,cz)];
     lista.forEach((r, i) => { const x = (r.cx + SUBC/2)*CELL, z = (r.cz + SUBC/2)*CELL, interior = roca(r.cx-1,r.cz) && roca(r.cx+SUBC,r.cz) && roca(r.cx,r.cz-1) && roca(r.cx,r.cz+SUBC), k = r.s*LC*(interior ? 0.28 : 0.62); p.set(x, terrainH(x, z) + 0.12*k, z); q.setFromEuler(new THREE.Euler(0.15, r.r, 0.1)); sc.set(k, k*0.8, k); m.compose(p, q, sc); mesh.setMatrixAt(i, m); });
-    if(!lista.length){ m.makeScale(0, 0, 0); mesh.setMatrixAt(0, m); }
+    const tonos = [[1.04, 0.99, 0.92], [1, 1, 1], [1.06, 0.93, 0.84], [0.94, 0.95, 0.96], [1.02, 0.97, 0.9]], tc2 = new THREE.Color();
+    lista.forEach((r, i) => { const t = tonos[Math.floor(r.r*7.3) % tonos.length]; mesh.setColorAt(i, tc2.setRGB(t[0], t[1], t[2])); });
+    // Siempre con color por instancia, aunque no haya rocas de esta variante: las tres comparten material y three.js r128
+    // reutiliza el sombreador compilado con color por instancia (sin el atributo, el dibujo falla)
+    if(!lista.length){ m.makeScale(0, 0, 0); mesh.setMatrixAt(0, m); mesh.setColorAt(0, tc2.setRGB(1, 1, 1)); }
     mesh.castShadow = true; mesh.receiveShadow = true; scene.add(mesh); return mesh;
   });
 }
@@ -5484,14 +5514,53 @@ let OPTIONS = (() => { try { return cleanOptions(JSON.parse(localStorage.getItem
 let LAST_QUALITY = null;
 // Material del suelo según la calidad (los dos se crean una sola vez)
 const GROUND_MATS = {};
+const SUELO = { n:256, firma:'' };
+SUELO.data = new Uint8Array(SUELO.n*SUELO.n*4);
+SUELO.tex = new THREE.DataTexture(SUELO.data, SUELO.n, SUELO.n, THREE.RGBAFormat); SUELO.tex.magFilter = SUELO.tex.minFilter = THREE.LinearFilter;
+SUELO.U = { value:SUELO.tex };
+// R: oclusión junto a la losa (1 en el borde, 0 a «margen» unidades); G: tierra removida, irregular y algo más ancha
+function rehacerSuelo(){
+  const n = SUELO.n, D = SUELO.data, t = WORLD/n; D.fill(0);
+  const ruido = (i, j) => { const h = Math.sin(i*12.9898 + j*78.233)*43758.5453; return h - Math.floor(h); };
+  for(const e of S.ents){
+    if(e.dead || (e.kind!=='bld' && e.kind!=='depot') || esRefugio(e)) continue;
+    // La losa sobresale de la huella: la oclusión empieza en su borde y se desvanece en «mg» unidades; la tierra llega más lejos
+    const dep = e.kind==='depot', losa = dep ? 0.15 : 0.35, mg = dep ? 1.0 : e.type==='pozo' ? 1.1 : Math.min(1.6, 0.8 + 0.12*Math.max(e.w, e.h)*CELL), lejos = losa + mg*1.5;   // defensas: franja más angosta
+    const x0 = e.cx*CELL, z0 = e.cz*CELL, x1 = (e.cx + e.w)*CELL, z1 = (e.cz + e.h)*CELL;
+    const i0 = Math.max(0, Math.floor((x0 - lejos)/t)), i1 = Math.min(n - 1, Math.ceil((x1 + lejos)/t)), j0 = Math.max(0, Math.floor((z0 - lejos)/t)), j1 = Math.min(n - 1, Math.ceil((z1 + lejos)/t));
+    for(let j=j0; j<=j1; j++) for(let i=i0; i<=i1; i++){
+      const px = (i + 0.5)*t, pz = (j + 0.5)*t, dx = Math.max(x0 - px, 0, px - x1), dz = Math.max(z0 - pz, 0, pz - z1), dist = Math.sqrt(dx*dx + dz*dz);
+      const dd = Math.max(0, dist - losa), ao = dd >= mg ? 0 : (1 - dd/mg)*(1 - dd/mg)*(dep ? 0.7 : 1), tierra = Math.max(0, 1 - dd/(mg*1.5))*(0.45 + 0.55*ruido(i, j))*(dep ? 0.6 : 1), o = (j*n + i)*4;
+      D[o] = Math.max(D[o], Math.round(ao*255)); D[o+1] = Math.max(D[o+1], Math.round(tierra*255)); D[o+3] = 255;
+    }
+  }
+  SUELO.tex.needsUpdate = true;
+}
+// Se revisa con la interfaz (cada 0,2 s): la firma cambia al construir, destruir o capturar edificios y al vaciarse un acopio
+function revisarSuelo(){
+  let f = WORLD + ':'; for(const e of S.ents) if(!e.dead && (e.kind==='bld' || e.kind==='depot')) f += e.id + ',';
+  if(f !== SUELO.firma){ SUELO.firma = f; rehacerSuelo(); }
+}
+// El sombreador del suelo oscurece junto a las losas y mezcla un tono de tierra removida
+function conSuelo(m, clave){
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = sh => { prev(sh); sh.uniforms.uSuelo = SUELO.U;
+    sh.fragmentShader = sh.fragmentShader.replace('uniform sampler2D uFogTex;', 'uniform sampler2D uFogTex;\nuniform sampler2D uSuelo;')
+      .replace('gl_FragColor.rgb *= texture2D(uFogTex', `{ vec4 sl = texture2D(uSuelo, vFogUv);
+        gl_FragColor.rgb *= 1.0 - 0.36*sl.r;
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb*vec3(0.84, 0.76, 0.66), sl.g*0.6); }
+      gl_FragColor.rgb *= texture2D(uFogTex`); };
+  m.customProgramCacheKey = () => 'suelo-' + clave;
+  return m;
+}
 function groundMat(alta){
   const k = alta ? 'alta' : 'normal'; if(GROUND_MATS[k]) return GROUND_MATS[k];
-  return (GROUND_MATS[k] = addFog(alta ? new THREE.MeshPhongMaterial({ vertexColors:true, map:TEX.sand, bumpMap:TEX.sand, bumpScale:0.05, specular:0x14110c, shininess:6 })
-                                       : new THREE.MeshLambertMaterial({ vertexColors:true, map:TEX.sand })));
+  return (GROUND_MATS[k] = conSuelo(addFog(alta ? new THREE.MeshPhongMaterial({ vertexColors:true, map:TEX.sand, bumpMap:TEX.sand, bumpScale:0.05, specular:0x14110c, shininess:6 })
+                                       : new THREE.MeshLambertMaterial({ vertexColors:true, map:TEX.sand })), k));
 }
 function applyOptions(rebuild){
   if(scene.userData.ground) scene.userData.ground.material = groundMat(OPTIONS.calidad==='alta');
-  NUBES_U.value = OPTIONS.calidad==='baja' ? 0 : 0.18;
+  NUBES_U.value = OPTIONS.calidad==='baja' ? 0 : 0.13;
   if(LAST_QUALITY && LAST_QUALITY !== OPTIONS.calidad){ UNIT_PROTO.clear(); BLD_PROTO.clear(); PROP_PROTO.clear(); rebuild = true; }
   LAST_QUALITY = OPTIONS.calidad;
   const dpr = window.devicePixelRatio || 1;
@@ -6315,8 +6384,31 @@ function dibujarLotes(){
   }
   for(const l of LOTES.values()){ l.im.count = l.n; l.im.visible = l.n > 0; l.im.instanceMatrix.needsUpdate = true; }
 }
+// Sombra de contacto: una mancha suave bajo cada unidad en tierra, inclinada según el relieve. Asienta las unidades en la arena
+// (la sombra del sol cae a un lado). Una sola malla instanciada para todas; no se usa en calidad Baja ni en barcos y aeronaves en vuelo.
+const CONTACTO = (() => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const x = cv.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(0,0,0,0.5)'); g.addColorStop(0.45, 'rgba(0,0,0,0.3)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  const plano = new THREE.PlaneGeometry(1, 1); plano.rotateX(-Math.PI/2);
+  const mat = new THREE.MeshBasicMaterial({ map:new THREE.CanvasTexture(cv), transparent:true, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2 });
+  const im = new THREE.InstancedMesh(plano, mat, 800); im.count = 0; im.frustumCulled = false; im.renderOrder = 1; scene.add(im);
+  return { im, m:new THREE.Matrix4(), q:new THREE.Quaternion(), p:new THREE.Vector3(), s:new THREE.Vector3(), n:new THREE.Vector3(), up:new THREE.Vector3(0, 1, 0) };
+})();
+function sombrasContacto(){
+  const C = CONTACTO; let k = 0;
+  if(OPTIONS.calidad !== 'baja') for(const [id, o] of meshes){
+    if(k >= 800) break;
+    const e = S.byId.get(id); if(!e || e.kind!=='unit' || e.dead || o.boat || !o.g.visible || (e.air && !o.cerca)) continue;
+    const x = o.g.position.x, z = o.g.position.z, d = 0.6;
+    C.n.set(terrainH(x - d, z) - terrainH(x + d, z), 2*d, terrainH(x, z - d) - terrainH(x, z + d)).normalize(); C.q.setFromUnitVectors(C.up, C.n);
+    const r = (e.radius || 0.6)*(UT(e.owner, e.type).armor==='inf' ? 1.35 : 2.05);
+    C.p.set(x, terrainH(x, z) + 0.03, z); C.s.set(r, 1, r); C.m.compose(C.p, C.q, C.s); C.im.setMatrixAt(k++, C.m);
+  }
+  C.im.count = k; C.im.visible = k > 0; C.im.instanceMatrix.needsUpdate = true;
+}
 function renderFrame(){
-  dibujarLotes();
+  sombrasContacto(); dibujarLotes();
   if(OPTIONS.calidad !== 'alta'){ renderer.setRenderTarget(null); renderer.render(scene, camera); return; }
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   if(!POST.ready || POST.w !== size.x || POST.h !== size.y) postInit(size.x, size.y);
@@ -6386,7 +6478,7 @@ function frame(now){
   drawOverlay();
   if(S.tick>0 && !S.over && !paused){ METRICS.frames++; METRICS.time += dt; }
   FPS.n++; FPS.t += dt; if(FPS.t >= 1){ FPS.v = Math.round(FPS.n/FPS.t); FPS.n = 0; FPS.t = 0; if(OPTIONS.fps) $('fpsVal').textContent = FPS.v; adaptQuality(); }
-  uiT -= dt; if(uiT <= 0){ uiT = 0.2; renderPanel(); renderPowers(); updateTopbar(); drawMinimap(); if(S.mission) renderObjectives(); if(NET.online) $('pingVal').textContent = NET.ping==null ? '–' : NET.ping; if((LISTA_T -= 0.2) <= 0){ LISTA_T = 1; renderListaJugadores(); } }
+  uiT -= dt; if(uiT <= 0){ uiT = 0.2; renderPanel(); renderPowers(); updateTopbar(); drawMinimap(); if(S.mission) renderObjectives(); if(NET.online) $('pingVal').textContent = NET.ping==null ? '–' : NET.ping; if((LISTA_T -= 0.2) <= 0){ LISTA_T = 1; renderListaJugadores(); } revisarSuelo(); }
   if(S.over && !endShown && (!NET.online || NET.ended || now - NET.overAt > 1500)) showEnd();
   else if(!S.over && !endShown && !REPLAY && S.players.length > 2 && S.tick % 15 === 0 && !S.ents.some(e => !e.dead && e.kind==='bld' && e.owner===LOCAL && e.type!=='pozo')){ ELIMINADO = true; showEnd(); }
   renderFrame();
