@@ -3582,36 +3582,167 @@ function buildingModel(e, body){
       break; }
     default: body.add(box(s*0.8,1.2,s*0.8,P.hull,0,0.16,0), box(s*0.82,0.12,s*0.82,tc,0,1.36,0));
   }
+  // Mejoras terminadas: cada una agrega su pieza propia, con el estilo de la facción, en una esquina libre de la losa (primero las
+  // del frente, nunca la de una bandera) o sobre el techo (antenas, radar, red de camuflaje). Galones dorados pintados en la losa.
+  const ups = mejorasDe(e).filter(k => MEJORAS[k].edificio===e.type);
+  if(ups.length && !small){
+    const est = new THREE.Box3(), tmpB = new THREE.Box3();
+    for(let i=nLosa; i<body.children.length; i++){ tmpB.setFromObject(body.children[i]);   // la estructura, sin losa, banderas ni ambiente;
+      if(!tmpB.isEmpty() && (tmpB.max.x - tmpB.min.x)*(tmpB.max.z - tmpB.min.z) > 0.8) est.union(tmpB); }      // solo piezas con superficie de techo (sin postes, travesaños, antenas ni chimeneas)
+    const bIzq = (e.type==='centro' || e.type==='cuartel') && e.owner>=0, bDer = G && e.type!=='centro';
+    const esq = [[h2-0.72, h2-0.72], [-h2+0.72, h2-0.72], [h2-0.72, -h2+0.72], [-h2+0.72, -h2+0.72]].filter(([x, z]) => !(z > 0 && ((x < 0 && bIzq) || (x > 0 && bDer))));
+    let ie = 0, techo = false;
+    for(const k of ups){
+      if(k==='fortificacion'){ fortificar(body, tc, s, h2); continue; }
+      if(TECHO_MEJORA.has(k) && !techo && !est.isEmpty()){ techo = true; piezaMejora(body, k, f, P, tc, (est.min.x + est.max.x)/2, est.max.y - 0.05, (est.min.z + est.max.z)/2, s, est); }
+      else { const [x, z] = esq[ie++ % esq.length]; piezaMejora(body, k, f, P, tc, x, 0.16, z, s, null); }
+    }
+    ups.forEach((k, i) => { for(const sg of [-1, 1]) body.add(tilt(box(0.34, 0.02, 0.08, 0xf2d16b, -0.5 + i*0.42 + sg*0.12, 0.17, h2 - 0.28), 0, sg*0.55, 0)); });   // galones dorados pintados en la losa
+  }
   if((e.type==='centro' || e.type==='cuartel') && e.owner>=0 && OPTIONS.calidad!=='baja') bandera(body, -s*0.42, s*0.42, e.type==='centro' ? 3.4 : 2.8, tc);   // bandera del equipo
   if(!small && e.type!=='pozo' && !DETAIL_LO) ambientar(body, e, f, P, tc, s, nLosa);
-  // Mejoras terminadas: piezas nuevas y galones dorados en la fachada (una por mejora)
-  const ups = mejorasDe(e).filter(k => MEJORAS[k].edificio===e.type);
-  if(ups.length && !small){   // las defensas pequeñas muestran sus mejoras en su propio modelo
-    const esq = (i) => [[h2-0.75, h2-0.75], [-h2+0.75, h2-0.75], [h2-0.75, -h2+0.75], [-h2+0.75, -h2+0.75]][i % 4];
-    // Las tecnologías por facción reutilizan las piezas visuales de las mejoras genéricas
-    const VIS = { sensores:'optica', perforantes:'municion', cohetes:'municion', misilesGuiados:'enlace', aleacion:'blindaje', diesel:'blindaje', emboscada:'camuflaje', trucados:'montaje', exoesqueleto:'instruccion', estandarte:'instruccion', veterania:'instruccion' };
-    ups.forEach((k0, i) => {
-      const k = VIS[k0] || k0, [x, z] = esq(i + 1);
-      if(k==='reactor'){ body.add(lathe([[0.55,0],[0.4,0.7],[0.38,1.0],[0.44,1.5],[0.38,1.5],[0.32,1.0],[0.34,0.7],[0.48,0]], f==='hierro' ? 0xbab4a8 : 0xe6ebef, x, 0.16, z), lamp(0.5, 0.06, 0.06, P.glow, x, 0.95, z+0.42)); if(H) smokeAt(body, x, 1.9, z); }   // torre de refrigeración extra
-      else if(k==='carga'){ body.add(tilt(box(0.35, 0.08, 2.2, P.metal, x, 0.6, z*0.3), 0.25), box(0.4, 0.5, 0.4, P.dark, x, 0.16, z*0.3 - 0.9)); for(let j=0; j<3; j++) body.add(box(0.28, 0.2, 0.28, 0x8a6a3e, x, 0.72 + j*0.15, z*0.3 + 0.6 - j*0.5)); }   // cinta transportadora
-      else if(k==='instruccion'){ body.add(box(0.08, 1.4, 0.9, WOOD, x, 0.16, z), box(0.5, 0.06, 0.06, WOOD, x, 1.5, z), box(0.06, 2.4, 0.06, P.metal, x+0.5, 0.16, z), prism([[0,0],[0.7,0.1],[0.7,0.38],[0,0.48]], 0.03, tc, x+0.52, 2.1, z, 0), cyl(0.04, 1.2, P.metal, -x*0.3, s*0.25 + 1.2, -z*0.2, 6)); }   // muro de escalada, mástil con banderín y antena
-      else if(k==='montaje'){ body.add(archRoof(1.6, 1.4, 0.8, P.trim, x, 0.16, z), box(0.12, 0.9, 0.12, P.metal, x+0.55, 0.16, z+0.55), tilt(box(0.1, 0.1, 0.9, P.metal, x+0.55, 1.05, z+0.2), -0.6), lamp(0.12, 0.08, 0.14, P.glow, x+0.55, 1.2, z-0.15)); }   // nave de ensamblaje y brazo robótico
-      else if(k==='fortificacion'){ for(const [px, pz, w2, d2] of [[0, h2-0.1, s*0.9, 0.18], [0, -h2+0.1, s*0.9, 0.18], [h2-0.1, 0, 0.18, s*0.9], [-h2+0.1, 0, 0.18, s*0.9]]) body.add(box(w2, 0.55, d2, 0x6d6862, px, 0.16, pz));   // placas de blindaje
-        for(const [px, pz] of [[h2-0.4, h2-0.4], [-h2+0.4, -h2+0.4]]) sandbags(body, px, pz, 0.55, 0, 6.28, 0.16, 2); }
-      else if(k==='blindaje'){ body.add(box(0.9, 0.5, 0.7, 0x58636c, x, 0.16, z), box(0.92, 0.08, 0.72, tc, x, 0.66, z), box(0.5, 0.25, 0.04, 0xbcc2c6, x, 0.4, z+0.37)); }   // banco de pruebas de blindaje
-      else if(k==='optica'){ body.add(cyl(0.06, 1.3, P.metal, x, 0.16, z, 8)); const d = new THREE.Mesh(geo('platoOptica', () => new THREE.SphereGeometry(0.5, 12, 6, 0, Math.PI*2, 0, Math.PI/2.4)), mat(0xd9dfe3)); d.rotation.x = Math.PI*0.65; d.position.set(x, 1.55, z); body.add(d); body.add(lamp(0.08, 0.08, 0.08, P.glow, x, 1.55, z+0.12)); }   // plato de óptica
-      else if(k==='municion'){ for(let j=0; j<3; j++) body.add(box(0.5, 0.3, 0.35, 0x4f5a3a, x - 0.3 + j*0.3, 0.16 + (j%2)*0.3, z), box(0.52, 0.04, 0.37, 0xb8a050, x - 0.3 + j*0.3, 0.42 + (j%2)*0.3, z)); }   // depósito de munición
-      else if(k==='enlace'){ body.add(box(0.06, 2.6, 0.06, P.metal, x, 0.16, z), box(0.7, 0.04, 0.04, P.metal, x, 2.3, z), box(0.04, 0.04, 0.7, P.metal, x, 2.55, z), lamp(0.1, 0.1, 0.1, P.glow, x, 2.8, z)); }   // antena del enlace de datos
-      else if(k==='doblecanon'){ for(let j=0; j<6; j++){ const b = barrel(1.0, 0.04, GUN); b.position.set(x - 0.15 + (j%3)*0.15, 0.3 + Math.floor(j/3)*0.15, z); body.add(b); } body.add(box(0.6, 0.18, 1.1, WOOD, x, 0.16, z)); }   // cañones rotativos en prueba
-      else if(k==='camuflaje'){ body.add(tilt(box(1.8, 0.03, 1.6, 0x5f6a3a, x*0.6, 1.4, z*0.6), 0.1, 0, 0.08)); for(const [px, pz] of [[0.8,0.7],[-0.8,0.7],[0.8,-0.7],[-0.8,-0.7]]) body.add(box(0.05, 1.4, 0.05, WOOD, x*0.6+px, 0.16, z*0.6+pz)); }   // red de camuflaje
-    });
-    // Galones dorados (uno por mejora) sobre la franja del frente
-    ups.forEach((k, i) => body.add(tilt(box(0.3, 0.06, 0.05, 0xf2d16b, -0.4 + i*0.4, 1.0 + (i%2)*0.08, h2 + 0.06), 0, 0, 0.5), tilt(box(0.3, 0.06, 0.05, 0xf2d16b, -0.2 + i*0.4, 1.0 + (i%2)*0.08, h2 + 0.06), 0, 0, -0.5)));
-  }
   if(G && !small){
     body.add(box(s*0.5,0.03,s*0.4,0x5f6a3a,-s*0.15,0.2,s*0.3));                                                 // red de camuflaje en el suelo
     if(e.type!=='centro') body.add(box(0.06,2.2,0.06,WOOD,h2-0.35,0.15,h2-0.35), prism([[0,0],[0.8,0.12],[0.8,0.42],[0,0.55]], 0.03, tc, h2-0.32, 1.75, h2-0.35, 0));   // bandera del equipo
   }
+}
+// Piezas de las mejoras de edificios. Se arman en un grupo con base en (x, y, z), un poco más grandes en los edificios de 3 × 3,
+// y se incrustan en el modelo (sin grupos ni llamadas de dibujo extra). est: caja de la estructura para las piezas de techo.
+const TECHO_MEJORA = new Set(['enlace', 'sensores', 'camuflaje']);
+function piezaMejora(body, k, f, P, tc, x, y, z, s, est){
+  const g = new THREE.Group(), sc = s >= 5.5 ? 1.2 : 1, A = f==='atlas', H = f==='hierro', ORO = 0xf2d16b;
+  const a = (...m) => g.add(...m), vapor = (lx, ly, lz) => smokeAt(body, x + lx*sc, y + ly*sc, z + lz*sc);
+  const llanta = (lx, ly, lz, rx=Math.PI/2) => { const r = new THREE.Mesh(geo('neumRuina', () => new THREE.TorusGeometry(0.28, 0.1, 6, 12)), mat(0x1e1c1a)); r.rotation.x = rx; r.position.set(lx, ly, lz); a(r); };
+  const tubo = (len, r, c, lx, ly, lz, rx=0, ry=0) => { const b = barrel(len, r, c); b.rotation.set(Math.PI/2 + rx, ry, 0); b.position.set(lx, ly, lz); a(b); return b; };
+  switch(k){
+    case 'reactor':
+      if(A){ for(const j of [-0.25, 0.25]) a(box(0.46, 0.9, 0.9, 0xdfe4e7, j, 0, 0), lamp(0.36, 0.05, 0.02, P.glow, j, 0.22, 0.46), lamp(0.36, 0.05, 0.02, P.glow, j, 0.52, 0.46), box(0.48, 0.05, 0.92, tc, j, 0.9, 0));   // baterías de almacenamiento
+        a(tilt(box(1.1, 0.03, 0.75, 0x23364a, 0, 1.1, 0), -0.35), box(0.05, 0.25, 0.05, P.metal, 0, 0.92, 0.25), cyl(0.04, 0.5, 0x2a2a28, 0.5, 0, -0.4, 6)); }   // panel solar extra y conducto
+      else { a(cyl(0.55, 0.55, P.hull, 0, 0, 0, 20), lathe([[0.55,0],[0.5,0.25],[0.36,0.45],[0.15,0.56],[0,0.58]], 0xbab4a8, 0, 0.55, 0, 20), cyl(0.57, 0.08, 0xd9b23a, 0, 0.4, 0, 20));   // domo de contención
+        a(cyl(0.08, 0.75, P.metal, 0.38, 0.6, 0.25, 8), cyl(0.11, 0.06, 0x2a2826, 0.38, 1.35, 0.25, 8)); vapor(0.38, 1.4, 0.25); }   // ventilación con vapor
+      break;
+    case 'carga':
+      if(A){ a(box(1.0, 0.45, 0.45, 0x6b7a84, 0, 0, -0.23), box(1.0, 0.45, 0.45, 0x7a6a52, 0, 0, 0.24), box(1.0, 0.45, 0.45, 0x8a929a, 0, 0.46, 0), box(1.02, 0.05, 0.47, tc, 0, 0.91, 0));   // contenedores
+        a(cyl(0.05, 1.7, P.metal, 0.46, 0, -0.42, 8), tilt(box(0.06, 0.06, 1.0, P.metal, 0.46, 1.62, -0.05), 0.15), box(0.02, 0.5, 0.02, P.metal, 0.46, 1.12, 0.38), box(0.12, 0.08, 0.12, P.dark, 0.46, 1.04, 0.38)); }   // grúa de carga
+      else if(H){ for(const [lx, lz] of [[-0.32,-0.32],[0.32,-0.32],[-0.32,0.32],[0.32,0.32]]) a(box(0.08, 1.1, 0.08, P.metal, lx, 0, lz));   // tolva de mineral sobre patas
+        { const t = lathe([[0.12,0],[0.55,0.55],[0.55,0.85],[0,0.85]], 0x8c5a3a, 0, 1.0, 0, 4); t.rotation.y = Math.PI/4; a(t); } a(ball(0.36, ORE, 0, 1.85, 0, 1, 0.45, 1), tilt(box(0.16, 0.06, 0.8, P.metal, 0, 0.75, 0.42), 0.6), ball(0.3, ORE, 0, 0.12, 0.75, 1.2, 0.5, 1)); }
+      else { for(const [lx, lz] of [[-0.45,-0.35],[0.45,-0.35]]) a(box(0.07, 1.2, 0.07, WOOD, lx, 0, lz)); a(tilt(box(1.1, 0.03, 0.9, CLOTH, 0, 1.0, 0.05), -0.35));   // toldo con sacos y carretilla
+        for(let i=0; i<5; i++) a(box(0.34, 0.2, 0.24, i%2 ? 0x9a8a5c : 0x8f7f52, -0.3 + (i%3)*0.3, (i > 2 ? 0.2 : 0), -0.15 + (i > 2 ? 0.05 : 0)));
+        a(box(0.3, 0.16, 0.45, 0x5a5650, 0.25, 0.12, 0.45), cyl(0.1, 0.05, RUBBER, 0.25, 0.02, 0.72, 10)); }
+      break;
+    case 'instruccion': {   // pista de entrenamiento: muro de escalada con cuerda, neumáticos y viga de equilibrio
+      const muroC = A ? 0xb9c0c5 : H ? 0x6d6862 : WOOD;
+      a(box(1.1, 1.35, 0.14, muroC, 0, 0, -0.35), box(1.12, 0.06, 0.16, tc, 0, 1.35, -0.35), box(0.02, 1.2, 0.02, 0xc9b07a, 0.25, 0.1, -0.27), box(0.02, 1.2, 0.02, 0xc9b07a, -0.2, 0.1, -0.27));
+      for(const [lx, lz] of [[-0.3,0.15],[0.05,0.15],[-0.3,0.45],[0.05,0.45]]) llanta(lx, 0.08, lz);
+      a(box(0.07, 0.4, 0.07, WOOD, 0.45, 0, 0.05), box(0.07, 0.4, 0.07, WOOD, 0.45, 0, 0.6), box(0.08, 0.06, 0.7, WOOD, 0.45, 0.4, 0.32));
+      break; }
+    case 'exoesqueleto':   // exoesqueleto de combate en su soporte, con articulaciones encendidas y vitrina
+      a(cyl(0.42, 0.18, P.dark, 0, 0, 0, 16), box(0.16, 0.6, 0.12, P.hull, -0.1, 0.18, 0), box(0.16, 0.6, 0.12, P.hull, 0.1, 0.18, 0), box(0.42, 0.14, 0.2, P.trim, 0, 0.78, 0), box(0.4, 0.45, 0.24, P.hull, 0, 0.92, 0), box(0.42, 0.05, 0.26, tc, 0, 1.2, 0));
+      a(box(0.1, 0.5, 0.1, P.trim, -0.27, 0.85, 0), box(0.1, 0.5, 0.1, P.trim, 0.27, 0.85, 0), ball(0.14, P.hull, 0, 1.48, 0, 1, 1.1, 1), lamp(0.18, 0.04, 0.02, P.glow, 0, 1.48, 0.13));
+      for(const [lx, ly] of [[-0.1,0.5],[0.1,0.5],[-0.27,1.2],[0.27,1.2]]) a(lamp(0.06, 0.06, 0.06, P.glow, lx, ly, 0.06));
+      for(const [lx, lz] of [[-0.42,-0.42],[0.42,-0.42],[-0.42,0.42],[0.42,0.42]]) a(box(0.04, 1.8, 0.04, P.metal, lx, 0, lz)); a(box(0.9, 0.05, 0.9, P.dark, 0, 1.8, 0));
+      break;
+    case 'estandarte':   // estandarte del mariscal: zócalo, asta con remate dorado y paño del equipo
+      a(box(0.7, 0.3, 0.7, 0x6d6862, 0, 0, 0), box(0.5, 0.12, 0.5, 0x8a857a, 0, 0.3, 0), cyl(0.045, 2.6, P.metal, 0, 0.42, 0, 8), ball(0.1, ORO, 0, 3.08, 0), box(0.85, 0.05, 0.05, P.metal, 0.32, 2.85, 0));
+      a(box(0.04, 1.2, 0.72, tc, 0.32, 1.62, 0), box(0.045, 0.05, 0.72, ORO, 0.32, 1.62, 0), box(0.045, 0.22, 0.22, ORO, 0.32, 2.2, 0));
+      break;
+    case 'veterania':   // jefe veterano: fogata con piedras y troncos, bancos y bandera capturada en una lanza
+      for(let i=0; i<7; i++){ const t = i/7*6.283; a(chunk(0.08, 0x6b6152, Math.cos(t)*0.3, 0.04, Math.sin(t)*0.3, i&3)); }
+      a(tilt(box(0.06, 0.06, 0.5, WOOD, 0, 0.06, 0), 0, 0.6, 0), tilt(box(0.06, 0.06, 0.5, WOOD, 0, 0.06, 0), 0, -0.6, 0), lamp(0.18, 0.1, 0.18, 0xff8a3a, 0, 0.08, 0));
+      a(box(0.8, 0.12, 0.16, WOOD, 0, 0, -0.6), box(0.16, 0.12, 0.8, WOOD, -0.6, 0, 0), box(0.05, 2.2, 0.05, WOOD, 0.5, 0, -0.45), prism([[0,0],[0.7,0.12],[0.7,0.45],[0,0.55]], 0.03, tc, 0.53, 1.6, -0.45, 0), ball(0.06, 0x8a8478, 0.5, 2.25, -0.45, 1, 2.2, 1));
+      break;
+    case 'montaje': {   // grúa de pluma sobre la losa con una pieza colgando del gancho
+      const cc = A ? 0xdfe4e7 : H ? 0xd9b23a : WOOD;
+      a(box(0.55, 0.22, 0.55, P.dark, 0, 0, 0), box(0.18, 2.5, 0.18, cc, 0, 0.22, 0), box(0.14, 0.14, 1.7, cc, 0, 2.6, 0.45), box(0.3, 0.3, 0.3, P.dark, 0, 2.48, -0.45), box(0.2, 0.12, 0.2, P.dark, 0, 2.48, 0.8));
+      a(box(0.02, 1.0, 0.02, P.metal, 0, 1.5, 1.15), box(0.12, 0.08, 0.12, P.dark, 0, 1.42, 1.15), box(0.55, 0.3, 0.4, A ? 0x8a929a : H ? 0x5a5650 : 0x6a5040, 0, 1.1, 1.15), box(0.57, 0.05, 0.42, tc, 0, 1.4, 1.15));
+      break; }
+    case 'estacionRemota':   // estación de armas remota en un pedestal de pruebas
+      a(cyl(0.3, 0.6, P.dark, 0, 0, 0, 14), box(0.4, 0.3, 0.55, P.trim, 0, 0.6, 0), box(0.42, 0.05, 0.57, tc, 0, 0.9, 0), box(0.16, 0.18, 0.28, P.dark, 0.26, 0.62, -0.05), lamp(0.12, 0.08, 0.03, P.glow, -0.1, 0.78, 0.28));
+      tubo(1.0, 0.045, GUN, 0.04, 0.78, 0.75); tubo(0.12, 0.065, P.dark, 0.04, 0.78, 1.25); a(box(0.3, 0.2, 0.3, 0x4f5a3a, -0.4, 0, 0.35));
+      break;
+    case 'ametralladora':   // ametralladora pesada en trípode con escudo y cajas de munición
+      for(const t of [0, 2.09, 4.19]) a(tilt(box(0.05, 0.7, 0.05, P.metal, Math.sin(t)*0.22, 0, Math.cos(t)*0.22 - 0.1), Math.cos(t)*0.35, 0, -Math.sin(t)*0.35));
+      a(box(0.16, 0.16, 0.5, GUN, 0, 0.66, 0.05), box(0.6, 0.38, 0.04, P.hull, 0, 0.55, 0.32), box(0.6, 0.05, 0.05, tc, 0, 0.93, 0.32));
+      tubo(1.05, 0.045, GUN, 0, 0.74, 0.75); tubo(0.14, 0.07, GUN, 0, 0.74, 1.28);
+      a(box(0.3, 0.22, 0.2, 0x4f5a3a, -0.4, 0, -0.3), box(0.3, 0.22, 0.2, 0x4f5a3a, -0.4, 0.22, -0.3), box(0.31, 0.04, 0.21, 0xb8a050, -0.4, 0.44, -0.3));
+      break;
+    case 'sinRetroceso':   // cañón sin retroceso en trípode y cajón de granadas
+      for(const t of [0, 2.09, 4.19]) a(tilt(box(0.05, 0.6, 0.05, P.metal, Math.sin(t)*0.2, 0, Math.cos(t)*0.2), Math.cos(t)*0.35, 0, -Math.sin(t)*0.35));
+      tubo(1.4, 0.07, 0x5d6447, 0, 0.66, 0.15); tubo(0.24, 0.1, 0x3a3631, 0, 0.66, -0.62); a(box(0.14, 0.12, 0.3, P.dark, 0, 0.55, 0.0), box(0.06, 0.1, 0.12, 0x2a2a28, 0.1, 0.76, 0.2));
+      a(box(0.6, 0.25, 0.35, WOOD, 0.1, 0, 0.6)); for(let i=0; i<3; i++) a(lathe([[0.05,0],[0.05,0.3],[0.03,0.38],[0,0.4]], 0x6b6a4a, -0.1 + i*0.15, 0.25, 0.6));
+      break;
+    case 'enlace': {   // mástil reticulado sobre el techo con plato y baliza
+      for(const [lx, lz] of [[-0.15,-0.15],[0.15,-0.15],[-0.15,0.15],[0.15,0.15]]) a(box(0.04, 2.2, 0.04, P.metal, lx, 0, lz));
+      for(let i=0; i<5; i++) a(tilt(box(0.04, 0.44, 0.04, P.metal, 0, 0.2 + i*0.42, 0.15), 0, 0, 0.6), tilt(box(0.04, 0.44, 0.04, P.metal, 0.15, 0.2 + i*0.42, 0), 0.6, 0, 0));
+      const d = new THREE.Mesh(geo('platoEnlace', () => new THREE.SphereGeometry(0.4, 12, 6, 0, Math.PI*2, 0, Math.PI/2.5)), mat(0xd9dfe3)); d.rotation.x = Math.PI*0.6; d.position.set(0, 1.9, 0.25); a(d);
+      a(lamp(0.1, 0.1, 0.1, P.glow, 0, 2.22, 0), box(0.5, 0.04, 0.5, tc, 0, 0, 0));
+      break; }
+    case 'sensores':   // radomo de sensores sobre el techo
+      a(cyl(0.3, 0.45, P.hull, 0, 0, 0, 14), cyl(0.32, 0.06, tc, 0, 0.42, 0, 16), ball(0.55, 0xe6ebef, 0, 0.95, 0, 1, 0.95, 1), lamp(0.06, 0.06, 0.06, P.glow, 0, 1.5, 0));
+      break;
+    case 'misilesGuiados': {   // misil sobre un riel de lanzamiento inclinado
+      a(box(0.6, 0.25, 0.6, P.dark, 0, 0, -0.1), box(0.3, 0.45, 0.3, P.trim, 0, 0.25, -0.1), tilt(box(0.12, 0.08, 1.6, P.metal, 0, 0.9, 0.1), -0.55));
+      const m = new THREE.Group(); m.position.set(0, 1.03, 0.12); m.rotation.x = -0.55; g.add(m);
+      { const c = lathe([[0.08,0],[0.08,1.0],[0.05,1.18],[0,1.26]], 0xe6ebef, 0, -0.6, 0, 12); c.rotation.x = Math.PI/2; m.add(c); }
+      m.add(box(0.04, 0.22, 0.14, P.dark, 0, -0.04, -0.52), box(0.22, 0.04, 0.14, P.dark, 0, -0.04, -0.52), box(0.18, 0.02, 0.12, 0x8a3a2a, 0, 0.06, 0.55));
+      m.updateMatrix(); for(const c of m.children.slice()){ c.updateMatrix(); c.matrix.premultiply(m.matrix); c.matrix.decompose(c.position, c.quaternion, c.scale); g.add(c); } g.remove(m);
+      break; }
+    case 'aleacion':   // ala de aleación en caballetes de prueba
+      a(box(0.1, 0.55, 0.1, P.metal, -0.35, 0, 0), box(0.1, 0.55, 0.1, P.metal, 0.35, 0, 0));
+      { const w = prism([[-0.6,-0.35],[0.6,-0.15],[0.6,0.1],[-0.6,0.35]], 0.06, 0xd9dfe3, 0, 0.6, 0, 0.02); w.rotation.x = -Math.PI/2; a(w); }
+      a(box(0.5, 0.02, 0.16, tc, 0.1, 0.64, 0), box(0.08, 0.3, 0.08, P.dark, 0.7, 0.4, 0), lamp(0.06, 0.06, 0.06, P.glow, 0.7, 0.7, 0));
+      break;
+    case 'doblecanon':   // dos cañones rotativos en un banco de pruebas, con cintas de munición
+      a(box(0.8, 0.45, 0.6, WOOD, 0, 0, 0), box(0.5, 0.25, 0.4, P.dark, 0, 0.45, -0.1));
+      for(const lx of [-0.18, 0.18]){ for(let i=0; i<6; i++){ const t = i/6*6.283; tubo(1.0, 0.024, GUN, lx + Math.cos(t)*0.06, 0.72 + Math.sin(t)*0.06, 0.45); } a(cyl(0.1, 0.12, P.dark, lx, 0.66, 0.0, 10)); }
+      a(box(0.28, 0.28, 0.3, 0x4a4a3a, -0.55, 0, -0.1), box(0.28, 0.28, 0.3, 0x4a4a3a, 0.55, 0, -0.1), box(0.6, 0.04, 0.05, ORO, 0, 0.45, 0.31));
+      break;
+    case 'blindaje':   // placa de blindaje compuesto en un marco de pruebas, con impactos
+      a(box(0.08, 1.2, 0.08, P.metal, -0.55, 0, -0.2), box(0.08, 1.2, 0.08, P.metal, 0.55, 0, -0.2), box(1.0, 0.95, 0.16, 0x58636c, 0, 0.12, -0.2), box(1.02, 0.06, 0.18, tc, 0, 1.07, -0.2));
+      for(const [lx, ly] of [[-0.2,0.4],[0.15,0.7],[0.3,0.3]]){ const h = cyl(0.07, 0.02, 0x1e1d1b, lx, 0, -0.11, 10); h.rotation.x = Math.PI/2; h.position.y = ly; a(h); }
+      a(box(0.3, 0.3, 0.3, P.dark, 0, 0, 0.55)); tubo(0.6, 0.05, GUN, 0, 0.42, 0.3);
+      break;
+    case 'perforantes':   // cañón largo en sus cunas y cajón de proyectiles
+      for(const lz of [-0.35, 0.35]) a(tilt(box(0.08, 0.6, 0.08, P.metal, -0.15, 0, lz), 0, 0, 0.3), tilt(box(0.08, 0.6, 0.08, P.metal, 0.15, 0, lz), 0, 0, -0.3));
+      tubo(1.7, 0.08, P.metal, 0, 0.62, 0.2); tubo(0.32, 0.12, P.dark, 0, 0.62, 0.7);
+      a(box(0.5, 0.2, 0.35, 0x4f5a3a, 0.45, 0, -0.5)); for(let i=0; i<4; i++) a(lathe([[0.04,0],[0.04,0.24],[0.025,0.3],[0,0.33]], 0xd0a640, 0.3 + (i%2)*0.12, 0.2, -0.58 + Math.floor(i/2)*0.15));
+      break;
+    case 'diesel':   // motor diésel en un banco con escape humeante
+      a(box(0.8, 0.12, 0.55, P.dark, 0, 0, 0), box(0.7, 0.45, 0.45, 0x3a3a34, 0, 0.12, 0), box(0.72, 0.1, 0.3, 0x5a5650, 0, 0.57, 0), cyl(0.2, 0.06, P.metal, 0.38, 0.2, 0, 14));
+      a(cyl(0.06, 1.3, P.metal, -0.3, 0.3, -0.18, 8), cyl(0.09, 0.06, 0x2a2826, -0.3, 1.6, -0.18, 8)); vapor(-0.3, 1.65, -0.18);
+      break;
+    case 'camuflaje': {   // red de camuflaje tensada sobre el techo con cuatro postes, con follaje
+      const w = est ? (est.max.x - est.min.x)*0.95 : 1.4, d = est ? (est.max.z - est.min.z)*0.95 : 1.4;
+      a(box(w, 0.03, d, 0x55613a, 0, 0.12, 0));
+      for(const [sx, sz] of [[-1,-1],[1,-1],[-1,1],[1,1]]) a(box(0.06, y + 0.12 - 0.16, 0.06, WOOD, sx*w*0.5, 0.16 - y, sz*d*0.5));   // postes desde la losa
+      for(let i=0; i<12; i++) a(tilt(box(0.4, 0.1, 0.34, i%3 ? 0x6b7a3e : 0x4f5a30, ((i%4) - 1.5)*w*0.26, 0.16, (Math.floor(i/4) - 1)*d*0.3), 0.15, i, 0.1));
+      break; }
+    case 'emboscada':   // blancos de entrenamiento con siluetas y un muñeco con traje de follaje
+      for(const lx of [-0.4, 0, 0.4]) a(box(0.05, 0.45, 0.05, WOOD, lx, 0, 0), box(0.32, 0.55, 0.03, 0xd8cfb0, lx, 0.45, 0), box(0.16, 0.16, 0.035, 0x2a2622, lx, 0.82, 0), box(0.22, 0.24, 0.035, 0x2a2622, lx, 0.52, 0));
+      for(let i=0; i<6; i++) a(ball(0.13, i%2 ? 0x5f6a3a : 0x4f5a30, 0.1 + (i%2)*0.08, 0.15 + i*0.13, 0.5, 1.1, 0.9, 1));
+      break;
+    case 'trucados':   // motor colgando de un trípode de troncos, con neumáticos apilados
+      for(const t of [0, 2.09, 4.19]) a(tilt(box(0.07, 1.9, 0.07, WOOD, Math.sin(t)*0.32, 0, Math.cos(t)*0.32), Math.cos(t)*0.17, 0, -Math.sin(t)*0.17));
+      a(box(0.02, 0.6, 0.02, P.metal, 0, 1.15, 0), box(0.45, 0.32, 0.35, 0x3a3a34, 0, 0.8, 0), box(0.47, 0.08, 0.2, 0x5a5650, 0, 1.12, 0));
+      for(let i=0; i<3; i++) llanta(0.6, 0.1 + i*0.17, 0.45);
+      break;
+    case 'cohetes': {   // rampa improvisada de cohetes: armazón de madera inclinado con seis tubos
+      a(box(0.08, 0.7, 0.08, WOOD, -0.35, 0, 0.3), box(0.08, 0.7, 0.08, WOOD, 0.35, 0, 0.3), box(0.08, 0.3, 0.08, WOOD, -0.35, 0, -0.4), box(0.08, 0.3, 0.08, WOOD, 0.35, 0, -0.4));
+      for(let i=0; i<6; i++) tubo(1.1, 0.055, i%2 ? 0x5f6a3a : 0x6b6a4a, -0.24 + (i%3)*0.24, 0.48 + Math.floor(i/3)*0.13, -0.05, -0.42);
+      a(box(0.7, 0.2, 0.3, WOOD, 0, 0, 0.75)); for(let i=0; i<2; i++) a(tilt(lathe([[0.05,0],[0.05,0.5],[0.03,0.6],[0,0.65]], 0x8a3a2a, -0.15 + i*0.3, 0.24, 0.75), Math.PI/2));
+      break; }
+    default: a(box(0.6, 0.6, 0.6, P.trim, 0, 0, 0));
+  }
+  g.position.set(x, y, z); g.scale.setScalar(sc); g.updateMatrix();
+  for(const m of g.children.slice()){ m.updateMatrix(); m.matrix.premultiply(g.matrix); m.matrix.decompose(m.position, m.quaternion, m.scale); body.add(m); }
+}
+// Fortificación del centro de mando: muros de concreto alrededor de la losa con un portón frente a la puerta, franja del equipo y nidos de sacos
+function fortificar(body, tc, s, h2){
+  const L = s*0.9, gap = 1.8, seg = (L - gap)/2;
+  for(const [px, pz, w2, d2] of [[-(gap/2 + seg/2), h2-0.1, seg, 0.18], [gap/2 + seg/2, h2-0.1, seg, 0.18], [0, -h2+0.1, L, 0.18], [h2-0.1, 0, 0.18, L], [-h2+0.1, 0, 0.18, L]]){
+    body.add(box(w2, 0.6, d2, 0x6d6862, px, 0.16, pz), box(w2 + 0.02, 0.05, d2 + 0.02, tc, px, 0.76, pz)); }
+  for(const sx of [-1, 1]) body.add(box(0.26, 0.85, 0.26, 0x5f5a52, sx*gap/2, 0.16, h2-0.1));   // pilares del portón
+  for(const [px, pz] of [[h2-0.45, h2-0.45], [-h2+0.45, -h2+0.45]]) sandbags(body, px, pz, 0.5, 0, 6.28, 0.16, 2);
 }
 // Andamio que se muestra mientras el edificio está en construcción
 function scaffold(s){
