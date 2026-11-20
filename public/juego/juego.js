@@ -10,7 +10,7 @@ const LC = 2, SUBC = 4, CELL = LC / SUBC;
 let LG = 64, GRID = LG * SUBC, WORLD = LG * LC, NCELLS = GRID * GRID;
 const L2F = v => v * SUBC;   // celda de diseño → celda fina
 const AIR_Y = 6;
-const SIM_VERSION = '0.9.9';
+const SIM_VERSION = '0.9.10';
 let LOCAL = 0;   // jugador de este cliente (0 o 1)
 const hyp = (x,y) => Math.sqrt(x*x + y*y);   // sqrt es exacta en IEEE 754; Math.hypot puede variar entre navegadores
 let hooks = { income(){}, upgraded(){}, spawn(){}, death(){}, remove(){}, shot(){}, built(){}, power(){}, impact(){}, captured(){}, rankUp(){}, crate(){}, tunnel(){}, superFire(){}, heroDown(){}, mission(){} };
@@ -18,29 +18,29 @@ let hooks = { income(){}, upgraded(){}, spawn(){}, death(){}, remove(){}, shot()
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 
 const UNIT_TYPES = {
-  recolector: { nombre:'Recolector', hp:240, speed:3.6, armor:'veh', weapon:null, sight:8, cost:300, time:6, size:0.95, carry:100 },
-  constructor:{ nombre:'Constructor', hp:260, speed:3.4, armor:'veh', weapon:null, sight:9, cost:500, time:8, size:1.0 },
-  infanteria: { nombre:'Infantería', hp:110, speed:3.0, armor:'inf', weapon:'rifle', range:7, dmg:11, cd:1.0, sight:11, cost:150, time:4, size:0.55, capture:true },
-  tanque:     { nombre:'Tanque', hp:420, speed:3.8, armor:'veh', weapon:'canon', range:9, dmg:46, cd:2.2, sight:12, cost:700, time:9, size:1.15 },
-  antiaereo:  { nombre:'Antiaéreo', hp:300, speed:4.0, armor:'veh', weapon:'aa', range:12, dmg:34, cd:0.7, sight:13, cost:600, time:7, size:1.0 },
-  pesado:     { nombre:'Tanque pesado', hp:820, speed:2.8, armor:'veh', weapon:'canon', range:9, dmg:72, cd:2.6, sight:11, cost:1100, time:13, size:1.4 },
-  avion:      { nombre:'Avión de ataque', hp:260, speed:10, armor:'air', weapon:'misil', range:6, dmg:120, cd:0.6, sight:12, cost:900, time:12, size:1.2, air:true, ammo:2 },
-  helicoptero:{ nombre:'Helicóptero', hp:380, speed:6.5, armor:'air', weapon:'cohete', range:8, dmg:24, cd:1.1, sight:12, cost:950, time:12, size:1.2, air:true, hover:true },
-  ingeniero:  { nombre:'Ingeniero', hp:90, speed:3.2, armor:'inf', weapon:null, sight:9, cost:400, time:7, size:0.55, engineer:true },
-  tecnico:    { nombre:'Técnico', hp:260, speed:5.4, armor:'veh', weapon:'rifle', range:8, dmg:16, cd:0.6, sight:12, cost:450, time:6, size:1.0 },
-  lancha:     { nombre:'Lancha patrullera', hp:300, speed:6.0, armor:'nav', weapon:'ametralla', range:8, dmg:16, cd:0.6, sight:12, cost:500, time:7, size:1.2, naval:true },
-  fragata:    { nombre:'Fragata', hp:750, speed:3.4, armor:'nav', weapon:'canonaval', range:15, minRange:4, dmg:70, cd:3.0, sight:11, cost:1400, time:16, size:1.6, naval:true, splash:2.5 },
-  antitanque: { nombre:'Infantería antitanque', hp:100, speed:2.8, armor:'inf', weapon:'antitanque', range:8, dmg:90, cd:2.4, sight:10, cost:300, time:6, size:0.55 },
-  heroe:      { nombre:'Héroe', hp:900, speed:3.6, armor:'inf', weapon:'heroe', range:10, dmg:40, cd:1.0, sight:14, cost:1500, time:20, size:0.7, hero:true, minRank:4, regen:0.01 },
-  artilleria: { nombre:'Artillería ligera', hp:220, speed:2.8, armor:'veh', weapon:'obus', range:17, minRange:5, dmg:55, cd:4, sight:10, cost:800, time:11, size:1.15, splash:3 },
+  recolector: { nombre:'Recolector', hp:240, speed:3.6, armor:'veh', weapon:null, sight:8, cost:300, time:6, size:0.95, carry:100, pop:1 },
+  constructor:{ nombre:'Constructor', hp:260, speed:3.4, armor:'veh', weapon:null, sight:9, cost:500, time:8, size:1.0, pop:1 },
+  infanteria: { nombre:'Infantería', hp:110, speed:3.0, armor:'inf', weapon:'rifle', range:7, dmg:11, cd:1.0, sight:11, cost:150, time:4, size:0.55, capture:true, pop:1 },
+  tanque:     { nombre:'Tanque', hp:420, speed:3.8, armor:'veh', weapon:'canon', range:9, dmg:46, cd:2.2, sight:12, cost:700, time:9, size:1.15, pop:3 },
+  antiaereo:  { nombre:'Antiaéreo', hp:300, speed:4.0, armor:'veh', weapon:'aa', range:12, dmg:34, cd:0.7, sight:13, cost:600, time:7, size:1.0, pop:2 },
+  pesado:     { nombre:'Tanque pesado', hp:820, speed:2.8, armor:'veh', weapon:'canon', range:9, dmg:72, cd:2.6, sight:11, cost:1100, time:13, size:1.4, pop:4 },
+  avion:      { nombre:'Avión de ataque', hp:260, speed:10, armor:'air', weapon:'misil', range:6, dmg:120, cd:0.6, sight:12, cost:900, time:12, size:1.2, air:true, ammo:2, pop:3 },
+  helicoptero:{ nombre:'Helicóptero', hp:380, speed:6.5, armor:'air', weapon:'cohete', range:8, dmg:32, cd:1.0, sight:12, cost:950, time:12, size:1.2, air:true, hover:true, pop:3 },
+  ingeniero:  { nombre:'Ingeniero', hp:90, speed:3.2, armor:'inf', weapon:null, sight:9, cost:400, time:7, size:0.55, engineer:true, pop:1 },
+  tecnico:    { nombre:'Técnico', hp:260, speed:5.4, armor:'veh', weapon:'rifle', range:8, dmg:12, cd:0.6, sight:12, cost:450, time:6, size:1.0, pop:2 },
+  lancha:     { nombre:'Lancha patrullera', hp:300, speed:6.0, armor:'nav', weapon:'ametralla', range:8, dmg:16, cd:0.6, sight:12, cost:500, time:7, size:1.2, naval:true, pop:2 },
+  fragata:    { nombre:'Fragata', hp:750, speed:3.4, armor:'nav', weapon:'canonaval', range:15, minRange:4, dmg:70, cd:3.0, sight:11, cost:1400, time:16, size:1.6, naval:true, splash:2.5, pop:4 },
+  antitanque: { nombre:'Infantería antitanque', hp:100, speed:2.8, armor:'inf', weapon:'antitanque', range:8, dmg:90, cd:2.4, sight:10, cost:350, time:6, size:0.55, pop:1 },
+  heroe:      { nombre:'Héroe', hp:900, speed:3.6, armor:'inf', weapon:'heroe', range:10, dmg:40, cd:1.0, sight:14, cost:1500, time:20, size:0.7, hero:true, minRank:4, regen:0.01, pop:4 },
+  artilleria: { nombre:'Artillería ligera', hp:220, speed:2.8, armor:'veh', weapon:'obus', range:17, minRange:5, dmg:55, cd:4, sight:10, cost:800, time:11, size:1.15, splash:3, pop:3 },
   // Bombardero: una sola bomba muy potente que cae en el punto del blanco; luego vuelve al hangar a rearmarse
-  bombardero: { nombre:'Bombardero', hp:480, speed:8, armor:'air', weapon:'bomba', range:1.6, dmg:650, cd:1, sight:11, cost:1500, time:20, size:1.4, air:true, ammo:1, splash:4.5, bomb:true }
+  bombardero: { nombre:'Bombardero', hp:480, speed:8, armor:'air', weapon:'bomba', range:1.6, dmg:650, cd:1, sight:11, cost:1500, time:20, size:1.4, air:true, ammo:1, splash:4.5, bomb:true, pop:4 }
 };
 const BUILD_TYPES = {
   centro:   { nombre:'Centro de mando', hp:2600, size:3, produce:['constructor'], power:5, cost:0, time:0, buildable:false, sight:10 },
   // Centro de recolección: produce los recolectores y recibe la carga. Al terminarse entrega un recolector gratis.
   // Edificio de ingresos: genera créditos cada 3 s; se habilita con el rango 2 de general. Con poca energía rinde la mitad.
-  suministros:{ nombre:'Centro de suministros', hp:1000, size:2, produce:[], power:-2, cost:1400, time:20, buildable:true, sight:8, income:30, minRank:2 },
+  suministros:{ nombre:'Centro de suministros', hp:1000, size:2, produce:[], power:-2, cost:1400, time:20, buildable:true, sight:8, income:30, minRank:2, max:3 },
   // Centro de investigación: vende tecnologías globales (ver MEJORAS)
   investigacion:{ nombre:'Centro de investigación', hp:1200, size:2, produce:[], power:-3, cost:1000, time:16, buildable:true, sight:8 },
   // Defensas por facción. Búnker y trinchera disparan con la infantería que tienen dentro (garrison = plazas).
@@ -84,7 +84,7 @@ const FACTIONS = {
     buildMods:{ recoleccion:{ nombre:'Acopio de recursos', power:0 }, investigacion:{ nombre:'Taller clandestino', power:0 }, suministros:{ nombre:'Mercado negro', power:0 }, fabrica:{ produce:['tecnico','artilleria','antiaereo'] }, superarma:{ nombre:'Tormenta de cohetes', superKind:'cohetes', power:0 } } }
 };
 const DMG = {
-  rifle:{ inf:1, veh:0.3, bld:0.25, air:0.15, nav:0.3 }, canon:{ inf:0.45, veh:1, bld:1, air:0, nav:0.9 },
+  rifle:{ inf:1, veh:0.3, bld:0.25, air:0.15, nav:0.3 }, canon:{ inf:0.55, veh:1, bld:1, air:0, nav:0.9 },
   torre:{ inf:0.9, veh:0.8, bld:0.5, air:0.8, nav:0.8 }, aa:{ inf:0.3, veh:0.25, bld:0.1, air:1.8, nav:0.3 },   // antiaéreo: más efectivo contra aviones y helicópteros
   misil:{ inf:0.6, veh:1, bld:0.8, air:0, nav:1.1 }, obus:{ inf:1, veh:0.7, bld:1.2, air:0, nav:0.9 },
   cohete:{ inf:0.8, veh:1.1, bld:0.7, air:0, nav:1.0 }, heroe:{ inf:1.4, veh:0.8, bld:0.9, air:0.5, nav:0.5 },
@@ -619,6 +619,19 @@ function auraBoost(u){
   const h = S.byId.get(hid); if(!h || h.dead || !UT(h.owner,h.type).aura) return false;
   return hyp(h.x-u.x, h.z-u.z) <= 8;
 }
+// Límite de tropas: cada unidad ocupa plazas de mando según su poder (infantería 1, tanque 3, tanque pesado 4...).
+// Cuentan las unidades en el mapa, en túneles y guarniciones, y las que esperan en las colas de producción.
+// Los refuerzos de los poderes y el recolector gratis del centro de recolección no se frenan, pero sí ocupan plazas.
+const LIMITE_PLAZAS = 150;
+function plazasUsadas(p){
+  let n = 0;
+  for(const u of S.players[p].tunnel) n += UT(p,u.type).pop || 1;
+  for(const e of S.ents){ if(e.dead || e.owner!==p) continue;
+    if(e.kind==='unit') n += UT(p,e.type).pop || 1;
+    else if(e.kind==='bld'){ for(const q of e.queue) n += UT(p,q).pop || 1; if(e.gar) for(const u of e.gar) n += UT(p,u.type).pop || 1; } }
+  return n;
+}
+const plazasOk = (p, type) => plazasUsadas(p) + (UT(p,type).pop || 1) <= LIMITE_PLAZAS;
 function heroCount(p){
   let n = S.players[p].tunnel.filter(u => UT(p,u.type).hero).length;
   for(const e of S.ents){ if(e.dead || e.owner!==p) continue; if(e.kind==='unit' && UT(p,e.type).hero) n++; else if(e.kind==='bld') n += e.queue.filter(q => q==='heroe').length; }
@@ -1177,6 +1190,7 @@ function applyCmd(c){
       if(pl.credits < ut.cost) break;
       if(ut.hero && (pl.rank < ut.minRank || heroCount(c.p) > 0)) break;   // un héroe por jugador, desde rango 4
       if(esAvion(c.p, c.type) && avionesDe(c.p) >= cupoAviones(c.p)) break;   // hangares llenos
+      if(!plazasOk(c.p, c.type)) break;   // límite de tropas
       pl.credits -= ut.cost; b.queue.push(c.type); break; }
     case 'cancel': {
       const b = own(c.id); if(!b || b.kind!=='bld' || !b.queue.length) break;
@@ -1300,7 +1314,7 @@ function aiTick(p){
     else if(!find('astillero') && S.tick>TICK_HZ*100 && (cst = coastNear(home, p)) && cst.explored){ const w = cst; want = ['astillero', w.x, w.z]; }
     else if(F.builds.includes('superarma') && !find('superarma') && me.rank>=3 && S.tick>TICK_HZ*300) want = ['superarma', home.x-dx*5+dz*7, home.z-dz*5-dx*7];
     else if(F.builds.includes('tunel') && blds.filter(b => b.type==='tunel').length<2 && S.tick>TICK_HZ*90){ const k = blds.filter(b => b.type==='tunel').length; want = ['tunel', home.x+dx*(9+k*8)-dz*4, home.z+dz*(9+k*8)+dx*4]; }
-    else if(F.builds.includes('suministros') && me.rank>=2 && blds.filter(b => b.type==='suministros').length < Math.min(4, me.rank) && me.credits>900) want = ['suministros', home.x-dz*9+dx*3, home.z+dx*9+dz*3];
+    else if(F.builds.includes('suministros') && me.rank>=2 && blds.filter(b => b.type==='suministros').length < Math.min(BT(p,'suministros').max, me.rank) && me.credits>900) want = ['suministros', home.x-dz*9+dx*3, home.z+dx*9+dz*3];
     else if(me.rank>=2 && F.builds.includes('investigacion') && !find('investigacion') && S.tick>TICK_HZ*150 && me.credits>600) want = ['investigacion', home.x+dz*4-dx*9, home.z-dx*4-dz*9];
     else if(S.tick>TICK_HZ*80 && defs<4){ const tipos = ['torre', ...['bateria','minigun','bunker','trinchera'].filter(t => F.builds.includes(t))], d=11+defs*2, side=(defs-1)*5;
       want = [tipos[defs % tipos.length], home.x+dx*d+dz*side, home.z+dz*d-dx*side]; }
@@ -1321,7 +1335,7 @@ function aiTick(p){
     const r = S.rng();
     const wantAir = aerodromo && air.length + aerodromo.queue.length < 2;
     const airReserve = wantAir ? UT(p,'avion').cost : 0;   // ahorra para aviones
-    const can = (b, type, extra=airReserve) => b && b.queue.length<2 && me.credits >= UT(p,type).cost + reserve + extra;
+    const can = (b, type, extra=airReserve) => b && b.queue.length<2 && me.credits >= UT(p,type).cost + reserve + extra && plazasOk(p, type);
     const foeVeh = S.ents.filter(e => !e.dead && e.kind==='unit' && isEnemy(p, e.owner) && UT(e.owner,e.type).armor==='veh').length;
     // Mejoras: cada 15 s compra la primera disponible de la lista si sobra dinero
     if((S.tick + p*97) % (15*TICK_HZ) < TICK_HZ/2){
@@ -5068,12 +5082,12 @@ function updateEffects(dt){
 // ======================= ÍCONOS DE UNIDADES Y EDIFICIOS =======================
 // Se usan las imágenes del catálogo docs/prompts-imagenes.md cuando existen; si no, el botón queda solo con texto.
 const ICON_KEYS = {
-  atlas:{ recolector:'helicoptero-carga', constructor:'plataforma-ingenieria', infanteria:'infanteria', ingeniero:'ingeniero', heroe:'comando-atlas', tanque:'tanque', antiaereo:'antiaereo', avion:'avion', bombardero:'bombardero', lancha:'lancha', fragata:'fragata',
-          centro:'centro-mando', recoleccion:'plataforma-carga', planta:'planta-energia', cuartel:'cuartel', fabrica:'fabrica', torre:'torre', aerodromo:'aerodromo', astillero:'astillero', superarma:'canon-particulas' },
-  hierro:{ recolector:'camion-minero', constructor:'topadora', infanteria:'infanteria', ingeniero:'ingeniero', heroe:'mariscal-hierro', tanque:'tanque', pesado:'tanque-pesado', antiaereo:'antiaereo', helicoptero:'helicoptero-ataque', lancha:'lancha', fragata:'monitor-fluvial',
-           centro:'centro-mando', recoleccion:'deposito-minero', planta:'planta-energia', cuartel:'cuartel', fabrica:'fabrica', torre:'torre', astillero:'astillero', superarma:'silo-nuclear' },
-  guerrilla:{ recolector:'trabajador', constructor:'camion-grua', infanteria:'rebelde', ingeniero:'ingeniero', heroe:'jefe-rebelde', tecnico:'tecnico', artilleria:'artilleria', antiaereo:'antiaereo', lancha:'lancha-rapida', fragata:'fragata',
-              centro:'campamento', recoleccion:'acopio', cuartel:'cuartel', fabrica:'taller', torre:'torre-vigilancia', tunel:'tuneles', astillero:'astillero', superarma:'tormenta-cohetes' }
+  atlas:{ recolector:'helicoptero-carga', constructor:'plataforma-ingenieria', infanteria:'infanteria', ingeniero:'ingeniero', heroe:'comando-atlas', tanque:'tanque', antiaereo:'antiaereo', avion:'avion', bombardero:'bombardero', lancha:'lancha', fragata:'fragata', antitanque:'granadero-antitanque',
+          centro:'centro-mando', recoleccion:'plataforma-carga', planta:'planta-energia', cuartel:'cuartel', fabrica:'fabrica', torre:'torre', aerodromo:'aerodromo', astillero:'astillero', superarma:'canon-particulas', suministros:'estacion-lanzamiento', investigacion:'laboratorio', bateria:'bateria-misiles' },
+  hierro:{ recolector:'camion-minero', constructor:'topadora', infanteria:'infanteria', ingeniero:'ingeniero', heroe:'mariscal-hierro', tanque:'tanque', pesado:'tanque-pesado', antiaereo:'antiaereo', helicoptero:'helicoptero-ataque', lancha:'lancha', fragata:'monitor-fluvial', antitanque:'cazacarros',
+           centro:'centro-mando', recoleccion:'deposito-minero', planta:'planta-energia', cuartel:'cuartel', fabrica:'fabrica', torre:'torre', astillero:'astillero', superarma:'silo-nuclear', suministros:'centro-ciberoperaciones', investigacion:'instituto-tecnico', bunker:'minibunker', minigun:'torreta-minigun' },
+  guerrilla:{ recolector:'trabajador', constructor:'camion-grua', infanteria:'rebelde', ingeniero:'ingeniero', heroe:'jefe-rebelde', tecnico:'tecnico', artilleria:'artilleria', antiaereo:'antiaereo', lancha:'lancha-rapida', fragata:'fragata', antitanque:'rebelde-antitanque',
+              centro:'campamento', recoleccion:'acopio', cuartel:'cuartel', fabrica:'taller', torre:'torre-vigilancia', tunel:'tuneles', astillero:'astillero', superarma:'tormenta-cohetes', suministros:'mercado-negro', investigacion:'taller-clandestino', trinchera:'trinchera' }
 };
 // img/iconos.json lista los íconos disponibles (se regenera con: node pruebas/generar-iconos.js). Así no hay
 // solicitudes a archivos que todavía no existen.
@@ -5083,6 +5097,82 @@ function preloadIcons(f){
   if(ICON_LIST) return cargar();
   fetch('img/iconos.json', { cache:'no-cache' }).then(r => r.ok ? r.json() : []).catch(() => []).then(l => { ICON_LIST = Array.isArray(l) ? l.filter(x => typeof x === 'string') : []; cargar(); });
 }
+// ======================= DESCRIPCIONES =======================
+// Qué hace y para qué sirve cada unidad y edificio. Se muestran al pasar el puntero por los botones de producción y
+// construcción, y bajo el nombre al seleccionar. Por facción solo se reemplaza lo que cambia.
+const DESC_U = {
+  recolector:'Recoge suministros en los acopios y los lleva al centro de recolección. No tiene arma.',
+  constructor:'Construye y repara edificios. Sin órdenes, repara los edificios propios dañados cercanos.',
+  infanteria:'Soldado de fusil. Eficaz contra infantería, débil contra blindados. Captura pozos y ocupa refugios y posiciones defensivas.',
+  antitanque:'Lanzacohetes contra blindados, barcos y edificios. Débil contra infantería: conviene acompañarlo con fusileros.',
+  ingeniero:'Captura edificios enemigos en 6 s y pozos en 2 s. No captura centros de mando. No tiene arma.',
+  heroe:'Unidad única de élite (rango 4). Mucha vida, gran alcance y regenera 1 % de vida por segundo.',
+  tanque:'Blindado de línea. Fuerte contra vehículos y edificios. Débil contra antitanques y no ataca aeronaves.',
+  pesado:'Tanque lento, con mucha vida y cañón potente para romper defensas. Vulnerable a la aviación y a los antitanques.',
+  antiaereo:'Derriba aviones y helicópteros. Débil contra tropas y vehículos en tierra.',
+  avion:'Ataque rápido: dos misiles por salida contra blindados, barcos y edificios. Vuelve a su hangar a rearmarse. No ataca aeronaves.',
+  bombardero:'Una bomba muy potente por salida que daña toda un área. Contra bases y grupos; vuelve al hangar a rearmarse.',
+  helicoptero:'Cohetes contra vehículos e infantería. Los tanques no pueden dispararle; vulnerable a los antiaéreos.',
+  tecnico:'Camioneta artillada y rápida. Hostiga infantería y recolectores; débil contra blindados.',
+  artilleria:'Cohetes de largo alcance con daño en área para asediar defensas. Frágil y no dispara a menos de 5.',
+  lancha:'Barco rápido y barato contra lanchas, tropas en la costa y recolectores.',
+  fragata:'Barco de asedio de largo alcance contra edificios costeros y barcos. No dispara a menos de 4.'
+};
+const DESC_UF = {
+  atlas:{ recolector:'Helicóptero de carga: vuela sobre el terreno y el agua, recoge suministros y los lleva a la plataforma de carga. No tiene arma.' },
+  hierro:{ recolector:'Camión minero: lento, pero carga mucho por viaje. Lleva los suministros al depósito minero. No tiene arma.' },
+  guerrilla:{ recolector:'Trabajador: barato y con poca carga. Lleva los suministros al acopio de recursos. No tiene arma.' }
+};
+const DESC_B = {
+  centro:'Corazón de la base: produce constructores. Si se pierden todos los edificios, se pierde la partida.',
+  recoleccion:'Produce recolectores y recibe su carga. Al terminarse entrega un recolector gratis.',
+  planta:'Genera energía. Con energía insuficiente, la producción va a mitad de velocidad y las defensas se apagan.',
+  cuartel:'Entrena infantería, antitanques, ingenieros y el héroe. Cura a la infantería cercana.',
+  fabrica:'Produce vehículos. Cura a los vehículos cercanos y vende mejoras de unidad.',
+  suministros:'Genera 30 créditos cada 3 s sin recolectar (la mitad con energía insuficiente). Máximo 3 por jugador.',
+  investigacion:'Investiga las tecnologías propias de la facción y habilita las mejoras avanzadas.',
+  torre:'Defensa fija contra tropas, vehículos y aeronaves.',
+  bateria:'Misiles contra aeronaves y blindados. Las baterías cercanas comparten objetivo y suman daño.',
+  bunker:'Posición para 4 soldados que disparan protegidos. Vacía no dispara.',
+  minigun:'Torreta rotativa que barre infantería. Débil contra vehículos.',
+  trinchera:'Posición oculta para 3 soldados; recibe solo el 55 % del daño. Vacía no dispara.',
+  tunel:'Guarda y cura hasta 8 unidades, que salen por cualquier túnel propio. Dispara a los intrusos.',
+  aerodromo:'Produce aviones y bombarderos. Cuatro hangares donde aterrizan y se rearman.',
+  astillero:'Produce barcos. Debe construirse en la costa.',
+  superarma:'Golpea un área en cualquier punto del mapa cada 5 minutos. Una por jugador.',
+  pozo:'Da 20 créditos cada 3 s a quien lo controla. La infantería lo captura.',
+  refugioCasa:'Edificio abandonado: la infantería lo ocupa y dispara protegida.',
+  refugioGas:'Edificio abandonado: la infantería lo ocupa y dispara protegida.'
+};
+const DESC_BF = {
+  atlas:{ suministros:'Un avión deja cajas de suministros: 30 créditos cada 3 s sin recolectar (la mitad con energía insuficiente). Máximo 3 por jugador.' },
+  hierro:{ suministros:'Los hackers desvían fondos: 30 créditos cada 3 s sin recolectar (la mitad con energía insuficiente). Máximo 3 por jugador.' },
+  guerrilla:{ suministros:'Comercio clandestino: 30 créditos cada 3 s sin recolectar. Máximo 3 por jugador.', fabrica:'Produce técnicos, artillería ligera y antiaéreos. Cura a los vehículos cercanos y vende mejoras de unidad.' }
+};
+// Texto de la unidad o edificio t del jugador p (kind 'unit' o 'bld')
+function descripcion(kind, t, p){
+  const f = p>=0 && S.players[p] ? S.players[p].faction : null, de = (o, k) => o && Object.hasOwn(o, k) ? o[k] : '';   // «constructor» no debe leer el prototipo
+  if(kind==='unit'){ const ut = UT(p, t); let d = de(f && DESC_UF[f], t) || de(DESC_U, t);
+    if(ut && ut.hero && ut.rasgo) d += ` ${ut.rasgo}.`; else if(ut && ut.stealth) d += ' Camuflado mientras no dispara.';
+    return d; }
+  return de(f && DESC_BF[f], t) || de(DESC_B, t);
+}
+// Atributos con la ficha que muestra la ayuda flotante del panel (nombre, descripción y datos)
+const tipAttr = (nombre, desc, datos) => `data-tip="${esc(nombre)}" data-desc="${esc(desc)}" data-datos="${esc(datos || '')}"`;
+function datosUnidad(ut){
+  const d = [`Vida ${ut.hp}`];
+  if(ut.weapon) d.push(`Daño ${ut.dmg}`, `Alcance ${ut.range}`);
+  d.push(`Velocidad ${ut.speed}`, `Plazas ${ut.pop || 1}`, `Tiempo ${ut.time} s`);
+  return d.join(' · ');
+}
+function datosEdificio(bt){
+  const d = [`Vida ${bt.hp}`, `Tiempo ${bt.time} s`];
+  if(bt.weapon) d.push(`Daño ${bt.dmg}`, `Alcance ${bt.range}`);
+  if(bt.garrison) d.push(`Plazas ${bt.garrison}`);
+  if(bt.power) d.push(`Energía ${bt.power > 0 ? '+' : ''}${bt.power}`);
+  return d.join(' · ');
+}
+
 function iconHtml(t){
   const f = S.players[LOCAL] && S.players[LOCAL].faction, k = f && ICON_KEYS[f] && ICON_KEYS[f][t];
   return k && ICON_OK.has(`${f}/${k}`) ? `<img class="ico" src="img/icono-${k}-${f}.png" alt="">` : '';
@@ -5775,42 +5865,69 @@ const powerTxt = w => `<span title="Energía">${ic('energia', 'Energía')}${w>0 
 const swatch = o => `<span class="sw" style="background:${o<0 ? '#8a8070' : '#' + teamColor(o).toString(16).padStart(6, '0')}"></span>`;
 function buildMenu(cr){
   const pl = S.players[LOCAL], noPw = myFaction().noPower;
-  return `<div class="row">` + myFaction().builds.map(t => { const bt = BT(LOCAL,t);
+  return `<div class="row menu" aria-label="Construir">` + myFaction().builds.map(t => { const bt = BT(LOCAL,t);
     const rankLock = bt.minRank && pl.rank < bt.minRank, dup = (bt.superCd && S.ents.some(e => !e.dead && e.owner===LOCAL && e.type===t)) || (bt.max && S.ents.filter(e => !e.dead && e.owner===LOCAL && e.type===t).length >= bt.max);
-    const note = rankLock ? `<span title="Requiere rango ${bt.minRank}">${ic('rango', 'Requiere rango')}${bt.minRank}</span>` : dup ? (bt.max ? `Máximo ${bt.max}` : 'Ya construida') : bt.naval ? `<span title="Requiere costa">${ic('costa', 'Requiere costa')}</span> ${powerTxt(bt.power)}` : noPw ? `<span class="warn" title="Sin energía suficiente">${ic('energia', 'Sin energía')}${bt.power}</span>` : powerTxt(bt.power);
-    return `<button class="prod" data-place="${t}" ${cr<bt.cost||rankLock||dup?'disabled':''}>${iconHtml(t)}${bt.nombre}<small title="Costo">${ic('creditos', 'Costo')}${bt.cost}</small><em>${note}</em></button>`; }).join('') + `</div>`;
+    const cuenta = bt.max ? S.ents.filter(e => !e.dead && e.owner===LOCAL && e.type===t).length : 0;
+    const note = rankLock ? `<span title="Requiere rango ${bt.minRank}">${ic('rango', 'Requiere rango')}${bt.minRank}</span>` : dup ? (bt.max ? `Máximo ${bt.max}` : 'Ya construida') : bt.max ? `${cuenta} de ${bt.max} ${powerTxt(bt.power)}` : bt.naval ? `<span title="Requiere costa">${ic('costa', 'Requiere costa')}</span> ${powerTxt(bt.power)}` : noPw ? `<span class="warn" title="Sin energía suficiente">${ic('energia', 'Sin energía')}${bt.power}</span>` : powerTxt(bt.power);
+    return `<button class="prod" data-place="${t}" ${tipAttr(bt.nombre, descripcion('bld', t, LOCAL), datosEdificio(bt))} ${cr<bt.cost||rankLock||dup?'disabled':''}>${iconHtml(t)}${bt.nombre}<small title="Costo">${ic('creditos', 'Costo')}${bt.cost}</small><em>${note}</em></button>`; }).join('') + `</div>`;
 }
 const clock = sec => `${Math.floor(sec/60)}:${String(Math.max(0,sec)%60).padStart(2,'0')}`;
 // Mejoras que se compran en el edificio b (las de otra facción no se muestran)
+// Mejoras del edificio b: columna compacta a la derecha del panel. Cada una muestra su estado (disponible, en curso,
+// aplicada o bloqueada) y la ficha flotante explica el efecto, el costo y el requisito. Las de otra facción no se muestran.
 function upgradeMenu(b, cr){
   const pl = S.players[LOCAL], keys = Object.keys(MEJORAS).filter(k => MEJORAS[k].edificio===b.type && (!MEJORAS[k].faccion || MEJORAS[k].faccion===pl.faction));
   if(!keys.length) return '';
-  let h = `<div class="sub" style="margin-top:8px"><b>${b.type==='investigacion' ? 'Tecnologías' : 'Mejoras'}</b></div><div class="row">`;
-  for(const k of keys){ const U = MEJORAS[k], st = pl.ups[k];
-    const note = st===2 ? '<em>Adquirida</em>' : st===1 ? '<em>En curso</em>' : pl.rank < U.rango ? `<em title="Requiere rango ${U.rango}">${ic('rango', 'Requiere rango')}${U.rango}</em>`
-      : U.inv && !hasBuilt(LOCAL,'investigacion') ? `<em>Requiere ${esc(BT(LOCAL,'investigacion').nombre.toLowerCase())}</em>` : `<em>${U.desc}</em>`;
-    h += `<button class="prod" data-up="${k}" title="${U.desc}" ${upgradeOk(LOCAL, b, k) ? '' : 'disabled'}>${U.nombre}<small>${st===2 ? 'Aplicada' : `<span title="Costo">${ic('creditos', 'Costo')}${U.cost}</span> <span title="Tiempo">${ic('tiempo', 'Tiempo')}${U.time} s</span>`}</small>${note}</button>`; }
-  h += `</div>`;
-  if(b.upq){ const U = MEJORAS[b.upq.key]; h += `<div class="sub" style="margin-top:6px">Investigando: ${U.nombre}${S.power[LOCAL].low ? ' <span class="warn">(mitad de velocidad por energía)</span>' : ''}</div><div class="bar prog"><i style="width:${pct(b.upq.prog/U.time)}"></i></div>`; }
-  return h;
+  const hechas = keys.filter(k => pl.ups[k]===2).length, inv = BT(LOCAL,'investigacion').nombre.toLowerCase();
+  let h = `<aside class="mejoras" aria-label="Mejoras"><header><b>${b.type==='investigacion' ? 'Tecnologías' : 'Mejoras'}</b><small>${hechas} de ${keys.length}</small></header>`;
+  for(const k of keys){
+    const U = MEJORAS[k], st = pl.ups[k], aqui = b.upq && b.upq.key===k, ok = upgradeOk(LOCAL, b, k);
+    let clase, estado, icono;
+    if(st===2){ clase = 'hecha'; estado = 'Aplicada'; icono = ic('ar-ok'); }
+    else if(st===1){ clase = 'curso'; estado = aqui ? `En curso ${pct(b.upq.prog/U.time)}` : 'En curso en otro edificio'; icono = ic('tiempo'); }
+    else if(pl.rank < U.rango){ clase = 'bloq'; estado = `Requiere rango ${U.rango}`; icono = ic('ar-candado'); }
+    else if(U.inv && !hasBuilt(LOCAL,'investigacion')){ clase = 'bloq'; estado = `Requiere ${inv}`; icono = ic('ar-candado'); }
+    else if(b.upq){ clase = 'espera'; estado = 'El edificio ya investiga otra mejora'; icono = ic('tiempo'); }
+    else if(cr < U.cost){ clase = 'caro'; estado = 'Créditos insuficientes'; icono = ic('creditos'); }
+    else { clase = 'disp'; estado = 'Disponible: haga clic para comprar'; icono = ic('rango'); }
+    const datos = `Costo ${U.cost} · Tiempo ${U.time} s · Rango ${U.rango}${U.inv ? ` · Requiere ${inv}` : ''} · ${estado}`;
+    const pie = st===2 ? 'Aplicada' : aqui ? pct(b.upq.prog/U.time) : st===1 ? 'En curso' : clase==='bloq' ? (pl.rank < U.rango ? `Rango ${U.rango}` : 'Requisito') : `${U.cost}`;
+    h += `<button class="mej ${clase}" data-up="${k}" ${tipAttr(U.nombre, U.desc, datos)} aria-label="${esc(U.nombre)}. ${esc(U.desc)}. ${esc(estado)}" ${ok ? '' : 'disabled'}>`
+      + `<span class="mej-ico">${icono}</span><span class="mej-n">${U.nombre}</span><small>${clase==='disp' || clase==='caro' || clase==='espera' ? ic('creditos', 'Costo') : ''}${pie}</small>`
+      + (aqui ? `<i class="mej-barra" style="width:${pct(b.upq.prog/U.time)}"></i>` : '') + `</button>`;
+  }
+  if(b.upq && S.power[LOCAL].low) h += `<div class="sub warn">Mitad de velocidad por energía</div>`;
+  return h + `</aside>`;
 }
+// El panel se revisa cada 0,2 s y solo se rehace si cambió; se conserva el desplazamiento horizontal de las filas de botones
+let panelHtml = '', panelUlt = '', panelClave = '', panelAnimT = 0;
 function renderPanel(){
+  const clave = f => f.getAttribute('aria-label') + f.children.length, antes = new Map();
+  panel.querySelectorAll('.row.menu').forEach(f => { if(f.scrollLeft) antes.set(clave(f), f.scrollLeft); });
+  panelHtml = ''; renderPanelHtml();
+  if(panelHtml === panelUlt) return;   // sin cambios: no se rehace (conserva el foco, el puntero y las animaciones)
+  panelUlt = panelHtml; panel.innerHTML = panelHtml;
+  const claveSel = [...selected].join(',') + '|' + (placing ? placing.type : '') + '|' + (targeting ? targeting.id : '');
+  if(claveSel !== panelClave){ panelClave = claveSel; panel.classList.remove('entra'); void panel.offsetWidth; panel.classList.add('entra'); clearTimeout(panelAnimT); panelAnimT = setTimeout(() => panel.classList.remove('entra'), 320); }   // entrada solo al cambiar la selección
+  if(antes.size) panel.querySelectorAll('.row.menu').forEach(f => { const v = antes.get(clave(f)); if(v) f.scrollLeft = v; });
+}
+function renderPanelHtml(){
   const sel = selectedEnts(), cr = S.players[LOCAL].credits;
   if(targeting){
     const P = targetInfo(targeting.id);
-    panel.innerHTML = `<div class="title">Objetivo: ${P.nombre}</div><div class="sub">${P.desc}. ${TOUCH ? 'Tocar el mapa para lanzar.' : 'Clic en el mapa o el minimapa para lanzar. Clic derecho o Esc para cancelar.'}</div><div class="row"><button data-canceltarget="1">Cancelar</button></div>`;
+    panelHtml = `<div class="title">Objetivo: ${P.nombre}</div><div class="sub">${P.desc}. ${TOUCH ? 'Tocar el mapa para lanzar.' : 'Clic en el mapa o el minimapa para lanzar. Clic derecho o Esc para cancelar.'}</div><div class="row"><button data-canceltarget="1">Cancelar</button></div>`;
     return;
   }
   if(placing){
     const bt = BT(LOCAL,placing.type);
-    panel.innerHTML = `<div class="title">Ubicar: ${bt.nombre}</div><div class="sub">${TOUCH ? 'Tocar el sitio en el mapa y luego confirmar.' : 'Clic en el mapa para ubicar. Clic derecho o Esc para cancelar.'} Debe ser terreno libre y explorado.</div>
+    panelHtml = `<div class="title">Ubicar: ${bt.nombre}</div><div class="sub">${TOUCH ? 'Tocar el sitio en el mapa y luego confirmar.' : 'Clic en el mapa para ubicar. Clic derecho o Esc para cancelar.'} Debe ser terreno libre y explorado.</div>
       <div class="row">${TOUCH ? `<button data-confirm="1" ${placing.has && placing.valid ? '' : 'disabled'}>Confirmar</button>` : ''}<button data-cancelplace="1">Cancelar</button></div>`;
     return;
   }
-  if(!sel.length){ panel.innerHTML = `<div class="title">${esc(myFaction().nombre)}</div><div class="sub">${TOUCH ? 'Tocar una unidad o edificio para seleccionar. Con selección, tocar el mapa para ordenar.' : 'Arrastrar para seleccionar unidades. Clic en un edificio para producir. Clic derecho para dar órdenes.'}</div>`; return; }
+  if(!sel.length){ panelHtml = `<div class="title">${esc(myFaction().nombre)}</div><div class="sub">${TOUCH ? 'Tocar una unidad o edificio para seleccionar. Con selección, tocar el mapa para ordenar.' : 'Arrastrar para seleccionar unidades. Clic en un edificio para producir. Clic derecho para dar órdenes.'}</div>`; return; }
   if(sel.length===1 && sel[0].kind==='bld'){
     const b = sel[0], t = BT(b.owner,b.type), own = b.owner===LOCAL;
-    let h = `<div class="title">${swatch(b.owner)}${t.nombre}</div><div class="sub"><span title="Vida">${ic('vida', 'Vida')}${Math.ceil(b.hp)} / ${b.maxhp}</span>${own && b.type!=='pozo' ? ` ${powerTxt(t.power)}` : ''}</div>${hpBar(b)}`;
+    let h = `<div class="title">${swatch(b.owner)}${t.nombre}</div><div class="desc">${esc(descripcion('bld', b.type, b.owner))}</div><div class="sub"><span title="Vida">${ic('vida', 'Vida')}${Math.ceil(b.hp)} / ${b.maxhp}</span>${own && b.type!=='pozo' ? ` ${powerTxt(t.power)}` : ''}</div>${hpBar(b)}`;
     if(b.type==='pozo'){
       h += `<div class="sub" style="margin-top:6px">${b.owner<0 ? 'Neutral. La infantería lo captura en 4 s.' : own ? `Produce ${t.income} créditos cada 3 s.` : 'En poder del enemigo. La infantería puede capturarlo.'} Si se destruye, vuelve a ser neutral.</div>`;
     } else if(own && b.built && b.type==='tunel'){
@@ -5838,10 +5955,10 @@ function renderPanel(){
         link = `<span${n?' class="hot"':''}>Enlace de datos: ${n ? `${Math.min(3,n)} batería${n>1?'s':''} (+${15*Math.min(3,n)} %)` : `sin baterías a ${t.linkR} o menos`}</span>`; }
       h += `<div class="tags"><span>Alcance ${t.range}</span><span>Daño ${Math.round(t.dmg)}</span><span>${rol}</span>${link}</div>` + (S.power[LOCAL].low ? `<div class="sub warn" style="margin-top:6px">Desactivada por energía insuficiente.</div>` : '');
     } else if(own && t.produce.length){
-      h += `<div class="row">` + t.produce.map(u => { const ut = UT(LOCAL,u), q = b.queue.filter(x => x===u).length;
-        const heroLock = ut.hero && S.players[LOCAL].rank < ut.minRank, heroDup = ut.hero && heroCount(LOCAL) > 0, hangar = esAvion(LOCAL, u) && avionesDe(LOCAL) >= cupoAviones(LOCAL);
-        const note = heroLock ? `<em title="Requiere rango ${ut.minRank}">${ic('rango', 'Requiere rango')}${ut.minRank}</em>` : heroDup ? '<em>En servicio</em>' : hangar ? `<em>Hangares llenos (${HANGARES} por aeródromo)</em>` : ut.hero ? `<em>${ut.rasgo || 'Único'}</em>` : '';
-        return `<button class="prod" data-build="${u}" ${cr<ut.cost||b.queue.length>=5||heroLock||heroDup||hangar?'disabled':''}>${iconHtml(u)}${ut.nombre}<small title="Costo">${ic('creditos', 'Costo')}${ut.cost}</small>${note}${q?`<span class="q">${q}</span>`:''}</button>`; }).join('');
+      h += `<div class="row menu" aria-label="Producir">` + t.produce.map(u => { const ut = UT(LOCAL,u), q = b.queue.filter(x => x===u).length;
+        const heroLock = ut.hero && S.players[LOCAL].rank < ut.minRank, heroDup = ut.hero && heroCount(LOCAL) > 0, hangar = esAvion(LOCAL, u) && avionesDe(LOCAL) >= cupoAviones(LOCAL), lleno = !plazasOk(LOCAL, u);
+        const note = heroLock ? `<em title="Requiere rango ${ut.minRank}">${ic('rango', 'Requiere rango')}${ut.minRank}</em>` : heroDup ? '<em>En servicio</em>' : hangar ? `<em>Hangares llenos (${HANGARES} por aeródromo)</em>` : lleno ? '<em class="warn">Límite de tropas</em>' : `<em title="Plazas de mando">${ic('unidades', 'Plazas de mando')}${ut.pop || 1}</em>`;
+        return `<button class="prod" data-build="${u}" ${tipAttr(ut.nombre, descripcion('unit', u, LOCAL), datosUnidad(ut))} ${cr<ut.cost||b.queue.length>=5||heroLock||heroDup||hangar||lleno?'disabled':''}>${iconHtml(u)}${ut.nombre}<small title="Costo">${ic('creditos', 'Costo')}${ut.cost}</small>${note}${q?`<span class="q">${q}</span>`:''}</button>`; }).join('');
       if(b.queue.length) h += `<button data-cancel="1">Cancelar último</button>`;
       h += `</div>`;
       if(b.queue.length){ const ut = UT(LOCAL,b.queue[0]); h += `<div class="sub" style="margin-top:6px">Produciendo: ${ut.nombre}${S.power[LOCAL].low ? ' <span class="warn">(mitad de velocidad por energía)</span>' : ''}</div><div class="bar prog"><i style="width:${pct(b.prog/ut.time)}"></i></div>`; }
@@ -5849,9 +5966,9 @@ function renderPanel(){
       if(b.type==='aerodromo'){ const propios = S.ents.filter(u => !u.dead && u.kind==='unit' && u.owner===LOCAL && u.base===b.id).length;
         h += `<div class="sub">Hangares: ${avionesDe(LOCAL)} de ${cupoAviones(LOCAL)} aviones (${HANGARES} por aeródromo). Los aviones ociosos aterrizan y esperan en su hangar.</div><div class="row"><button data-aviones="1" ${propios ? '' : 'disabled'}>Seleccionar aviones (${propios})</button></div>`; }
     }
-    if(own && b.built) h += upgradeMenu(b, cr);
     if(own && b.offUntil > S.tick) h += `<div class="sub warn" style="margin-top:6px">Saboteado: ${Math.ceil((b.offUntil-S.tick)/TICK_HZ)} s</div>`;
-    panel.innerHTML = h; return;
+    const mej = own && b.built ? upgradeMenu(b, cr) : '';   // las mejoras van en una columna a la derecha (no alargan el panel hacia arriba)
+    panelHtml = mej ? `<div class="con-mejoras"><div class="principal">${h}</div>${mej}</div>` : h; return;
   }
   const units = sel.filter(e => e.kind==='unit');
   const hasBuilder = units.some(u => u.type==='constructor' && u.owner===LOCAL);
@@ -5866,7 +5983,7 @@ function renderPanel(){
     else if(u.order && u.order.type==='enter'){ const tb = S.byId.get(u.order.id); estado = tb && tb.type!=='tunel' ? 'Hacia la posición defensiva' : 'Hacia el túnel'; }
     else if(t.engineer) estado = u.order ? 'En marcha' : 'Disponible';
     else estado = curTarget(u) ? 'En combate' : u.order ? 'En marcha' : 'En posición';
-    let h = `<div class="title">${swatch(u.owner)}${t.nombre}</div><div class="sub"><span title="Vida">${ic('vida', 'Vida')}${Math.ceil(u.hp)} / ${u.maxhp}</span> · ${estado}</div>${hpBar(u)}`;
+    let h = `<div class="title">${swatch(u.owner)}${t.nombre}</div><div class="desc">${esc(descripcion('unit', u.type, u.owner))}</div><div class="sub"><span title="Vida">${ic('vida', 'Vida')}${Math.ceil(u.hp)} / ${u.maxhp}</span> · ${estado}</div>${hpBar(u)}`;
     if(t.weapon){
       h += `<div class="tags"><span>Alcance ${t.range}</span><span>Daño ${t.dmg}</span>${u.air ? `<span>Munición ${u.ammo} / ${t.ammo}</span>` : `<span>Rango ${['recluta','veterano','élite','héroe'][u.vet]}</span>${u.vet ? `<span class="hot">Daño +${25*u.vet} % · Vida +${20*u.vet} %</span>` : ''}`}<span>Bajas ${u.kills}</span>${u.order && u.order.type==='defend' ? '<span>Defiende un área</span>' : ''}`;
       if(u.owner===LOCAL && hordeActive(u, true)) h += `<span class="hot">Horda +25 %</span>`;
@@ -5884,13 +6001,33 @@ function renderPanel(){
       h += `<div class="tags"><span>Carga ${u.carry} / ${t.carry}</span><span>${TOUCH?'Tocar':'Clic derecho en'} un depósito para recolectar</span>${acopio ? '' : `<span class="hot">Construya un ${esc(BT(u.owner,'recoleccion').nombre.toLowerCase())} para descargar</span>`}</div>`;
     }
     if(hasBuilder) h += buildMenu(cr);
-    panel.innerHTML = h; return;
+    panelHtml = h; return;
   }
   const counts = Object.create(null); units.forEach(u => counts[u.type] = (counts[u.type]||0)+1);   // sin prototipo: «constructor» es un tipo de unidad
   const tot = units.reduce((a,u) => a+u.hp, 0), max = units.reduce((a,u) => a+u.maxhp, 0) || 1;
   const horde = units.some(u => u.owner===LOCAL && hordeActive(u, true));
-  panel.innerHTML = `<div class="title">${units.length} unidades</div><div class="sub">Vida total ${Math.round(tot/max*100)} %</div><div class="bar"><i style="width:${pct(tot/max)}"></i></div><div class="tags">${Object.entries(counts).map(([k,v]) => `<span>${UT(LOCAL,k).nombre} × ${v}</span>`).join('')}${horde ? '<span class="hot">Horda +25 %</span>' : ''}</div>` + (hasBuilder ? buildMenu(cr) : '');
+  panelHtml = `<div class="title">${units.length} unidades</div><div class="sub">Vida total ${Math.round(tot/max*100)} %</div><div class="bar"><i style="width:${pct(tot/max)}"></i></div><div class="tags">${Object.entries(counts).map(([k,v]) => `<span>${UT(LOCAL,k).nombre} × ${v}</span>`).join('')}${horde ? '<span class="hot">Horda +25 %</span>' : ''}</div>` + (hasBuilder ? buildMenu(cr) : '');
 }
+// Ficha flotante de los botones de producción y construcción: qué hace la unidad o el edificio y sus datos
+const prodTip = $('prodTip');
+function mostrarFicha(e){
+  const btn = e.target.closest && e.target.closest('[data-tip]');
+  if(!btn || TOUCH){ prodTip.hidden = true; return; }
+  if(prodTip.dataset.k !== btn.dataset.tip){
+    prodTip.dataset.k = btn.dataset.tip; prodTip.textContent = '';
+    const b = document.createElement('b'), d = document.createElement('div'), m = document.createElement('small');
+    b.textContent = btn.dataset.tip; d.textContent = btn.dataset.desc; m.textContent = btn.dataset.datos;
+    prodTip.append(b, d, m);
+  }
+  prodTip.hidden = false;
+  const r = btn.getBoundingClientRect(), w = prodTip.offsetWidth;
+  prodTip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width/2 - w/2)) + 'px';
+  prodTip.style.bottom = (innerHeight - r.top + 8) + 'px';
+}
+panel.addEventListener('pointermove', mostrarFicha);
+panel.addEventListener('pointerleave', () => { prodTip.hidden = true; prodTip.dataset.k = ''; });
+// La rueda del mouse desplaza la fila de botones cuando no cabe en la pantalla
+panel.addEventListener('wheel', e => { const fila = e.target.closest && e.target.closest('.row.menu'); if(!fila || fila.scrollWidth <= fila.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return; fila.scrollLeft += e.deltaY; e.preventDefault(); }, { passive:false });
 panel.addEventListener('pointerdown', e => {
   const btn = e.target.closest('button'); if(!btn || btn.disabled) return;
   sfx('click');
@@ -5914,29 +6051,63 @@ panel.addEventListener('pointerdown', e => {
 
 // Panel de poderes de comandante
 const powersEl = $('powers');
+let poderesUlt = '';
 function renderPowers(){
   const pl = S.players[LOCAL];
   const next = RANK_XP[pl.rank], prev = RANK_XP[pl.rank-1] || 0;
   const xpFrac = next ? (pl.xp-prev)/(next-prev) : 1;
   const powers = TREES[pl.faction].flatMap(br => br.nodos).filter(n => n.poder && pl.unlocked[n.id]);
-  powersEl.innerHTML = `<div class="hdr"><span>Rango <b>${pl.rank}</b></span><span>Puntos <b>${pl.cp}</b></span></div><div class="xp" title="Experiencia"><i style="width:${pct(xpFrac)}"></i></div>` +
+  const html = `<div class="hdr"><span>Rango <b>${pl.rank}</b></span><span>Puntos <b>${pl.cp}</b></span></div><div class="xp" title="Experiencia"><i style="width:${pct(xpFrac)}"></i></div>` +
     `<button data-tree="1" class="${pl.cp>0?'ready':''}">Árbol del comandante<small>${pl.cp>0 ? pl.cp + ' punto' + (pl.cp>1?'s':'') : 'ver'}</small></button>` +
     (powers.length ? powers.map(n => {
       const P = POWERS[n.id], left = Math.ceil(((pl.cool[n.id]||0) - S.tick)/TICK_HZ);
-      return left>0 ? `<button disabled title="${P.desc}">${P.nombre}<small>${left} s</small></button>`
-                    : `<button class="ready${targeting && targeting.id===n.id ? ' on' : ''}" data-power="${n.id}" title="${P.desc}">${P.nombre}<small>listo</small></button>`;
+      const ico = `<span class="pw-ico" style="--cd:${left>0 ? pct(Math.min(1, left/P.cd)) : '0%'}">${emblemaNodo(n.id, pl.faction, true)}</span>`;   // emblema del árbol con la recarga encima
+      return left>0 ? `<button class="pw" disabled title="${P.desc}">${ico}<span class="pw-n">${P.nombre}</span><small>${left} s</small></button>`
+                    : `<button class="pw ready${targeting && targeting.id===n.id ? ' on' : ''}" data-power="${n.id}" title="${P.desc}">${ico}<span class="pw-n">${P.nombre}</span><small>listo</small></button>`;
     }).join('') : '<div class="hdr"><span>Sin poderes desbloqueados</span></div>');
+  if(html !== poderesUlt){ poderesUlt = html; powersEl.innerHTML = html; }   // sin redibujar si nada cambió (las imágenes no parpadean)
 }
 function nodeInfo(n){ return n.poder ? { nombre:POWERS[n.id].nombre, desc:POWERS[n.id].desc, tipo:'Poder' } : { nombre:n.nombre, desc:n.desc, tipo:'Mejora' }; }
+// Árbol del comandante. Cada nodo muestra su emblema: la imagen icono-arbol-<nodo>-<facción>.png si figura en
+// iconos.json (node pruebas/generar-iconos.js) o, si no, un emblema vectorial propio (símbolos i-ar-* de index.html).
+const ARBOL_EMBLEMA = { radar:'radar', precision:'mira', tropas:'paracaidas', reparacion:'llave', artilleria:'obus', sabotaje:'sabotaje',
+  sensores:'ojo', pilotos:'misil', fuselaje:'ala', contratos:'moneda', fabricacion:'engranaje',
+  proyectiles:'proyectil', acero:'escudo', ingenieria:'casco', reclutas:'tropa', moral:'puno',
+  emboscada:'cuchillo', chatarreros:'chatarra', mercado:'caja', trincheras:'sacos', motores:'velocidad' };
+const RAMA_EMBLEMA = { 'Inteligencia':'ojo', 'Aviación':'ala', 'Logística':'caja', 'Artillería':'obus', 'Blindaje':'escudo', 'Masa':'tropa',
+  'Sombra':'cuchillo', 'Saqueo':'moneda', 'Resistencia':'sacos' };
+const ROMANO = ['I', 'II', 'III', 'IV', 'V'];
+// fondo=true: la imagen va como fondo de su caja (el panel de poderes se rehace a menudo y así no parpadea)
+function emblemaNodo(id, f, fondo){
+  const n = `icono-arbol-${id}-${f}.png`;
+  if(ICON_LIST && ICON_LIST.includes(n)) return fondo ? `<i class="emb-fondo" style="background-image:url(img/${n})"></i>` : `<img src="img/${n}" alt="">`;
+  return `<svg aria-hidden="true"><use href="#i-ar-${ARBOL_EMBLEMA[id] || 'rango'}"/></svg>`;
+}
 function renderTree(){
-  const pl = S.players[LOCAL], F = FACTIONS[pl.faction];
-  $('treeTitle').textContent = `Árbol del comandante · ${F.nombre}`;
-  $('treeInfo').textContent = `Rango ${pl.rank}. Puntos disponibles: ${pl.cp}. Cada nodo requiere el anterior de su rama. Los ascensos de rango dan puntos.`;
-  $('treeBody').innerHTML = TREES[pl.faction].map(br => `<div class="branch"><h4>${br.rama}</h4>` + br.nodos.map((n,i) => {
-    const info = nodeInfo(n), unl = !!pl.unlocked[n.id], prevOk = !i || pl.unlocked[br.nodos[i-1].id], avail = !unl && prevOk && pl.cp>0;
-    const state = unl ? 'Desbloqueado' : avail ? 'Disponible' : !prevOk ? 'Requiere el nivel anterior' : 'Sin puntos';
-    return (i ? '<div class="link"></div>' : '') + `<button class="${unl?'unl':avail?'avail':''}" data-node="${n.id}" ${avail?'':'disabled'}><b>${info.nombre}</b><small>${info.tipo} · ${info.desc}</small><small>${state}</small></button>`;
-  }).join('') + '</div>').join('');
+  const pl = S.players[LOCAL], f = pl.faction, F = FACTIONS[f];
+  if(!ICON_LIST) preloadIcons(f);   // lista de imágenes disponibles; el árbol se rehace al abrirlo de nuevo
+  const next = RANK_XP[pl.rank], prev = RANK_XP[pl.rank-1] || 0, xpFrac = next ? (pl.xp - prev)/(next - prev) : 1;
+  $('treeTitle').textContent = 'Árbol del comandante';
+  $('treeInfo').innerHTML = `<span class="ar-retrato"><img src="img/comandante-${f}.png" alt=""></span>`
+    + `<span class="ar-datos"><b>${esc(F.nombre)}</b><span class="ar-grado">${ic('rango', 'Rango')} Rango ${pl.rank} de ${RANK_XP.length}</span>`
+    + `<span class="ar-xp" title="Experiencia"><i style="width:${pct(Math.max(0, Math.min(1, xpFrac)))}"></i></span>`
+    + `<small>${next ? `${Math.round(pl.xp)} de ${next} de experiencia para el siguiente rango` : 'Rango máximo'}</small></span>`
+    + `<span class="ar-puntos${pl.cp ? ' hay' : ''}"><b>${pl.cp}</b><small>punto${pl.cp===1 ? '' : 's'} disponible${pl.cp===1 ? '' : 's'}</small></span>`;
+  $('treeBody').innerHTML = TREES[f].map(br => {
+    const hechos = br.nodos.filter(n => pl.unlocked[n.id]).length;
+    return `<section class="rama"><header><span class="ar-emb">${`<svg aria-hidden="true"><use href="#i-ar-${RAMA_EMBLEMA[br.rama] || 'rango'}"/></svg>`}</span><h4>${br.rama}</h4><small>${hechos} de ${br.nodos.length}</small></header>`
+      + br.nodos.map((n, i) => {
+        const info = nodeInfo(n), unl = !!pl.unlocked[n.id], prevOk = !i || pl.unlocked[br.nodos[i-1].id], avail = !unl && prevOk && pl.cp>0;
+        const estado = unl ? 'unl' : avail ? 'avail' : !prevOk ? 'lock' : 'sin';
+        const txt = unl ? 'Desbloqueado' : avail ? 'Disponible: haga clic para desbloquear' : !prevOk ? 'Requiere el nivel anterior' : 'Sin puntos';
+        const extra = n.poder ? `Recarga ${POWERS[n.id].cd} s · se usa desde el panel de poderes` : 'Efecto permanente en esta partida';
+        return (i ? `<div class="ar-enlace${prevOk ? ' on' : ''}"></div>` : '')
+          + `<button class="nodo ${estado}" data-node="${n.id}" ${avail ? '' : 'disabled'} aria-label="${esc(info.nombre)}. ${esc(info.desc)}. ${txt}">`
+          + `<span class="ar-img">${emblemaNodo(n.id, f)}<span class="ar-nivel">${ROMANO[i]}</span></span>`
+          + `<span class="ar-texto"><span class="ar-tipo ${n.poder ? 'poder' : 'mejora'}">${info.tipo}</span><b>${info.nombre}</b><span class="ar-desc">${info.desc}</span><small>${extra}</small>`
+          + `<span class="ar-estado">${unl ? ic('ar-ok') : !prevOk ? ic('ar-candado') : ''}${txt}</span></span></button>`;
+      }).join('') + '</section>';
+  }).join('');
 }
 powersEl.addEventListener('pointerdown', e => {
   const btn = e.target.closest('button'); if(!btn || btn.disabled) return;
@@ -5953,7 +6124,7 @@ function updateTopbar(){
   $('energy').classList.toggle('low', pw.low);
   if(pw.low && !wasLow) toast('Energía insuficiente: construya una planta de energía');
   wasLow = pw.low;
-  $('popVal').textContent = S.ents.filter(e => e.kind==='unit' && e.owner===LOCAL).length;
+  { const n = plazasUsadas(LOCAL); $('popVal').textContent = `${n}/${LIMITE_PLAZAS}`; $('unitsChip').classList.toggle('lleno', n >= LIMITE_PLAZAS); }
   const s = Math.floor(S.tick/TICK_HZ); $('clockVal').textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
   // Temporizadores de superarmas: propias siempre; enemigas si fueron vistas
   $('superbar').innerHTML = S.ents.filter(e => !e.dead && e.type==='superarma' && e.built && (e.owner===LOCAL || seenLocal(e))).map(e => {
@@ -6607,7 +6778,7 @@ $('btnHistClose').addEventListener('click', () => { const n = $('inProfile').val
 $('btnProfExport').addEventListener('click', () => { const blob = new Blob([JSON.stringify(PROFILE)], { type:'application/json' }), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'frente-arido-progreso.json'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); });
 $('btnProfImport').addEventListener('click', () => { const inp = $('profFile'); inp.onchange = e => { const f = e.target.files[0]; if(!f) return; f.text().then(t => { const p = cleanProfile(JSON.parse(t)); PROFILE = p; saveProfile(); renderHistory(); $('histMsg').textContent = 'Progreso importado.'; }).catch(() => { $('histMsg').textContent = 'El archivo no es un progreso válido.'; }); e.target.value = ''; }; inp.click(); });
 $('btnTreeClose').addEventListener('click', () => { $('tree').hidden = true; });
-$('treeBody').addEventListener('click', e => { const b = e.target.closest('button'); if(!b || b.disabled) return; issue({ t:'unlock', power:b.dataset.node }); sfx('rank'); setTimeout(() => { renderTree(); renderPowers(); }, 120); });
+$('treeBody').addEventListener('click', e => { const b = e.target.closest('button'); if(!b || b.disabled) return; const id = b.dataset.node; issue({ t:'unlock', power:id }); sfx('rank'); setTimeout(() => { renderTree(); renderPowers(); const n = $('treeBody').querySelector(`[data-node="${id}"]`); if(n && n.classList.contains('unl')) n.classList.add('recien'); }, 120); });
 $('btnNextMission').addEventListener('click', () => { const mm = MISSIONS[MISSION_UI.id], next = CAMPAIGNS[mm.faccion].misiones[mm.orden+1]; if(next) startMission(next.id, MISSION_UI.diff); });
 $('btnRetry').addEventListener('click', () => startMission(MISSION_UI.id, MISSION_UI.diff));
 $('btnTutorial').addEventListener('click', () => { $('menu').hidden = true; startMission('tutorial', 'facil'); });

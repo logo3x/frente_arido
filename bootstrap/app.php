@@ -13,7 +13,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Cabeceras de seguridad (CSP, marcos, tipo de contenido, HSTS) en todas las respuestas de Laravel
+        $middleware->append(\App\Http\Middleware\CabecerasSeguridad::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

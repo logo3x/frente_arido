@@ -15,17 +15,32 @@ class CabecerasSeguridad
     public function handle(Request $request, Closure $next): Response
     {
         $response = $next($request);
-        $ws = parse_url((string) config('game.ws_url'), PHP_URL_SCHEME).'://'.parse_url((string) config('game.ws_url'), PHP_URL_HOST).(parse_url((string) config('game.ws_url'), PHP_URL_PORT) ? ':'.parse_url((string) config('game.ws_url'), PHP_URL_PORT) : '');
+        // Origen del servidor de partidas para connect-src. Si GAME_WS_URL es relativa (/ws tras el proxy de IIS), basta 'self'.
+        $u = parse_url((string) config('game.ws_url')) ?: [];
+        $ws = isset($u['scheme'], $u['host']) && in_array($u['scheme'], ['ws', 'wss'], true)
+            ? $u['scheme'].'://'.$u['host'].(isset($u['port']) ? ':'.$u['port'] : '')
+            : '';
+        // En desarrollo (npm run dev) Vite deja su dirección en public/hot: se permite solo ese origen y su WebSocket
+        $vite = '';
+        if (is_file(public_path('hot'))) {
+            $h = parse_url(trim((string) file_get_contents(public_path('hot'))));
+            if (isset($h['scheme'], $h['host']) && in_array($h['scheme'], ['http', 'https'], true)) {
+                $origen = $h['host'].(isset($h['port']) ? ':'.$h['port'] : '');
+                $vite = " {$h['scheme']}://{$origen}";
+                $ws .= ' '.($h['scheme'] === 'https' ? 'wss' : 'ws')."://{$origen}{$vite}";
+            }
+        }
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
         $response->headers->set('Referrer-Policy', 'same-origin');
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
         $response->headers->set('Content-Security-Policy', implode('; ', [
             "default-src 'self'",
-            "script-src 'self'",
-            "style-src 'self' 'unsafe-inline'",
+            "script-src 'self'{$vite}",
+            "style-src 'self' 'unsafe-inline'{$vite}",
             "img-src 'self' data: blob:",
-            "connect-src 'self' {$ws}".(config('reverb.apps.apps.0.options.host') ? ' wss://'.config('reverb.apps.apps.0.options.host') : ''),
+            trim("connect-src 'self' {$ws}").(config('reverb.apps.apps.0.options.host') ? ' wss://'.config('reverb.apps.apps.0.options.host') : ''),
+            "object-src 'none'",
             "frame-ancestors 'self'",
             "base-uri 'self'",
             "form-action 'self'",

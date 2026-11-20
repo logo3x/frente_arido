@@ -1237,6 +1237,306 @@ Archivo: `public/img/ficha-bombardero-atlas.webp` · 1200 × 900
 Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Mantenga el estilo de la lámina de referencia adjunta. Bombardero de ala volante en flecha con el borde de salida quebrado, lomo central con cabina de vidrio, dos motores sobre el ala con toberas de brillo azul, aletas cortas inclinadas en las puntas y una sola bomba grande bajo el fuselaje. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Ilustración 4:3: el bombardero en vuelo bajo sobre el desierto, polvo en el aire, cielo despejado.
 ```
 
+## 11. Árbol del comandante
+
+Una imagen por nodo del árbol del comandante (27 en total, 9 por facción). Se muestran en un cuadro de 64 × 64 con esquinas redondeadas, así que el motivo debe leerse en pequeño. Adjunte la lámina de la facción. Mientras falte una imagen, el juego dibuja un emblema vectorial.
+
+| Paso | Acción |
+|---|---|
+| 1 | Genere la imagen y recórtela a 256 × 256 px. |
+| 2 | Guárdela en `public/juego/img/` con el nombre exacto indicado (PNG). |
+| 3 | Ejecute `node pruebas/generar-iconos.js` para que el juego la encuentre. |
+
+### Árbol · Coalición Atlas
+
+### 170 · Barrido de radar · árbol Coalición Atlas
+Archivo: `public/juego/img/icono-arbol-radar-atlas.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Antena de radar de plato blanco sobre un mástil, con ondas de barrido azules que se expanden en anillos sobre un mapa táctico holográfico del desierto. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #1a2130. Sin marco, sin borde, sin texto.
+```
+
+### 171 · Sensores avanzados · árbol Coalición Atlas
+Archivo: `public/juego/img/icono-arbol-sensores-atlas.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Visor óptico de alta tecnología con lente grande que brilla en azul, rodeado de pequeñas lentes y una retícula holográfica flotante. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #1a2130. Sin marco, sin borde, sin texto.
+```
+
+### 172 · Ataque de precisión · árbol Coalición Atlas
+Archivo: `public/juego/img/icono-arbol-precision-atlas.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Rayo de energía azul que cae desde el cielo sobre una retícula de puntería en la arena, con un satélite pequeño arriba. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #1a2130. Sin marco, sin borde, sin texto.
+```
+
+### 173 · Pilotos veteranos · árbol Coalición Atlas
+Archivo: `public/juego/img/icono-arbol-pilotos-atlas.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Casco de piloto de caza con visor dorado reflectante, alas metálicas a los lados y dos misiles cruzados detrás. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #1a2130. Sin marco, sin borde, sin texto.
+```
+
+### 174 · Fuselaje reforzado · árbol Coalición Atlas
+Archivo: `public/juego/img/icono-arbol-fuselaje-atlas.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Caza de ala en delta visto de frente con placas de blindaje brillantes superpuestas en el fuselaje y un escudo azul translúcido que lo envuelve. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #1a2130. Sin marco, sin borde, sin texto.
+```
+
+### 175 · Lanzamiento de tropas · árbol Coalición Atlas
+Archivo: `public/juego/img/icono-arbol-tropas-atlas.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Contenedor de carga blanco que desciende con un paracaídas gris sobre el desierto, con soldados de armadura blanca saltando junto a él. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #1a2130. Sin marco, sin borde, sin texto.
+```
+
+### 176 · Reparación de campo · árbol Coalición Atlas
+Archivo: `public/juego/img/icono-arbol-reparacion-atlas.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Dron de reparación con brazos robóticos y luz azul soldando una placa de blindaje; chispas y un halo de reparación. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #1a2130. Sin marco, sin borde, sin texto.
+```
+
+### 177 · Contratos de defensa · árbol Coalición Atlas
+Archivo: `public/juego/img/icono-arbol-contratos-atlas.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Maletín metálico abierto con lingotes y fichas de crédito, sobre planos de un tanque, con un sello azul de la coalición sin letras. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #1a2130. Sin marco, sin borde, sin texto.
+```
+
+### 178 · Fabricación ágil · árbol Coalición Atlas
+Archivo: `public/juego/img/icono-arbol-fabricacion-atlas.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Brazo robótico industrial ensamblando una torre de tanque en una línea de montaje blanca y limpia, con luces azules. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #1a2130. Sin marco, sin borde, sin texto.
+```
+
+### Árbol · Frente Hierro
+
+### 179 · Bombardeo de artillería · árbol Frente Hierro
+Archivo: `public/juego/img/icono-arbol-artilleria-hierro.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Obús pesado de cañón largo disparando, con fogonazo naranja y humo; tres proyectiles que se alejan en arco hacia un horizonte en llamas. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #251c19. Sin marco, sin borde, sin texto.
+```
+
+### 180 · Proyectiles perforantes · árbol Frente Hierro
+Archivo: `public/juego/img/icono-arbol-proyectiles-hierro.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Tres proyectiles de tanque de punta dura apoyados en vertical, con ojivas de acero oscuro y franjas naranja de peligro, y una placa de blindaje perforada detrás. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #251c19. Sin marco, sin borde, sin texto.
+```
+
+### 181 · Barrido de radar · árbol Frente Hierro
+Archivo: `public/juego/img/icono-arbol-radar-hierro.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Radar militar pesado de rejilla rectangular sobre un remolque remachado, con barrido naranja en una pantalla verde de tubo. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #251c19. Sin marco, sin borde, sin texto.
+```
+
+### 182 · Acero templado · árbol Frente Hierro
+Archivo: `public/juego/img/icono-arbol-acero-hierro.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Placa gruesa de blindaje recién templada al rojo vivo sobre un yunque de forja, con chispas, martillo pesado y remaches. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #251c19. Sin marco, sin borde, sin texto.
+```
+
+### 183 · Reparación de campo · árbol Frente Hierro
+Archivo: `public/juego/img/icono-arbol-reparacion-hierro.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Mecánico con careta de soldar reparando la oruga de un tanque pesado; chispas naranja, llave enorme y bidón de aceite. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #251c19. Sin marco, sin borde, sin texto.
+```
+
+### 184 · Ingeniería de campaña · árbol Frente Hierro
+Archivo: `public/juego/img/icono-arbol-ingenieria-hierro.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Casco de acero de ingeniero con lámpara, sobre planos de una fortificación, con una llave inglesa y una pala cruzadas. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #251c19. Sin marco, sin borde, sin texto.
+```
+
+### 185 · Leva masiva · árbol Frente Hierro
+Archivo: `public/juego/img/icono-arbol-reclutas-hierro.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Fila de soldados con abrigos largos y cascos de acero marchando en formación cerrada bajo estandartes naranja sin símbolos. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #251c19. Sin marco, sin borde, sin texto.
+```
+
+### 186 · Lanzamiento de tropas · árbol Frente Hierro
+Archivo: `public/juego/img/icono-arbol-tropas-hierro.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Avión de transporte pesado y robusto soltando soldados con paracaídas oscuros sobre el desierto al atardecer. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #251c19. Sin marco, sin borde, sin texto.
+```
+
+### 187 · Moral de hierro · árbol Frente Hierro
+Archivo: `public/juego/img/icono-arbol-moral-hierro.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Puño con guante blindado alzado frente a una bandera naranja ondeando sin símbolos, con humo y brasas detrás. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #251c19. Sin marco, sin borde, sin texto.
+```
+
+### Árbol · Red Guerrillera
+
+### 188 · Barrido de radar · árbol Red Guerrillera
+Archivo: `public/juego/img/icono-arbol-radar-guerrilla.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Red Guerrillera: equipo improvisado, oliva #7e7248, caqui #9a8a5c, detalles verde lima #b8d057, lonas y sacos terreros. Vigía oculto entre rocas con binoculares viejos y una radio de mochila con antena larga, bajo una red de camuflaje. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #22251a. Sin marco, sin borde, sin texto.
+```
+
+### 189 · Emboscada · árbol Red Guerrillera
+Archivo: `public/juego/img/icono-arbol-emboscada-guerrilla.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Red Guerrillera: equipo improvisado, oliva #7e7248, caqui #9a8a5c, detalles verde lima #b8d057, lonas y sacos terreros. Rebelde con pañuelo y sombrero de selva agazapado entre matas secas, con un machete y un fusil de madera, ojos atentos en la sombra. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #22251a. Sin marco, sin borde, sin texto.
+```
+
+### 190 · Sabotaje · árbol Red Guerrillera
+Archivo: `public/juego/img/icono-arbol-sabotaje-guerrilla.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Red Guerrillera: equipo improvisado, oliva #7e7248, caqui #9a8a5c, detalles verde lima #b8d057, lonas y sacos terreros. Cargas explosivas caseras con cables y un temporizador analógico pegadas a una torre eléctrica, con chispas y un cable cortado. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #22251a. Sin marco, sin borde, sin texto.
+```
+
+### 191 · Chatarreros · árbol Red Guerrillera
+Archivo: `public/juego/img/icono-arbol-chatarreros-guerrilla.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Red Guerrillera: equipo improvisado, oliva #7e7248, caqui #9a8a5c, detalles verde lima #b8d057, lonas y sacos terreros. Montón de chatarra de vehículos destruidos: ruedas, placas y un cañón doblado, con una carretilla cargada y herramientas. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #22251a. Sin marco, sin borde, sin texto.
+```
+
+### 192 · Lanzamiento de tropas · árbol Red Guerrillera
+Archivo: `public/juego/img/icono-arbol-tropas-guerrilla.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Red Guerrillera: equipo improvisado, oliva #7e7248, caqui #9a8a5c, detalles verde lima #b8d057, lonas y sacos terreros. Camioneta pickup llena de rebeldes armados saltando de la caja en medio de una nube de polvo. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #22251a. Sin marco, sin borde, sin texto.
+```
+
+### 193 · Mercado negro · árbol Red Guerrillera
+Archivo: `public/juego/img/icono-arbol-mercado-guerrilla.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Red Guerrillera: equipo improvisado, oliva #7e7248, caqui #9a8a5c, detalles verde lima #b8d057, lonas y sacos terreros. Puesto clandestino bajo una lona remendada con cajas de munición abiertas, fusiles colgados y bidones, iluminado por un farol. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #22251a. Sin marco, sin borde, sin texto.
+```
+
+### 194 · Reparación de campo · árbol Red Guerrillera
+Archivo: `public/juego/img/icono-arbol-reparacion-guerrilla.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Red Guerrillera: equipo improvisado, oliva #7e7248, caqui #9a8a5c, detalles verde lima #b8d057, lonas y sacos terreros. Taller improvisado: soldador con gafas reparando un técnico, con piezas atadas con alambre y chispas verde lima. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #22251a. Sin marco, sin borde, sin texto.
+```
+
+### 195 · Trincheras · árbol Red Guerrillera
+Archivo: `public/juego/img/icono-arbol-trincheras-guerrilla.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Red Guerrillera: equipo improvisado, oliva #7e7248, caqui #9a8a5c, detalles verde lima #b8d057, lonas y sacos terreros. Trinchera de sacos terreros apilados con una red de camuflaje y ramas encima, con un fusil asomando entre los sacos. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #22251a. Sin marco, sin borde, sin texto.
+```
+
+### 196 · Motores trucados · árbol Red Guerrillera
+Archivo: `public/juego/img/icono-arbol-motores-guerrilla.png` · 256 × 256
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin letras ni números, sin logotipos ni insignias reales. Estilo Red Guerrillera: equipo improvisado, oliva #7e7248, caqui #9a8a5c, detalles verde lima #b8d057, lonas y sacos terreros. Motor de camioneta modificado con turbo improvisado, tubos de escape cromados y llamas cortas saliendo, sobre un banco de trabajo con herramientas. Mantenga el estilo de la lámina de referencia adjunta. Imagen cuadrada 1:1 tipo carta de habilidad: el motivo centrado, grande y legible a 64 px, ocupando el 70 % del cuadro, sobre un fondo de escena oscuro y desenfocado que se funde hacia el borde en #22251a. Sin marco, sin borde, sin texto.
+```
+
+## 12. Íconos de edificios y unidades pendientes
+
+Botones de construcción y producción que aún no tienen imagen. Guarde cada una en `public/juego/img/` con el nombre exacto y ejecute `node pruebas/generar-iconos.js`. También falta el n.º 168 (bombardero de Atlas).
+
+### 197 · Estación de lanzamiento aéreo (edificio de ingresos) · ícono Coalición Atlas
+Archivo: `public/juego/img/icono-estacion-lanzamiento-atlas.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Plataforma circular de aterrizaje con anillo de luces azules, dos contenedores blancos con paracaídas plegados, una grúa pórtico pequeña y una torre de control baja con antena. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Mantenga el estilo de la lámina de referencia adjunta. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
+### 198 · Laboratorio de investigación · ícono Coalición Atlas
+Archivo: `public/juego/img/icono-laboratorio-atlas.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Edificio blanco de laboratorio con cúpula de vidrio, paneles lisos, antena de plato en el techo y ventanales de luz azul. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Mantenga el estilo de la lámina de referencia adjunta. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
+### 199 · Batería de misiles enlazada · ícono Coalición Atlas
+Archivo: `public/juego/img/icono-bateria-misiles-atlas.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Lanzador de cuatro tubos de misiles inclinados sobre una base giratoria blanca, con un radar plano y una antena de enlace de datos. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Mantenga el estilo de la lámina de referencia adjunta. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
+### 200 · Granadero antitanque · ícono Coalición Atlas
+Archivo: `public/juego/img/icono-granadero-antitanque-atlas.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Coalición Atlas: alta tecnología, blanco hueso #c6ced4, gris #58636c, luces azules #4f8dff, vidrio y cúpulas. Soldado con armadura blanca y visor azul, rodilla en tierra, apuntando un lanzamisiles antitanque guiado al hombro. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Mantenga el estilo de la lámina de referencia adjunta. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
+### 201 · Centro de ciberoperaciones (edificio de ingresos) · ícono Frente Hierro
+Archivo: `public/juego/img/icono-centro-ciberoperaciones-hierro.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Búnker de hormigón y acero con racks de servidores visibles por una abertura, pantallas verdes, cables gruesos y antenas de comunicaciones en el techo. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Mantenga el estilo de la lámina de referencia adjunta. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
+### 202 · Instituto técnico · ícono Frente Hierro
+Archivo: `public/juego/img/icono-instituto-tecnico-hierro.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Edificio industrial de ladrillo y acero remachado con techo en diente de sierra, chimenea, una grúa pequeña y placas de blindaje de prueba apoyadas en la pared. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Mantenga el estilo de la lámina de referencia adjunta. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
+### 203 · Minibúnker · ícono Frente Hierro
+Archivo: `public/juego/img/icono-minibunker-hierro.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Búnker bajo de hormigón con troneras horizontales, techo blindado remachado, sacos terreros alrededor y franjas de peligro naranja. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Mantenga el estilo de la lámina de referencia adjunta. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
+### 204 · Torreta minigun · ícono Frente Hierro
+Archivo: `public/juego/img/icono-torreta-minigun-hierro.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Torreta de ametralladora rotativa de seis cañones con escudo de acero inclinado, sobre una base remachada con cajas de munición. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Mantenga el estilo de la lámina de referencia adjunta. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
+### 205 · Cazacarros (infantería antitanque) · ícono Frente Hierro
+Archivo: `public/juego/img/icono-cazacarros-hierro.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Frente Hierro: blindaje pesado, acero oscuro #5f5a52, óxido #8c5a3a, naranja #ff8a4a, remaches y franjas de peligro. Soldado con abrigo largo, casco de acero y máscara antigás, rodilla en tierra, apuntando un lanzacohetes pesado al hombro. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Mantenga el estilo de la lámina de referencia adjunta. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
+### 206 · Mercado negro (edificio de ingresos) · ícono Red Guerrillera
+Archivo: `public/juego/img/icono-mercado-negro-guerrilla.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Red Guerrillera: equipo improvisado, oliva #7e7248, caqui #9a8a5c, detalles verde lima #b8d057, lonas y sacos terreros. Puestos bajo lonas remendadas con cajas de armas y bidones, una camioneta vieja cargada y un farol colgando. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Mantenga el estilo de la lámina de referencia adjunta. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
+### 207 · Taller clandestino · ícono Red Guerrillera
+Archivo: `public/juego/img/icono-taller-clandestino-guerrilla.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Red Guerrillera: equipo improvisado, oliva #7e7248, caqui #9a8a5c, detalles verde lima #b8d057, lonas y sacos terreros. Galpón de chapa oxidada con lona, banco de trabajo con herramientas, motores desarmados y piezas de armas sobre la mesa. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Mantenga el estilo de la lámina de referencia adjunta. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
+### 208 · Trinchera · ícono Red Guerrillera
+Archivo: `public/juego/img/icono-trinchera-guerrilla.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Red Guerrillera: equipo improvisado, oliva #7e7248, caqui #9a8a5c, detalles verde lima #b8d057, lonas y sacos terreros. Trinchera corta de sacos terreros en forma de L con red de camuflaje y ramas encima, tablones y un fusil asomando. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Mantenga el estilo de la lámina de referencia adjunta. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
+### 209 · Rebelde antitanque · ícono Red Guerrillera
+Archivo: `public/juego/img/icono-rebelde-antitanque-guerrilla.png` · 128 × 128, fondo transparente
+
+```
+Ilustración digital semi-realista estilizada para un videojuego de estrategia ambientado en un desierto ficticio; formas limpias con biseles suaves, desgaste leve de polvo, luz cálida de tarde y sombras definidas. Diseño original, sin texto, sin logotipos ni insignias reales. Estilo Red Guerrillera: equipo improvisado, oliva #7e7248, caqui #9a8a5c, detalles verde lima #b8d057, lonas y sacos terreros. Rebelde con pañuelo, sombrero de selva y chaleco de lona, rodilla en tierra, apuntando un lanzacohetes viejo de tubo al hombro. Franja de color azul #2f6fd8 visible en el vehículo, el edificio o las hombreras. Mantenga el estilo de la lámina de referencia adjunta. Ícono cuadrado 1:1: vista isométrica en tres cuartos desde arriba, objeto centrado ocupando el 80 % del cuadro, fondo transparente, sin sombra proyectada, silueta legible a 64 px.
+```
+
 ## Lista de control
 
 Total: 169 imágenes.
@@ -1408,5 +1708,45 @@ Total: 169 imágenes.
 - [x] 165 · Pantalla de carga · Frente Hierro
 - [x] 166 · Pantalla de carga · Red Guerrillera
 - [x] 167 · Fondo del menú principal del juego
-- [ ] 168 · Bombardero de ala volante · ícono
+- [x] 168 · Bombardero de ala volante · ícono
 - [ ] 169 · Bombardero de ala volante · ficha
+- [x] 170 · Barrido de radar · árbol Coalición Atlas
+- [x] 171 · Sensores avanzados · árbol Coalición Atlas
+- [x] 172 · Ataque de precisión · árbol Coalición Atlas
+- [x] 173 · Pilotos veteranos · árbol Coalición Atlas
+- [x] 174 · Fuselaje reforzado · árbol Coalición Atlas
+- [x] 175 · Lanzamiento de tropas · árbol Coalición Atlas
+- [x] 176 · Reparación de campo · árbol Coalición Atlas
+- [x] 177 · Contratos de defensa · árbol Coalición Atlas
+- [x] 178 · Fabricación ágil · árbol Coalición Atlas
+- [x] 179 · Bombardeo de artillería · árbol Frente Hierro
+- [x] 180 · Proyectiles perforantes · árbol Frente Hierro
+- [x] 181 · Barrido de radar · árbol Frente Hierro
+- [x] 182 · Acero templado · árbol Frente Hierro
+- [x] 183 · Reparación de campo · árbol Frente Hierro
+- [x] 184 · Ingeniería de campaña · árbol Frente Hierro
+- [x] 185 · Leva masiva · árbol Frente Hierro
+- [x] 186 · Lanzamiento de tropas · árbol Frente Hierro
+- [x] 187 · Moral de hierro · árbol Frente Hierro
+- [x] 188 · Barrido de radar · árbol Red Guerrillera
+- [x] 189 · Emboscada · árbol Red Guerrillera
+- [x] 190 · Sabotaje · árbol Red Guerrillera
+- [x] 191 · Chatarreros · árbol Red Guerrillera
+- [x] 192 · Lanzamiento de tropas · árbol Red Guerrillera
+- [x] 193 · Mercado negro · árbol Red Guerrillera
+- [x] 194 · Reparación de campo · árbol Red Guerrillera
+- [x] 195 · Trincheras · árbol Red Guerrillera
+- [x] 196 · Motores trucados · árbol Red Guerrillera
+- [x] 197 · Estación de lanzamiento aéreo (edificio de ingresos) · ícono Coalición Atlas
+- [x] 198 · Laboratorio de investigación · ícono Coalición Atlas
+- [x] 199 · Batería de misiles enlazada · ícono Coalición Atlas
+- [x] 200 · Granadero antitanque · ícono Coalición Atlas
+- [x] 201 · Centro de ciberoperaciones (edificio de ingresos) · ícono Frente Hierro
+- [x] 202 · Instituto técnico · ícono Frente Hierro
+- [x] 203 · Minibúnker · ícono Frente Hierro
+- [x] 204 · Torreta minigun · ícono Frente Hierro
+- [x] 205 · Cazacarros (infantería antitanque) · ícono Frente Hierro
+- [x] 206 · Mercado negro (edificio de ingresos) · ícono Red Guerrillera
+- [x] 207 · Taller clandestino · ícono Red Guerrillera
+- [x] 208 · Trinchera · ícono Red Guerrillera
+- [x] 209 · Rebelde antitanque · ícono Red Guerrillera

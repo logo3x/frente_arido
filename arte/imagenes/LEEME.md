@@ -18,6 +18,8 @@ Esta carpeta guarda **todos los diseños**, activos y anteriores, para poder cam
 | `lotes/lote-3-2026-10-06-estudio/` | Lote actual, generado con el estudio de recursos (`herramientas/estudio`). `sin-retoque/` guarda las tres imágenes antes de borrar el texto pintado y las franjas negras |
 | `lotes/lote-4-2026-10-07-estudio/` | Cuarto lote del estudio: fichas e íconos de edificios, insignias de grado, íconos de interfaz e ilustraciones de misión (85 imágenes). Las insignias y los íconos de interfaz traen fondo de color, no transparente |
 | `lotes/lote-5-2026-10-07-manual/` | Pantallas de carga de las tres facciones y fondo del menú del juego (1920 × 1080). Atlas y Guerrilla se recortaron para quitar el nombre y la barra de carga pintados; los originales están en `fuentes/lote-5/` |
+| `lotes/lote-6-2026-11-13-manual-arbol/` | Imágenes del árbol del comandante (`icono-arbol-<nodo>-<facción>.png`, 256 × 256, recorte del 4 % del borde). Entregas del 13 y 16 de noviembre: las 27 completas. Los originales de 1254 × 1254 están en `fuentes/lote-6/`, con dos variantes no usadas (`-alt`: sensores y reparación de Atlas) |
+| `lotes/lote-7-2026-11-16-manual-iconos/` | Los 14 íconos que faltaban en los botones de construir y producir (edificios de ingresos, investigación, defensas propias, infantería antitanque y bombardero), con fondo transparente, recortados al contenido y centrados en 128 × 128. Originales en `fuentes/lote-7/` |
 | `fuentes/lotes-1-y-2/` | Originales sin procesar de los lotes 1 y 2 (JPG y PNG tal como salieron) |
 | `referencia/` | Láminas de estilo por facción (con texto; solo documentación) |
 | `revisiones/` | Copias grandes de íconos sobre fondo arena para revisar recortes |
